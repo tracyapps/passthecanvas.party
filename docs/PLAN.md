@@ -47,6 +47,8 @@ The painting table sits straight ahead when you arrive. The other eight zones ri
 
 These angles are a starting layout. The real angles come from Blender via `spots.json`.
 
+**Owner's note (Oct 2026):** make it a **hybrid studio–coffee house**. The snack table grows into a café corner (espresso machine, window counter with stools, chalkboard menu — the café vibe), and the room gains more spots to sit and create (a small easel, sketch stools at the window). The zone ring gets re-cut when the room is blocked out in Blender; more spots is just more rows in `spots.json`, since the web app never hard-codes coordinates.
+
 ## Using Poly Haven
 
 See [POLY-HAVEN.md](POLY-HAVEN.md) for the full asset list per zone. Short version:

@@ -64,6 +64,7 @@ Replace placeholders with the real Blender studio.
 **Gate: the room feels real on a mid-range phone, and loads in under 3 s on decent wifi.**
 
 - [ ] Block out the loft studio in Blender (`studio/blender/loft-studio.blend`)
+- [ ] Café corner: grow the snack table into a coffee-house nook (espresso machine, window counter + stools, chalkboard menu) and add extra sit-and-create spots (small easel, sketch stools) — see the owner's note in PLAN.md
 - [ ] Place all nine zones with Poly Haven assets (see `docs/POLY-HAVEN.md`)
 - [ ] Build missing pieces: bean bag (cloth sim), drafting table, easel, cat tree
 - [ ] Three lighting moods: morning, golden hour, lamp-lit night
