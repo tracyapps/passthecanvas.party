@@ -263,7 +263,21 @@ class Party {
 /** Clamp a stroke from the network to sane values; return null if it's junk. */
 function sanitizeStroke(input: Stroke): Stroke | null {
   if (!input || !Array.isArray(input.points) || input.points.length > MAX_POINTS_PER_BATCH) return null;
-  const tools = ['pencil', 'round', 'flat', 'wash', 'eraser'];
+  const tools = [
+    'round',
+    'flat',
+    'watercolor',
+    'acrylic',
+    'airbrush',
+    'pencil',
+    'charcoal',
+    'pastel',
+    'water',
+    'finger',
+    'sponge',
+    'knife',
+    'eraser'
+  ];
   if (!tools.includes(input.tool)) return null;
   if (!/^#[0-9a-f]{6}$/i.test(input.color)) return null;
   const clamp = (n: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Number(n) || 0));
@@ -273,6 +287,7 @@ function sanitizeStroke(input: Stroke): Stroke | null {
     color: input.color,
     size: clamp(input.size, 1, 120),
     flow: clamp(input.flow, 0.05, 1),
+    viscosity: clamp(input.viscosity ?? 0.6, 0, 1),
     done: Boolean(input.done),
     points: input.points.map((p) => ({
       x: clamp(p.x, -50, 1650),

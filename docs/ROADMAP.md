@@ -51,6 +51,27 @@ The whole game loop, accessible, without the fancy room yet.
 - [ ] Party radio: Radio Browser search, host picks, every client streams the station itself
 - [ ] Reveal screen: framed piece, who painted which round, download full-size PNG
 - [ ] Replay: time-lapse built from saved strokes
+- [ ] **Paint box**: perfect the media and how they interact (see the dedicated section below)
+
+### The paint box (started Oct 2026)
+
+The owner's priority: the painting should feel like real art supplies, and the media must interact — water dilutes and smears, charcoal builds and smudges, glazes deepen to opaque.
+
+- [x] Media set: watercolor, acrylic (viscosity slider), airbrush, charcoal, pastel + the existing pencil/round/flat/eraser
+- [x] Wet tools: water brush (dilutes + smears), finger (blends/smears), sponge (textured dabs), palette knife (opaque chisel strokes)
+- [x] Paint mixing on the palette (mix two paints, use the result)
+- [ ] Collage: magazine cutouts, glue, fabric scraps, feathers, tape (needs placed-object messages, not strokes)
+- [ ] Wet-on-wet diffusion (watercolor bleeding into wet areas)
+- [ ] Watercolor edge darkening (pigment pooling at wash edges)
+- [ ] Per-tool pressure curves; airbrush spraying while held still
+- [ ] Impasto feel for thick acrylic (light/shadow on ridges)
+
+### Parking lot (owner ideas, not scheduled yet)
+
+- [ ] Companion canvas devices: use a tablet + stylus or a phone as a second screen for the canvas, while the computer shows the room — one account, two devices
+- [ ] Full playback: every mark recorded per piece (Railway-hosted store), scrubbable play bar, contributor name/avatar shown while their part plays
+- [ ] Auto-edited video export (TikTok-style "magic" picks: interesting pause points) with artist controls to move/add pause + slow spots; music bed; social sharing
+
 - [ ] Accessibility pass: keyboard stamp-mode painting, screen-reader turn announcements, captions plan
 - [ ] Low bandwidth: audio + avatar fallback, smaller assets on phones
 - [ ] Deploy: web on a static host/CDN, party server on a small VPS or Fly/Render, domain `passthecanvas.party`

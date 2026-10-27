@@ -6,7 +6,25 @@
 export const CANVAS_WIDTH = 1600;
 export const CANVAS_HEIGHT = 1200;
 
-export type ToolId = 'pencil' | 'round' | 'flat' | 'wash' | 'eraser';
+/**
+ * The tools in the studio. Grouped the way they sit on the table:
+ * wet brushes, dry media, and the blenders/tools that work the paint
+ * already on the canvas.
+ */
+export type ToolId =
+  | 'round' // round brush
+  | 'flat' // flat brush, chisel edge
+  | 'watercolor' // transparent glazes that build to opaque
+  | 'acrylic' // opaque paint; `viscosity` sets how it behaves
+  | 'airbrush' // fine transparent spray
+  | 'pencil'
+  | 'charcoal' // grainy, chalky build
+  | 'pastel' // colored chalk build
+  | 'water' // wet brush: dilutes and smears what's there
+  | 'finger' // blends and smears like a fingertip
+  | 'sponge' // textured dabs
+  | 'knife' // palette knife: hard opaque scrape of paint
+  | 'eraser';
 
 /** One point of a stroke, in canvas units. pressure is 0–1 (0.5 for a mouse). */
 export interface StrokePoint {
@@ -22,6 +40,8 @@ export interface Stroke {
   color: string; // hex, e.g. "#2c3f9e"
   size: number; // 2–80
   flow: number; // 0.1–1
+  /** How thick acrylic paint is, 0 (runny) to 1 (buttery). Other tools ignore it. */
+  viscosity?: number;
   points: StrokePoint[];
   /** true on the last batch of a drag (pointer lifted) */
   done: boolean;

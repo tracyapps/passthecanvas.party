@@ -44,7 +44,14 @@
 
   function handleDown(event: PointerEvent) {
     if (!canDraw) return;
-    canvasEl.setPointerCapture(event.pointerId);
+    // Capture keeps the stroke alive even if the pointer leaves the canvas.
+    // Some browsers throw when the pointer is already gone (fast taps); the
+    // stroke can still proceed without capture.
+    try {
+      canvasEl.setPointerCapture(event.pointerId);
+    } catch {
+      /* paint without capture */
+    }
     strokeId = crypto.randomUUID();
     last = toCanvasPoint(event);
     pending = [last];

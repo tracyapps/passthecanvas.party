@@ -4,6 +4,10 @@ A running log. Newest first. One line for small calls, a short paragraph for big
 
 | Date | Decision | Why |
 | --- | --- | --- |
+| 2026-10-26 | Paint box: 13 media in three groups (wet brushes, dry media, blenders); `wash` renamed to `watercolor` | No users yet, so renaming was free; the name says what it does. Acrylic carries a `viscosity` setting (0 runny – 1 buttery) that changes width and opacity. |
+| 2026-10-26 | Wet tools (water, finger) work on canvas pixels: smudge = drawing the canvas onto itself with low alpha; dilute = `destination-out` fill | Water "dilutes paint" by making it more transparent (never erases the paper, which lives behind the canvas), and the self-drawImage smudge is the cheap smooth smear behind finger blending. Both replay identically on every screen because everyone has the same pixels at that point. |
+| 2026-10-26 | All grain/spray/speckle stays seeded from position, never `Math.random()` | Charcoal grain, pastel chalk, airbrush spray and sponge holes must draw identically when replayed on another guest's screen; a test locks this in. |
+| 2026-10-26 | Paint mixing = weighted average with a slight darkening (×0.98) | Real pigment mixing is subtractive; this is the honest first approximation until it feels wrong in play. Mixing lives on the palette: toggle "Mix a color", tap two paints, tap the result. |
 | 2026-10-26 | Arrow-key panning in the room is **focus-gated**: keyboard control switches on when the room is focused (it's a tab stop), off when focus leaves | Photo Sphere Viewer listens for arrow keys on the window; with `keyboard: 'always'` it would hijack arrows for the whole page. Focus-gating keeps the promise ("arrow keys pan") without side effects. |
 | 2026-10-26 | `/api/token` accepts the party **member id** as the LiveKit identity | Video tiles map to guests with no extra bookkeeping — `participant.identity === member.id`. |
 | 2026-10-26 | The call fails soft: no LiveKit keys → the dock shows "Video is not set up on the server yet" and the party carries on | Painting, turns and chat must never depend on video being configured. |

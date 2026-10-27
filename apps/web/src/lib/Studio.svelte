@@ -7,8 +7,8 @@
   import { onDestroy } from 'svelte';
   import type { PartyConnection } from './party/connection.svelte';
   import type { BrushSettings } from './canvas/brushes';
-  import { TOOLS } from './canvas/brushes';
-  import { PAINTS } from './canvas/paints';
+  import { TOOLS, TOOL_GROUPS } from './canvas/brushes';
+  import { PAINTS, mixPaint } from './canvas/paints';
   import { Call } from './call/call.svelte';
   import CallDock from './call/CallDock.svelte';
   import VideoTile from './call/VideoTile.svelte';
@@ -18,9 +18,48 @@
   let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
 
   let view = $state<'paint' | 'room'>('paint');
-  let brush = $state<BrushSettings>({ tool: 'round', color: '#2c3f9e', size: 18, flow: 0.9 });
+  let brush = $state<BrushSettings>({ tool: 'round', color: '#2c3f9e', size: 18, flow: 0.9, viscosity: 0.6 });
   let canvas: PaintCanvas | undefined = $state();
   const call = new Call();
+
+  // ---- mixing paints on the palette ----
+  // Turn "Mix a color" on, tap two paints, tap the result to load your brush.
+  let mixing = $state(false);
+  let slotA = $state<{ name: string; hex: string } | null>(null);
+  let slotB = $state<{ name: string; hex: string } | null>(null);
+  let mixResult = $state<{ name: string; hex: string } | null>(null);
+
+  function toggleMixing() {
+    mixing = !mixing;
+    if (!mixing) resetMix();
+  }
+
+  function resetMix() {
+    slotA = null;
+    slotB = null;
+    mixResult = null;
+  }
+
+  function tapPaint(paint: { name: string; hex: string }) {
+    if (!mixing) {
+      brush.color = paint.hex;
+      return;
+    }
+    if (!slotA) {
+      slotA = paint;
+      return;
+    }
+    slotB = paint;
+    mixResult = { name: `${slotA.name} and ${slotB.name}`, hex: mixPaint(slotA.hex, slotB.hex) };
+    party.announcement = `Mixed ${mixResult.name}. Tap the mix to use it.`;
+  }
+
+  function useMix() {
+    if (!mixResult) return;
+    brush.color = mixResult.hex;
+    mixing = false;
+    resetMix();
+  }
 
   // Wire the connection to the canvas.
   $effect(() => {
@@ -85,26 +124,59 @@
   <main class:room-only={view === 'room'}>
     {#if view === 'paint'}
       <aside class="tools" aria-label="Art supplies">
-        <div role="group" aria-label="Brushes">
-          {#each TOOLS as tool (tool.id)}
-            <button type="button" aria-pressed={brush.tool === tool.id} onclick={() => (brush.tool = tool.id)}>
-              {tool.label}
-            </button>
-          {/each}
-        </div>
+        {#each TOOL_GROUPS as group (group.label)}
+          <div role="group" aria-label={group.label}>
+            <p class="group-label">{group.label}</p>
+            {#each group.tools as id (id)}
+              {@const tool = TOOLS.find((t) => t.id === id)}
+              {#if tool}
+                <button
+                  type="button"
+                  title={tool.hint}
+                  aria-pressed={brush.tool === id}
+                  onclick={() => (brush.tool = id)}
+                >
+                  {tool.label}
+                </button>
+              {/if}
+            {/each}
+          </div>
+        {/each}
+
         <div role="group" aria-label="Paint palette" class="palette">
           {#each PAINTS as paint (paint.hex)}
             <button
               type="button"
               class="paint"
               style:--paint={paint.hex}
-              aria-label={paint.name}
-              aria-pressed={brush.color === paint.hex}
-              onclick={() => (brush.color = paint.hex)}
+              aria-label={mixing ? `Add ${paint.name} to the mix` : paint.name}
+              aria-pressed={mixing ? slotA?.hex === paint.hex || slotB?.hex === paint.hex : brush.color === paint.hex}
+              onclick={() => tapPaint(paint)}
             ></button>
           {/each}
+          <button type="button" class="mix-toggle" aria-pressed={mixing} onclick={toggleMixing}>
+            {mixing ? 'Stop mixing' : 'Mix a color'}
+          </button>
+          {#if mixing && slotA && mixResult}
+            <button
+              type="button"
+              class="paint"
+              style:--paint={mixResult.hex}
+              aria-label={`Use the mix of ${mixResult.name}`}
+              aria-pressed={brush.color === mixResult.hex}
+              onclick={useMix}
+            ></button>
+          {:else if mixing && slotA}
+            <p class="mix-hint">Now tap a second paint to mix with {slotA.name}</p>
+          {:else if mixing}
+            <p class="mix-hint">Tap two paints to mix them</p>
+          {/if}
         </div>
+
         <label>Brush size {brush.size}<input type="range" min="2" max="80" bind:value={brush.size} /></label>
+        {#if brush.tool === 'acrylic'}
+          <label>Paint viscosity {Math.round(brush.viscosity * 100)}%<input type="range" min="0" max="1" step="0.05" bind:value={brush.viscosity} /></label>
+        {/if}
       </aside>
 
       <div class="canvas-wrap">
@@ -236,6 +308,15 @@
       gap: 0.375rem;
     }
 
+    .group-label {
+      width: 100%;
+      margin: 0;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: $cream-muted;
+    }
+
     button {
       @include tap-target;
       padding: 0 0.75rem;
@@ -262,6 +343,17 @@
       box-shadow:
         0 0 0 3px $paper,
         0 0 0 6px $walnut-900;
+    }
+
+    .mix-toggle {
+      width: 100%;
+    }
+
+    .mix-hint {
+      width: 100%;
+      margin: 0;
+      font-size: 0.875rem;
+      color: $cream-muted;
     }
 
     label {
