@@ -87,12 +87,17 @@ export function drawSegment(ctx: CanvasRenderingContext2D, brush: BrushSettings,
 
     case 'airbrush': {
       // A cone of specks: watercolor transparency with charcoal-style grain.
-      ctx.globalAlpha = 0.05 * flow;
-      const specks = 8 + Math.round(pressure * 12);
+      // Paint per segment grows with the cone width (a wider spray carries
+      // more paint), or a single pass is too sparse to see at all.
+      ctx.globalAlpha = 0.08 * flow;
+      const radius = size * 0.5;
+      const specks = Math.round(size * (0.8 + pressure * 0.8));
       for (let i = 0; i < specks; i++) {
-        const ox = (pseudoRandom(b.x + i * 7, b.y) - 0.5) * size;
-        const oy = (pseudoRandom(b.y + i * 13, b.x) - 0.5) * size;
-        ctx.fillRect(b.x + ox, b.y + oy, 1.2, 1.2);
+        const angle = pseudoRandom(b.x + i * 7, b.y) * Math.PI * 2;
+        // sqrt() turns a uniform 0–1 into a uniform disc, denser toward the
+        // middle the way a real spray cone is.
+        const reach = Math.sqrt(pseudoRandom(b.y + i * 13, b.x)) * radius;
+        ctx.fillRect(b.x + Math.cos(angle) * reach, b.y + Math.sin(angle) * reach, 1.4, 1.4);
       }
       break;
     }

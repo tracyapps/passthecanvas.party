@@ -60,6 +60,7 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] Media set: watercolor, acrylic (viscosity slider), airbrush, charcoal, pastel + the existing pencil/round/flat/eraser
 - [x] Wet tools: water brush (dilutes + smears), finger (blends/smears), sponge (textured dabs), palette knife (opaque chisel strokes)
 - [x] Paint mixing on the palette (mix two paints, use the result)
+- [ ] **Redesign "Mix a color"** — the owner is sketching ideas; leave the current toggle alone until his plan lands
 - [ ] Collage: magazine cutouts, glue, fabric scraps, feathers, tape (needs placed-object messages, not strokes)
 - [ ] Wet-on-wet diffusion (watercolor bleeding into wet areas)
 - [ ] Watercolor edge darkening (pigment pooling at wash edges)
