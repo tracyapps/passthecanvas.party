@@ -30,6 +30,16 @@ export class PartyConnection {
     this.socket.addEventListener('message', (event) => this.receive(JSON.parse(event.data)));
   }
 
+  /** Leave the party: close the socket and forget everything. */
+  leave() {
+    this.socket?.close();
+    this.socket = null;
+    this.connected = false;
+    this.state = null;
+    this.youId = null;
+    this.chat = [];
+  }
+
   send(message: ClientMessage) {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
   }

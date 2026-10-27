@@ -29,12 +29,15 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/api/token') {
     const party = url.searchParams.get('party') ?? '';
     const name = (url.searchParams.get('name') ?? '').trim().slice(0, 40);
-    if (!SAFE_ID.test(party) || name === '') {
+    // The browser sends its party member id as the LiveKit identity, so a
+    // video tile can be matched to the right guest without extra bookkeeping.
+    const identity = url.searchParams.get('identity') ?? '';
+    if (!SAFE_ID.test(party) || name === '' || (identity && !SAFE_ID.test(identity))) {
       res.writeHead(400).end('party and name are required');
       return;
     }
     try {
-      const token = await makeLiveKitToken(party, name);
+      const token = await makeLiveKitToken(party, name, identity || undefined);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ token, url: process.env.LIVEKIT_URL }));
     } catch (error) {

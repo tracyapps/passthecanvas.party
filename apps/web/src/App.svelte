@@ -43,7 +43,7 @@
     </form>
   </main>
 {:else}
-  <Studio {party} />
+  <Studio {party} onleave={() => (joined = false)} />
 {/if}
 
 <style lang="scss">

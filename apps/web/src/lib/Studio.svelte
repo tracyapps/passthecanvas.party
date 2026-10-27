@@ -4,18 +4,23 @@
   design canvas (brush jar, palette, polaroids) lands in phase 2.
 -->
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import type { PartyConnection } from './party/connection.svelte';
   import type { BrushSettings } from './canvas/brushes';
   import { TOOLS } from './canvas/brushes';
   import { PAINTS } from './canvas/paints';
+  import { Call } from './call/call.svelte';
+  import CallDock from './call/CallDock.svelte';
+  import VideoTile from './call/VideoTile.svelte';
   import PaintCanvas from './canvas/PaintCanvas.svelte';
   import TimerDial from './ui/TimerDial.svelte';
 
-  let { party }: { party: PartyConnection } = $props();
+  let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
 
   let view = $state<'paint' | 'room'>('paint');
   let brush = $state<BrushSettings>({ tool: 'round', color: '#2c3f9e', size: 18, flow: 0.9 });
   let canvas: PaintCanvas | undefined = $state();
+  const call = new Call();
 
   // Wire the connection to the canvas.
   $effect(() => {
@@ -24,6 +29,35 @@
       if (canvas) party.send({ type: 'snapshot', round, pngDataUrl: canvas.snapshot() });
     };
   });
+
+  // Join the video call once the party tells us who we are. The member id
+  // becomes the LiveKit identity, so tiles line up with guests.
+  let callJoined = false;
+  $effect(() => {
+    const me = party.me;
+    const partyId = party.state?.partyId;
+    if (!me || !partyId || callJoined) return;
+    callJoined = true;
+    void call.join(partyId, me.name, me.id, me.presence);
+  });
+
+  // A new official snapshot (a saved round, or history for a late joiner)
+  // replaces the pixels on every screen, so nobody carries drift forward.
+  let loadedSnapshot = '';
+  $effect(() => {
+    const url = party.state?.snapshotUrl;
+    if (!url || url === loadedSnapshot) return;
+    loadedSnapshot = url;
+    void canvas?.loadImage(url);
+  });
+
+  onDestroy(() => call.leave());
+
+  function leave() {
+    call.leave();
+    party.leave();
+    onleave?.();
+  }
 
   let game = $derived(party.state);
   let painterName = $derived(party.painter?.name ?? '');
@@ -48,7 +82,7 @@
     {/if}
   </header>
 
-  <main>
+  <main class:room-only={view === 'room'}>
     {#if view === 'paint'}
       <aside class="tools" aria-label="Art supplies">
         <div role="group" aria-label="Brushes">
@@ -82,33 +116,43 @@
 
       <aside class="guests" aria-label="Around the table">
         <h2>Around the table</h2>
-        <ol>
+        <ul>
           {#each game?.order ?? [] as id (id)}
             {@const member = game?.members.find((m) => m.id === id)}
             {#if member}
-              <li class:painting={member.id === game?.painterId}>
-                {member.name}{member.isHost ? ' (host)' : ''}{member.id === party.youId ? ' (you)' : ''}
+              <li>
+                <VideoTile
+                  name={member.name}
+                  you={member.id === party.youId}
+                  host={member.isHost}
+                  painting={member.id === game?.painterId}
+                  track={member.id === party.youId
+                    ? call.camOn && call.status === 'in-call'
+                      ? call.localVideo
+                      : null
+                    : call.videos.find((v) => v.identity === member.id)?.track ?? null}
+                  speaking={member.id !== party.youId && call.videos.find((v) => v.identity === member.id)?.speaking}
+                />
               </li>
             {/if}
           {/each}
-        </ol>
+        </ul>
       </aside>
     {:else}
       <!-- Loaded only when opened: the 360° viewer (three.js) is the heaviest part of the app. -->
       {#await import('./room/RoomView.svelte')}
         <p>Opening the room…</p>
       {:then { default: RoomView }}
-        <RoomView panorama="/studio/placeholder/panorama.jpg" spotsUrl="/studio/placeholder/spots.json" />
+        <RoomView
+          panorama="/studio/placeholder/panorama.jpg"
+          spotsUrl="/studio/placeholder/spots.json"
+          previewTrack={call.camOn && call.status === 'in-call' ? call.localVideo : null}
+        />
       {/await}
     {/if}
   </main>
 
-  <nav class="dock" aria-label="Call controls">
-    <button type="button" aria-pressed={view === 'room'} onclick={() => (view = view === 'paint' ? 'room' : 'paint')}>
-      {view === 'paint' ? 'Room view' : 'Back to the canvas'}
-    </button>
-    <!-- TODO phase 1: mic, camera (LiveKit), chat, leave -->
-  </nav>
+  <CallDock {call} inRoom={view === 'room'} onToggleRoom={() => (view = view === 'paint' ? 'room' : 'paint')} onLeave={leave} />
 
   {#if game?.phase === 'passing'}
     <div class="pass" role="alertdialog" aria-labelledby="pass-title">
@@ -170,6 +214,11 @@
     grid-template-columns: 15rem minmax(0, 1fr) 13rem;
     gap: 1.25rem;
     padding: 1.25rem 1.25rem 6rem;
+
+    // The room view is the only child when open; give it the whole table.
+    &.room-only {
+      grid-template-columns: minmax(0, 1fr);
+    }
 
     @media (max-width: 1000px) {
       grid-template-columns: minmax(0, 1fr);
@@ -250,39 +299,13 @@
       font-size: 1.125rem;
       margin: 0 0 0.5rem;
     }
-    ol {
+    ul {
+      list-style: none;
       margin: 0;
-      padding-left: 1.25rem;
+      padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.375rem;
-    }
-    .painting {
-      color: $cadmium-orange;
-      font-weight: 700;
-    }
-  }
-
-  .dock {
-    position: fixed;
-    left: 50%;
-    bottom: 1rem;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 0.375rem;
-    padding: 0.5rem;
-    border-radius: 18px;
-    background: rgb(24 16 11 / 0.92);
-    border: 1px solid rgb(255 230 200 / 0.16);
-
-    button {
-      min-height: 3rem;
-      padding: 0 1rem;
-      border: 0;
-      border-radius: $radius-md;
-      background: rgb(243 234 217 / 0.12);
-      color: $cream;
-      font-weight: 700;
+      gap: 0.75rem;
     }
   }
 

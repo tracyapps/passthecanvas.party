@@ -14,26 +14,26 @@ Test the three risky pieces before investing in polish.
 
 ### Setup
 - [x] Repo structure, agent instructions, docs
-- [ ] `git init`, `git lfs install`, first commit
-- [ ] `npm install` and `npm run dev` work on Tapps's Mac
-- [ ] LiveKit Cloud project created; keys in `apps/server/.env`
+- [x] `git init`, `git lfs install`, first commit
+- [x] `npm install` and `npm run dev` work on Tapps's Mac
+- [ ] LiveKit Cloud project created; keys in `apps/server/.env` *(only step left: create the project at cloud.livekit.io, copy keys into `apps/server/.env`)*
 
 ### 360° room spike
-- [ ] Download the Poly Haven `art_studio` HDRI (tonemapped JPG/WebP, 4k) into `apps/web/public/studio/placeholder/`
-- [ ] Photo Sphere Viewer shows it in `RoomView.svelte`
-- [ ] Arrow keys pan; reduced motion turns off inertia and auto-rotate
-- [ ] One HTML marker holding a live `<video>` (your own webcam) pinned at a yaw/pitch, checked for smoothness on a phone
-- [ ] Markers load from `public/studio/placeholder/spots.json`
+- [x] Download the Poly Haven `art_studio` HDRI (tonemapped JPG/WebP, 4k) into `apps/web/public/studio/placeholder/`
+- [x] Photo Sphere Viewer shows it in `RoomView.svelte` *(verified in-browser; the viewer was stuck at 0px wide in the studio grid — fixed)*
+- [x] Arrow keys pan; reduced motion turns off inertia and auto-rotate *(arrows are focus-gated: Tab to the room, then pan; no page-wide arrow hijack)*
+- [ ] One HTML marker holding a live `<video>` (your own webcam) pinned at a yaw/pitch, checked for smoothness on a phone *(marker + camera wiring done and in the DOM; final check needs LiveKit keys + a real camera/phone)*
+- [x] Markers load from `public/studio/placeholder/spots.json`
 
 ### Shared canvas spike
-- [ ] Port the brush engine from the design prototype into `lib/canvas/brushes.ts` (pencil, round, flat, wash, eraser; pressure)
-- [ ] Painter's strokes sent to the party server as `stroke` messages; other browsers replay them
-- [ ] Server rejects strokes from anyone who isn't the current painter
-- [ ] Late joiner receives the current snapshot, then live strokes
+- [x] Port the brush engine from the design prototype into `lib/canvas/brushes.ts` (pencil, round, flat, wash, eraser; pressure)
+- [x] Painter's strokes sent to the party server as `stroke` messages; other browsers replay them
+- [x] Server rejects strokes from anyone who isn't the current painter
+- [x] Late joiner receives the current snapshot, then live strokes *(studio now loads `snapshotUrl` whenever a new one arrives)*
 
 ### Call spike
-- [ ] Server endpoint mints LiveKit tokens (`/api/token`)
-- [ ] Two browsers join one room with camera and mic; mute and camera toggles work
+- [x] Server endpoint mints LiveKit tokens (`/api/token`)
+- [ ] Two browsers join one room with camera and mic; mute and camera toggles work *(UI is wired: dock with mic/camera/room/leave, video tiles per guest; needs LiveKit keys, then a real two-browser test)*
 
 ---
 
