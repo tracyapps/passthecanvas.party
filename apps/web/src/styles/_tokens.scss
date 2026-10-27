@@ -1,0 +1,56 @@
+// Design tokens. Source of truth for the look. See docs/DESIGN.md.
+// SCSS variables for authoring + CSS custom properties for runtime theming.
+
+// ---- wood + paper ----
+$walnut-900: #2a1d14;
+$walnut-700: #4a3122;
+$walnut-500: #7a5338;
+$paper: #fbf7ee;
+$cream: #f3ead9;
+$cream-muted: #e5d5b9; // secondary text on dark (passes 4.5:1 on walnut-900)
+$tape: #efe2c4;
+$ink-dock: #18100b;
+
+// ---- paint accents ----
+$cadmium-orange: #e8742a;
+$ultramarine: #2c3f9e;
+$alizarin: #b3242f;
+
+// ---- focus ----
+$focus: #ffd38a;
+
+// ---- type ----
+$font-body: 'Atkinson Hyperlegible', system-ui, sans-serif;
+$font-display: 'Bricolage Grotesque', 'Atkinson Hyperlegible', system-ui, sans-serif;
+$font-hand: 'Caveat', 'Comic Sans MS', cursive;
+
+// ---- sizing ----
+$tap-min: 44px; // smallest touch target
+$radius-sm: 8px;
+$radius-md: 12px;
+$radius-pill: 999px;
+
+// ---- the paint palette (names are spoken to screen readers) ----
+$paints: (
+  'Titanium white': #f6f3ea,
+  'Ivory black': #1b1a19,
+  'Cadmium yellow': #f2c230,
+  'Cadmium orange': #e8742a,
+  'Alizarin crimson': #b3242f,
+  'Quinacridone magenta': #c23a83,
+  'Ultramarine': #2c3f9e,
+  'Cerulean': #2f8fd0,
+  'Sap green': #4f7a2a,
+  'Yellow ochre': #c99635,
+  'Burnt sienna': #8e4a24,
+  "Payne's grey": #3c4a57
+);
+
+:root {
+  --walnut-900: #{$walnut-900};
+  --paper: #{$paper};
+  --cream: #{$cream};
+  --cream-muted: #{$cream-muted};
+  --accent: #{$cadmium-orange};
+  --focus: #{$focus};
+}

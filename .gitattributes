@@ -1,0 +1,8 @@
+# Large binary assets via Git LFS (run `git lfs install` once)
+*.blend   filter=lfs diff=lfs merge=lfs -text
+*.exr     filter=lfs diff=lfs merge=lfs -text
+*.hdr     filter=lfs diff=lfs merge=lfs -text
+studio/renders/**/*.png  filter=lfs diff=lfs merge=lfs -text
+apps/web/public/studio/**/*.webp filter=lfs diff=lfs merge=lfs -text
+apps/web/public/studio/**/*.avif filter=lfs diff=lfs merge=lfs -text
+apps/web/public/studio/**/*.webm filter=lfs diff=lfs merge=lfs -text

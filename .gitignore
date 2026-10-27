@@ -1,0 +1,25 @@
+# deps / builds
+node_modules/
+dist/
+.svelte-kit/
+*.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Blender — large binaries go through Git LFS (see studio/README.md)
+*.blend1
+*.blend2
+studio/renders/_work/
+studio/cache/
+
+# party data written by the dev server
+apps/server/data/

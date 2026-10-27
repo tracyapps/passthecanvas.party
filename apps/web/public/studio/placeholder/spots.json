@@ -1,0 +1,15 @@
+{
+  "room": "placeholder",
+  "note": "Rough guesses for the art_studio HDRI. Real values come from studio/scripts/export_spots.py.",
+  "spots": [
+    { "id": "spot_table_1", "zone": "table", "label": "Painting table", "yaw": 0, "pitch": -20 },
+    { "id": "spot_easel", "zone": "easel", "label": "Easel and art wall", "yaw": 40, "pitch": -5 },
+    { "id": "spot_music", "zone": "music", "label": "Music corner", "yaw": 80, "pitch": -10 },
+    { "id": "spot_snacks", "zone": "snacks", "label": "Snack table", "yaw": 120, "pitch": -15 },
+    { "id": "spot_cat_tree", "zone": "cats", "label": "Cat tree", "yaw": 160, "pitch": -5 },
+    { "id": "spot_rocker", "zone": "rocker", "label": "Rocking chair", "yaw": -160, "pitch": -12 },
+    { "id": "spot_beanbag", "zone": "beanbag", "label": "Giant bean bag", "yaw": -120, "pitch": -22 },
+    { "id": "spot_drafting", "zone": "drafting", "label": "Drafting table", "yaw": -80, "pitch": -12 },
+    { "id": "spot_couch_left", "zone": "couch", "label": "Couch", "yaw": -40, "pitch": -15 }
+  ]
+}
