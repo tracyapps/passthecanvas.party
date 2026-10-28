@@ -5,71 +5,169 @@
       "id": "spot_table_1",
       "zone": "table",
       "label": "Painting table",
-      "yaw": 0,
-      "pitch": -20
+      "yaw": 9.2,
+      "pitch": 5.3
     },
     {
       "id": "spot_easel",
       "zone": "easel",
       "label": "Easel and art wall",
-      "yaw": 40,
-      "pitch": -5
+      "yaw": -11.1,
+      "pitch": 11.5
     },
     {
       "id": "spot_music",
       "zone": "music",
       "label": "Music corner",
-      "yaw": 80,
-      "pitch": -10
+      "yaw": -68.8,
+      "pitch": -13.2
     },
     {
       "id": "spot_snacks",
       "zone": "snacks",
       "label": "Snack table",
-      "yaw": 120,
-      "pitch": -15
+      "yaw": 95.2,
+      "pitch": -17.3
     },
     {
       "id": "spot_cat_tree",
       "zone": "cats",
       "label": "Cat tree",
-      "yaw": 160,
-      "pitch": -5
+      "yaw": -125.7,
+      "pitch": 1.1
     },
     {
       "id": "spot_rocker",
       "zone": "rocker",
       "label": "Rocking chair",
-      "yaw": -160,
-      "pitch": -12
+      "yaw": -46,
+      "pitch": -1.8
     },
     {
       "id": "spot_beanbag",
       "zone": "beanbag",
       "label": "Giant bean bag",
-      "yaw": -120,
-      "pitch": -22
-    },
-    {
-      "id": "spot_drafting",
-      "zone": "drafting",
-      "label": "Drafting table",
-      "yaw": -80,
-      "pitch": -12
+      "yaw": 55.9,
+      "pitch": 3.8
     },
     {
       "id": "spot_couch_left",
       "zone": "couch",
       "label": "Couch",
-      "yaw": -40,
-      "pitch": -15
+      "yaw": 104.1,
+      "pitch": 3.3
     },
     {
-      "id": "spot_window_bar_stool",
+      "id": "spot_couch_2",
       "zone": "cafe",
-      "label": "Window bar stool",
-      "yaw": -16.5,
-      "pitch": -4.8
+      "label": "Couch 2",
+      "yaw": 116.5,
+      "pitch": -1.4
+    },
+    {
+      "id": "spot_couch_3",
+      "zone": "cafe",
+      "label": "Couch 3",
+      "yaw": 134.1,
+      "pitch": 1.5
+    },
+    {
+      "id": "spot_leather_chair",
+      "zone": "cafe",
+      "label": "Leather Arm Chair",
+      "yaw": 163,
+      "pitch": -5.8
+    },
+    {
+      "id": "spot_leather_chair_2",
+      "zone": "cafe",
+      "label": "Leather Chair",
+      "yaw": -143,
+      "pitch": -6.8
+    },
+    {
+      "id": "spot_giant_bean_bag_2",
+      "zone": "cafe",
+      "label": "Giant bean bag 2",
+      "yaw": 42.2,
+      "pitch": 7
+    },
+    {
+      "id": "spot_ottoman",
+      "zone": "cafe",
+      "label": "Ottoman",
+      "yaw": 58.7,
+      "pitch": -8.9
+    },
+    {
+      "id": "spot_vintage_chair",
+      "zone": "cafe",
+      "label": "Vintage Chair",
+      "yaw": 80.5,
+      "pitch": 1.7
+    },
+    {
+      "id": "spot_painting_table_green_chair",
+      "zone": "cafe",
+      "label": "Painting table - green chair",
+      "yaw": -22.7,
+      "pitch": 2.4
+    },
+    {
+      "id": "spot_painting_table_blue_chair",
+      "zone": "cafe",
+      "label": "Painting table - blue chair",
+      "yaw": -0.3,
+      "pitch": 9.3
+    },
+    {
+      "id": "spot_painting_table_dark_chair",
+      "zone": "cafe",
+      "label": "Painting table - dark chair",
+      "yaw": 15.4,
+      "pitch": 10.3
+    },
+    {
+      "id": "spot_painting_table_white_chair",
+      "zone": "cafe",
+      "label": "Painting table - white chair",
+      "yaw": 29.3,
+      "pitch": 7.4
+    },
+    {
+      "id": "spot_painting_table_stool",
+      "zone": "cafe",
+      "label": "Painting table stool",
+      "yaw": 6.7,
+      "pitch": -0.4
+    },
+    {
+      "id": "spot_window_sill",
+      "zone": "cafe",
+      "label": "Window sill",
+      "yaw": 156.3,
+      "pitch": 6.3
+    },
+    {
+      "id": "spot_window_sill_2",
+      "zone": "cafe",
+      "label": "Window sill 2",
+      "yaw": -170.7,
+      "pitch": 2.4
+    },
+    {
+      "id": "spot_floor_snacks",
+      "zone": "cafe",
+      "label": "Floor - snacks",
+      "yaw": 75.2,
+      "pitch": -30.8
+    },
+    {
+      "id": "spot_floor_cats",
+      "zone": "cafe",
+      "label": "Floor - cats",
+      "yaw": -112.5,
+      "pitch": -17
     }
   ]
 }

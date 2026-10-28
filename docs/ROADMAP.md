@@ -101,6 +101,9 @@ Replace placeholders with the real Blender studio.
 - [ ] Cats: decide filmed vs rendered loops; make idle + react loops for 2–3 cats
 - [ ] Snack table props interactive (click a snack: tiny animation, sound optional and off by default)
 - [x] Spot picking in the 360° room ("Sit here" markers, list alternative) *(landed early, Oct 2026, with the cream-city room — see phase 1)*
+- [ ] **Wall gallery**: hang each party's artwork on the room's blank canvases, export a social-ready photo and a shareable pan-able room save, nicknames under each piece *(details pending from the owner)*
+  - [x] Boundary tool at `?art=cream-city`: draw the canvas boxes on the flat panorama → `art.json` per room *(dev-gated like the spots editor)*
+  - [x] Demo seating at `?demo=seats`: fake guests (canvas-painted video tracks + initials cards) to judge seat spacing before LiveKit exists
 
 ---
 

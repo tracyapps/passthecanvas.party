@@ -88,3 +88,23 @@ fallback). Sitting sends `takeSpot` to the party server, which owns who sits
 where. A seated guest appears at their spot as a paper-framed marker with
 their LiveKit camera feed when it's available, and their initials on a taped
 card when it isn't — the avatar stays a first-class look, not a downgrade.
+
+### 2026-10-28 — Demo seating for judging the room
+
+`?demo=seats` fills the room with fake guests — some with a fake video track
+(a painted canvas captured as a real MediaStreamTrack, so it flows through
+the exact `<video>` path a LiveKit camera will use), some with the initials
+card. Nothing connects, nothing is saved. The owner uses it to judge seat
+spacing and framing before LiveKit keys exist.
+
+### 2026-10-28 — Wall art regions: art.json + flat editor at `?art=<room>`
+
+Each room can carry an `art.json` next to its `spots.json`: named boxes
+(yaw/pitch center + angular width/height) marking every blank canvas on the
+walls, for the planned feature that hangs each party's artwork there and
+exports a social photo plus a shareable pan-able room. The editor draws on
+the **flat equirectangular panorama** — the same rectangle-on-image way of
+thinking as masking in Photoshop — rather than in the 3D view, because a
+straight drag is the simplest honest way to say "this rectangle on this
+wall"; the 3D-correct hang (with perspective) comes with the feature itself.
+Saved via dev-gated `PUT /api/art/:room` (same SPOTS_EDITOR switch as spots).

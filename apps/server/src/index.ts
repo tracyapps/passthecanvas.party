@@ -9,7 +9,7 @@ import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { sanitizeSpots } from '@ptc/shared';
+import { sanitizeArt, sanitizeSpots } from '@ptc/shared';
 import { getParty, SNAPSHOT_DIR } from './party.ts';
 import { makeLiveKitToken } from './livekit.ts';
 
@@ -47,6 +47,38 @@ const server = createServer(async (req, res) => {
       console.error('[token]', error);
       res.writeHead(503).end('video is not configured yet');
     }
+    return;
+  }
+
+  // Save the art file for a room. Dev-time tool for the art editor
+  // (?art=<room> in the web app). Same gate as the spots editor: disable
+  // with SPOTS_EDITOR=0 before the server ever goes public.
+  if (req.method === 'PUT' && url.pathname.startsWith('/api/art/')) {
+    if (process.env.SPOTS_EDITOR === '0') {
+      res.writeHead(403).end('art editor is disabled');
+      return;
+    }
+    const room = url.pathname.split('/')[3] ?? '';
+    const body = await readBody(req, 64 * 1024);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400).end('bad JSON');
+      return;
+    }
+    const clean = sanitizeArt(parsed);
+    if (!clean || clean.room !== room) {
+      res.writeHead(400).end('art file failed validation');
+      return;
+    }
+    const target = join(STUDIO_DIR, room, 'art.json');
+    const staging = `${target}.tmp`;
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(staging, JSON.stringify(clean, null, 2) + '\n');
+    await rename(staging, target); // atomic: never a half-written art.json
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ saved: target }));
     return;
   }
 

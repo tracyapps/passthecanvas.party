@@ -1,5 +1,6 @@
 <!--
-  Top-level screen switch: spots editor (?spots=room) → join form → studio.
+  Top-level screen switch: spots editor (?spots=room) → art editor (?art=room)
+  → demo seating (?demo=seats) → join form → studio.
   Party id comes from the URL (?party=maya-30th); one is made up if missing.
 -->
 <script lang="ts">
@@ -9,6 +10,8 @@
 
   const params = new URLSearchParams(location.search);
   const editRoom = params.get('spots'); // "?spots=cream-city" opens the spot editor
+  const artRoom = params.get('art'); // "?art=cream-city" opens the wall art editor
+  const demoSeats = params.get('demo') === 'seats'; // "?demo=seats" fills the room with fake guests
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
 
   const party = new PartyConnection();
@@ -31,6 +34,20 @@
     <main class="loading">Opening the spot editor…</main>
   {:then { default: SpotsEditor }}
     <SpotsEditor room={editRoom} />
+  {/await}
+{:else if artRoom}
+  <!-- Owner tool: draw the blank-canvas boxes on the walls. -->
+  {#await import('./lib/room/ArtEditor.svelte')}
+    <main class="loading">Opening the wall art editor…</main>
+  {:then { default: ArtEditor }}
+    <ArtEditor room={artRoom} />
+  {/await}
+{:else if demoSeats}
+  <!-- Owner tool: fake guests in every combination of seats, to judge spacing. -->
+  {#await import('./lib/room/DemoRoom.svelte')}
+    <main class="loading">Filling the seats…</main>
+  {:then { default: DemoRoom }}
+    <DemoRoom />
   {/await}
 {:else if !joined}
   <main class="join">
