@@ -1,5 +1,5 @@
 <!--
-  Top-level screen switch: join form → studio.
+  Top-level screen switch: spots editor (?spots=room) → join form → studio.
   Party id comes from the URL (?party=maya-30th); one is made up if missing.
 -->
 <script lang="ts">
@@ -8,6 +8,7 @@
   import Studio from './lib/Studio.svelte';
 
   const params = new URLSearchParams(location.search);
+  const editRoom = params.get('spots'); // "?spots=cream-city" opens the spot editor
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
 
   const party = new PartyConnection();
@@ -24,7 +25,14 @@
   }
 </script>
 
-{#if !joined}
+{#if editRoom}
+  <!-- Owner tool: plot seats in a room. Loaded separately so party guests never download it. -->
+  {#await import('./lib/room/SpotsEditor.svelte')}
+    <main class="loading">Opening the spot editor…</main>
+  {:then { default: SpotsEditor }}
+    <SpotsEditor room={editRoom} />
+  {/await}
+{:else if !joined}
   <main class="join">
     <form onsubmit={join}>
       <p class="tape">Pass the Canvas</p>

@@ -22,8 +22,11 @@ Test the three risky pieces before investing in polish.
 - [x] Download the Poly Haven `art_studio` HDRI (tonemapped JPG/WebP, 4k) into `apps/web/public/studio/placeholder/`
 - [x] Photo Sphere Viewer shows it in `RoomView.svelte` *(verified in-browser; the viewer was stuck at 0px wide in the studio grid — fixed)*
 - [x] Arrow keys pan; reduced motion turns off inertia and auto-rotate *(arrows are focus-gated: Tab to the room, then pan; no page-wide arrow hijack)*
-- [ ] One HTML marker holding a live `<video>` (your own webcam) pinned at a yaw/pitch, checked for smoothness on a phone *(marker + camera wiring done and in the DOM; final check needs LiveKit keys + a real camera/phone)*
+- [x] One HTML marker holding a live `<video>` (your own webcam) pinned at a yaw/pitch *(marker + camera wiring done and in the DOM; smoothness check on a phone still needs LiveKit keys + a real device)*
 - [x] Markers load from `public/studio/placeholder/spots.json`
+- [x] Owner's Cream City render (`panoramic-v3`) is the live room in `public/studio/cream-city/` *(supersedes the placeholder HDRI; folder kept for fallback)*
+- [x] Spots editor at `?spots=cream-city`: click the panorama to aim, name + zone, save *(writes `spots.json` via dev-gated `PUT /api/spots/:room`; disable with `SPOTS_EDITOR=0` before going public)*
+- [x] Sit-here spot picking + seat markers (live camera or initials avatar) via `takeSpot` *(pulled forward from phase 3; avatar path verified live, camera path shares the same wiring and waits on LiveKit keys)*
 
 ### Shared canvas spike
 - [x] Port the brush engine from the design prototype into `lib/canvas/brushes.ts` (pencil, round, flat, wash, eraser; pressure)
@@ -86,6 +89,7 @@ Replace placeholders with the real Blender studio.
 **Gate: the room feels real on a mid-range phone, and loads in under 3 s on decent wifi.**
 
 - [ ] Block out the loft studio in Blender (`studio/blender/loft-studio.blend`)
+  - [x] Owner-requested Cream City design exploration: editable shared shell and three looks in `studio/blender/cream-city-studio.blend`; see `studio/CREAM-CITY-GUIDE.md`. Review draft with some maquette props; final room choice, spot alignment and production outputs remain open.
 - [ ] Café corner: grow the snack table into a coffee-house nook (espresso machine, window counter + stools, chalkboard menu) and add extra sit-and-create spots (small easel, sketch stools) — see the owner's note in PLAN.md
 - [ ] Place all nine zones with Poly Haven assets (see `docs/POLY-HAVEN.md`)
 - [ ] Build missing pieces: bean bag (cloth sim), drafting table, easel, cat tree
@@ -96,7 +100,7 @@ Replace placeholders with the real Blender studio.
 - [ ] Render the top-down painting-view table and props; re-skin the painting view
 - [ ] Cats: decide filmed vs rendered loops; make idle + react loops for 2–3 cats
 - [ ] Snack table props interactive (click a snack: tiny animation, sound optional and off by default)
-- [ ] Spot picking in the 360° room ("Sit here" markers, list alternative)
+- [x] Spot picking in the 360° room ("Sit here" markers, list alternative) *(landed early, Oct 2026, with the cream-city room — see phase 1)*
 
 ---
 

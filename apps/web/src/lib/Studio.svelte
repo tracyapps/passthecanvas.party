@@ -17,6 +17,10 @@
 
   let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
 
+  // The room this party opens in. Per-party room choice arrives in phase 2.
+  const ROOM_PANORAMA = '/studio/cream-city/panorama.webp';
+  const ROOM_SPOTS = '/studio/cream-city/spots.json';
+
   let view = $state<'paint' | 'room'>('paint');
   let brush = $state<BrushSettings>({ tool: 'round', color: '#2c3f9e', size: 18, flow: 0.9, viscosity: 0.6 });
   let canvas: PaintCanvas | undefined = $state();
@@ -216,9 +220,12 @@
         <p>Opening the room…</p>
       {:then { default: RoomView }}
         <RoomView
-          panorama="/studio/placeholder/panorama.jpg"
-          spotsUrl="/studio/placeholder/spots.json"
-          previewTrack={call.camOn && call.status === 'in-call' ? call.localVideo : null}
+          panorama={ROOM_PANORAMA}
+          spotsUrl={ROOM_SPOTS}
+          members={game?.members ?? []}
+          youId={party.youId}
+          videos={call.videos}
+          onTakeSpot={(spotId) => party.send({ type: 'takeSpot', spotId })}
         />
       {/await}
     {/if}

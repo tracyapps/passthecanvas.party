@@ -1,54 +1,50 @@
 <!--
-  The 360° room. A panorama (rendered in Blender, or a Poly Haven HDRI as a
-  placeholder) wraps around the viewer. Spots from spots.json become markers.
-  A "Jump to" list gives keyboard and screen-reader users the same room.
+  The 360° room. A panorama (Blender render or composite) wraps around the
+  viewer. Spots from spots.json become seats: guests sit at them with their
+  camera or an initials card, and free seats say "Sit here".
+  The "Jump to" list gives keyboard and screen-reader users the same room.
 -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { Viewer } from '@photo-sphere-viewer/core';
-  import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
+  import { Viewer, events } from '@photo-sphere-viewer/core';
+  import { MarkersPlugin, events as markerEvents } from '@photo-sphere-viewer/markers-plugin';
+  import type { MarkerConfig } from '@photo-sphere-viewer/markers-plugin';
+  import { attachTrack, type GuestVideo } from '../call/call.svelte';
+  import type { Member, Spot } from '@ptc/shared';
   import '@photo-sphere-viewer/core/index.css';
   import '@photo-sphere-viewer/markers-plugin/index.css';
-
-  export interface Spot {
-    id: string; // e.g. "spot_couch_left"
-    zone: string; // e.g. "couch"
-    label: string; // e.g. "Couch, left cushion"
-    yaw: number; // degrees, 0 = straight ahead
-    pitch: number; // degrees, negative = looking down
-  }
 
   interface Props {
     panorama: string; // URL of the equirectangular image
     spotsUrl: string; // URL of spots.json
-    /** Your own camera track, shown live at your seat. Null while the camera is off. */
-    previewTrack?: MediaStreamTrack | null;
+    /** The party, so seats can show who is where. Optional: the room also works stand-alone. */
+    members?: Member[];
+    youId?: string | null;
+    videos?: GuestVideo[];
+    onTakeSpot?: (spotId: string) => void;
   }
-  let { panorama, spotsUrl, previewTrack = null }: Props = $props();
+  let { panorama, spotsUrl, members = [], youId = null, videos = [], onTakeSpot }: Props = $props();
 
   let container: HTMLDivElement;
   let viewer: Viewer | null = null;
+  let markersPlugin: MarkersPlugin | null = null;
   let viewerReady = $state(false);
   let spots = $state<Spot[]>([]);
 
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /** Who sits at each spot (null = free seat). */
+  let seats = $derived(
+    spots.map((spot) => {
+      const member = members.find((m) => m.spotId === spot.id) ?? null;
+      const track = member ? videos.find((v) => v.identity === member.id)?.track ?? null : null;
+      return { spot, member, track };
+    })
+  );
+
   onMount(async () => {
     const response = await fetch(spotsUrl);
     spots = (await response.json()).spots ?? [];
-
-    // Phase-1 spike: your own webcam hangs at the first spot (the painting
-    // table) until spot picking exists in phase 3.
-    const youSpot = spots[0];
-    const youMarker = youSpot
-      ? {
-          id: 'you',
-          position: { yaw: `${youSpot.yaw}deg`, pitch: `${youSpot.pitch + 8}deg` },
-          html: `<figure class="you-marker"><video muted autoplay playsinline></video><figcaption>You</figcaption></figure>`,
-          anchor: 'center bottom' as const,
-          size: { width: 180, height: 148 }
-        }
-      : null;
 
     viewer = new Viewer({
       container,
@@ -62,46 +58,67 @@
       // the page.
       keyboard: 'fullscreen',
       moveInertia: !reducedMotion,
-      plugins: [
-        [
-          MarkersPlugin,
-          {
-            markers: [
-              ...spots.map((spot) => ({
-                id: spot.id,
-                position: { yaw: `${spot.yaw}deg`, pitch: `${spot.pitch}deg` },
-                html: `<span class="spot-marker">${escapeHtml(spot.label)}</span>`,
-                anchor: 'center center' as const,
-                tooltip: spot.label
-              })),
-              ...(youMarker ? [youMarker] : [])
-            ]
-          }
-        ]
-      ]
+      plugins: [[MarkersPlugin, { markers: [] }]]
     });
-    viewerReady = true;
+    markersPlugin = viewer.getPlugin(MarkersPlugin);
 
-    // Arrow keys pan the room while it is focused (Tab reaches it below),
-    // and give them back when focus leaves.
+    // Sitting down by clicking a free seat in the room.
+    markersPlugin.addEventListener(markerEvents.SelectMarkerEvent.type, (event) => {
+      const marker = (event as markerEvents.SelectMarkerEvent).marker;
+      if (onTakeSpot && marker.id.startsWith('seat_')) onTakeSpot(marker.id.slice('seat_'.length));
+    });
+
     container.addEventListener('focusin', () => viewer?.startKeyboardControl());
     container.addEventListener('focusout', () => viewer?.stopKeyboardControl());
+
+    // Markers set before the panorama is loaded get wiped by the plugin's
+    // own init, so wait for the viewer to be ready first.
+    viewer.addEventListener(events.ReadyEvent.type, () => (viewerReady = true));
   });
 
   onDestroy(() => viewer?.destroy());
 
-  // The marker's <video> lives inside the viewer, so it may be a frame away
-  // when the track first arrives. Point it at the camera when it shows up.
+  // Rebuild markers when seats change (who sits where, cameras on/off).
+  // The key string skips rebuilds for unrelated state changes (timer ticks).
+  let lastKey = '';
   $effect(() => {
-    const track = previewTrack;
-    if (!track || !viewerReady) return;
+    if (!viewerReady || !markersPlugin) return;
+    const key = seats.map((s) => `${s.spot.id}:${s.member?.id ?? ''}:${s.track ? 'cam' : 'av'}`).join('|');
+    if (key === lastKey) return;
+    lastKey = key;
+    markersPlugin.setMarkers(seats.map((seat) => markerFor(seat)));
+
+    // The viewer just recreated the marker elements; attach the live videos.
     requestAnimationFrame(() => {
-      const el = container.querySelector<HTMLVideoElement>('.you-marker video');
-      if (!el) return;
-      el.srcObject = new MediaStream([track]);
-      void el.play().catch(() => {});
+      for (const seat of seats) {
+        if (!seat.track || !seat.member) continue;
+        const el = container.querySelector<HTMLVideoElement>(`[data-seat="${seat.member.id}"] video`);
+        if (el) attachTrack(el, seat.track);
+      }
     });
   });
+
+  function markerFor(seat: { spot: Spot; member: Member | null; track: MediaStreamTrack | null }): MarkerConfig {
+    const { spot, member, track } = seat;
+    if (!member) {
+      return {
+        id: `seat_${spot.id}`,
+        position: { yaw: `${spot.yaw}deg`, pitch: `${spot.pitch}deg` },
+        html: `<span class="spot-marker">${escapeHtml(spot.label)} · Sit here</span>`,
+        anchor: 'center center',
+        tooltip: `Sit at ${spot.label}`
+      };
+    }
+    const initials = escapeHtml(member.name.trim().split(/\s+/).map((w) => w[0] ?? '').slice(0, 2).join('').toUpperCase() || '?');
+    const media = track ? '<video muted autoplay playsinline></video>' : `<span class="seat-avatar">${initials}</span>`;
+    return {
+      id: `seat_${spot.id}`,
+      position: { yaw: `${spot.yaw}deg`, pitch: `${spot.pitch}deg` },
+      html: `<figure class="seat" data-seat="${member.id}">${media}<figcaption>${escapeHtml(member.name)}</figcaption></figure>`,
+      anchor: 'center bottom',
+      size: { width: 180, height: 168 }
+    };
+  }
 
   /** Turn to face a spot. Instant under reduced motion, a short glide otherwise. */
   function lookAt(spot: Spot) {
@@ -127,11 +144,20 @@
     aria-label="Studio room. Use the arrow keys to look around."
   ></div>
 
-  <nav class="jump" aria-label="Jump to a spot in the room">
+  <nav class="jump" aria-label="Places in the room">
     <h2>Jump to</h2>
     <ul>
-      {#each spots as spot (spot.id)}
-        <li><button type="button" onclick={() => lookAt(spot)}>{spot.label}</button></li>
+      {#each seats as seat (seat.spot.id)}
+        <li>
+          <button type="button" onclick={() => lookAt(seat.spot)}>{seat.spot.label}</button>
+          {#if seat.member}
+            <span class="who">{seat.member.name}{seat.member.id === youId ? ' (you)' : ''}</span>
+          {:else if onTakeSpot}
+            <button type="button" class="sit" onclick={() => onTakeSpot?.(seat.spot.id)}>
+              {members.find((m) => m.id === youId)?.spotId ? 'Move here' : 'Sit here'}
+            </button>
+          {/if}
+        </li>
       {/each}
     </ul>
   </nav>
@@ -175,7 +201,12 @@
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.375rem;
+      gap: 0.5rem;
+    }
+    li {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
     }
     button {
       width: 100%;
@@ -186,10 +217,26 @@
       border: 1px solid rgb(255 230 200 / 0.2);
       background: rgb(243 234 217 / 0.06);
       color: $cream;
+
+      &:focus-visible {
+        outline: 3px solid $focus;
+        outline-offset: 2px;
+      }
+    }
+    .sit {
+      min-height: 2.5rem;
+      font-size: 0.875rem;
+      color: $cadmium-orange;
+      border-color: rgb(232 116 42 / 0.5);
+    }
+    .who {
+      padding-left: 0.5rem;
+      font-size: 0.875rem;
+      color: $cream-muted;
     }
   }
 
-  // Marker look (rendered by the viewer, so it needs :global)
+  // Seat look (rendered by the viewer, so it needs :global)
   :global(.spot-marker) {
     display: inline-block;
     padding: 0.25rem 0.625rem;
@@ -198,15 +245,17 @@
     color: $cream;
     font-size: 0.875rem;
     white-space: nowrap;
+    cursor: pointer;
   }
 
-  // Your own seat: a live camera in a paper frame, tape label underneath.
-  :global(.you-marker) {
+  // A seated guest: their camera in a paper frame, or initials when the
+  // camera is off — same seat either way.
+  :global(.seat) {
     margin: 0;
     width: 180px;
     text-align: center;
   }
-  :global(.you-marker video) {
+  :global(.seat video) {
     display: block;
     width: 180px;
     height: 135px;
@@ -216,7 +265,21 @@
     box-shadow: 0 8px 20px rgb(0 0 0 / 0.45);
     background: rgb(24 16 11 / 0.6);
   }
-  :global(.you-marker figcaption) {
+  :global(.seat-avatar) {
+    display: grid;
+    place-items: center;
+    width: 180px;
+    height: 135px;
+    border-radius: $radius-sm;
+    border: 4px solid $paper;
+    background: $paper;
+    color: $walnut-900;
+    font-family: $font-display;
+    font-weight: 800;
+    font-size: 3rem;
+    box-shadow: 0 8px 20px rgb(0 0 0 / 0.45);
+  }
+  :global(.seat figcaption) {
     @include tape-label;
     display: inline-block;
     margin-top: 0.5rem;

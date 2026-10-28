@@ -12,6 +12,17 @@ studio/
 
 Web-ready outputs go to `apps/web/public/studio/<room>/`.
 
+## Cream City design draft (Oct 27, 2026)
+
+Open `blender/cream-city-studio.blend` for three editable colour/lighting scenes.
+The beginner editing guide, preview filenames, reference handling, render steps,
+and remaining integration checks are in [CREAM-CITY-GUIDE.md](CREAM-CITY-GUIDE.md).
+This is a separate review draft; the app's original panorama is still active.
+
+The owner-developed layouts were cleaned and rendered on Oct 28. See
+[CLEANUP-2026-10-28.md](CLEANUP-2026-10-28.md) for the repaired files, photo-cutout
+recommendation, lighting controls, render command and verification receipts.
+
 ## 0. One-time setup
 
 - Poly Haven add-on installed, library named **Poly Haven**, assets fetched (see `docs/POLY-HAVEN.md`).
@@ -85,3 +96,8 @@ Decide: filmed loops vs rendered loops (see docs/DECISIONS.md, open questions). 
 - [ ] 3 moods × 2 sizes rendered and compressed
 - [ ] Table renders done
 - [ ] Non-Poly Haven assets listed in `ASSET-CREDITS.md`
+
+Latest photo-layout finish: [mosaic pendant and sunset controls](MOSAIC-SUNSET.md).
+The incoming owner version was backed up before saving the lamp and sunset.
+
+Latest finishing round: [graffiti, sconce glass and coloured-light controls](GRAFFITI-LIGHTING.md).

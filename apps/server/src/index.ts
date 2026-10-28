@@ -5,13 +5,16 @@
 // - WS   /party/:partyId              → the game (see packages/shared/src/protocol.ts)
 
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { sanitizeSpots } from '@ptc/shared';
 import { getParty, SNAPSHOT_DIR } from './party.ts';
 import { makeLiveKitToken } from './livekit.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
+const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.url));
 
 // Party ids and file names are restricted to safe characters so nobody can
 // reach files outside the snapshot folder.
@@ -44,6 +47,40 @@ const server = createServer(async (req, res) => {
       console.error('[token]', error);
       res.writeHead(503).end('video is not configured yet');
     }
+    return;
+  }
+
+  // Save the spots file for a room. Dev-time tool for the spots editor
+  // (?spots=<room> in the web app). Disable with SPOTS_EDITOR=0 before the
+  // server ever goes public.
+  if (req.method === 'PUT' && url.pathname.startsWith('/api/spots/')) {
+    if (process.env.SPOTS_EDITOR === '0') {
+      res.writeHead(403).end('spots editor is disabled');
+      return;
+    }
+    const room = url.pathname.split('/')[3] ?? '';
+    const body = await readBody(req, 64 * 1024);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400).end('bad JSON');
+      return;
+    }
+    const clean = sanitizeSpots(parsed);
+    // The file's own room name must match the URL, so a save can't write
+    // into a different room's folder.
+    if (!clean || clean.room !== room) {
+      res.writeHead(400).end('spots file failed validation');
+      return;
+    }
+    const target = join(STUDIO_DIR, room, 'spots.json');
+    const staging = `${target}.tmp`;
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(staging, JSON.stringify(clean, null, 2) + '\n');
+    await rename(staging, target); // atomic: never a half-written spots.json
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ saved: target }));
     return;
   }
 
@@ -81,3 +118,22 @@ server.on('upgrade', (req, socket, head) => {
 server.listen(PORT, () => {
   console.log(`Party server on http://localhost:${PORT}`);
 });
+
+/** Read a request body as text, up to `limit` bytes. */
+function readBody(req: import('node:http').IncomingMessage, limit: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString()));
+    req.on('error', reject);
+  });
+}
