@@ -42,38 +42,120 @@
       });
   });
 
+  // --- Zoom and pan ---------------------------------------------------------
+  // Photoshop habits: hold space (or use the middle button) to drag the image
+  // around, pinch or ctrl-scroll to zoom toward the cursor, plain scroll to
+  // move. The image sits on a "surface" div we translate and scale; drawing
+  // keeps working at any zoom because pointer positions are converted to
+  // image percents through the inverse transform.
+
+  const ZOOM_MIN = 1;
+  const ZOOM_MAX = 8;
+  let zoom = $state(1);
+  let panX = $state(0); // surface offset, in stage pixels
+  let panY = $state(0);
+  let spaceHeld = $state(false);
+  let panDrag = $state<{ x: number; y: number } | null>(null); // client-point anchor
+
+  function zoomBy(factor: number, cx?: number, cy?: number) {
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    const next = clamp(zoom * factor, ZOOM_MIN, ZOOM_MAX);
+    if (next === zoom) return;
+    // Keep the point under the cursor (or the stage center) fixed in place.
+    const px = cx ?? rect.width / 2;
+    const py = cy ?? rect.height / 2;
+    panX = px - (px - panX) * (next / zoom);
+    panY = py - (py - panY) * (next / zoom);
+    zoom = next;
+    clampPan(rect);
+  }
+
+  function resetView() {
+    zoom = 1;
+    panX = 0;
+    panY = 0;
+  }
+
+  /** The image may move around, but it must always fill the stage. */
+  function clampPan(rect: { width: number; height: number }) {
+    if (zoom === 1) {
+      panX = 0;
+      panY = 0;
+      return;
+    }
+    panX = clamp(panX, rect.width * (1 - zoom), 0);
+    panY = clamp(panY, rect.height * (1 - zoom), 0);
+  }
+
+  function onWheel(event: WheelEvent) {
+    // The stage is the whole world here — the page behind it must not scroll.
+    event.preventDefault();
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    if (event.ctrlKey || event.metaKey) {
+      zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25, event.clientX - rect.left, event.clientY - rect.top);
+    } else {
+      panX -= event.deltaX;
+      panY -= event.deltaY;
+      clampPan(rect);
+    }
+  }
+
   // --- Drawing ------------------------------------------------------------
   // Pointer percent → angles: left edge of the image is yaw −180, top is
   // pitch +90. Drawing is clamped at the image edges, so a box never wraps
   // past the seam at the back of the room.
 
-  function pointerPercent(event: PointerEvent) {
+  /** Pointer position as percents of the image, undoing the zoom/pan. */
+  function imagePercent(event: PointerEvent) {
     const rect = stage!.getBoundingClientRect();
-    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100);
-    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100);
+    const x = clamp(((event.clientX - rect.left - panX) / (rect.width * zoom)) * 100, 0, 100);
+    const y = clamp(((event.clientY - rect.top - panY) / (rect.height * zoom)) * 100, 0, 100);
     return { x, y };
   }
 
-  function beginDraw(event: PointerEvent) {
-    if (!stage || event.button !== 0) return;
-    // Pressing an existing box selects it (its own click handler) — don't
-    // also start drawing underneath it.
-    if ((event.target as HTMLElement).closest('.box')) return;
-    const { x, y } = pointerPercent(event);
-    draft = { x1: x, y1: y, x2: x, y2: y };
+  function onPointerDown(event: PointerEvent) {
+    if (!stage) return;
+    if (spaceHeld || event.button === 1) {
+      event.preventDefault(); // middle button would otherwise autoscroll
+      panDrag = { x: event.clientX - panX, y: event.clientY - panY };
+    } else if (event.button === 0) {
+      beginDraw(event);
+    }
     try {
       stage.setPointerCapture(event.pointerId);
     } catch {
-      // Capture is a nicety for drags that wander off the image; browsers
-      // that refuse (or test harnesses with fake pointer ids) still work.
+      // Capture is a nicety for drags that wander off; test harnesses with
+      // fake pointer ids throw here and everything still works without it.
     }
+  }
+
+  function beginDraw(event: PointerEvent) {
+    // Pressing an existing box selects it (its own click handler) — don't
+    // also start drawing underneath it. Same for the zoom control.
+    if ((event.target as HTMLElement).closest('.box, .zoombar')) return;
+    const { x, y } = imagePercent(event);
+    draft = { x1: x, y1: y, x2: x, y2: y };
     form = null;
   }
 
-  function moveDraw(event: PointerEvent) {
-    if (!draft || !stage) return;
-    const { x, y } = pointerPercent(event);
+  function onPointerMove(event: PointerEvent) {
+    if (panDrag) {
+      if (!stage) return;
+      panX = event.clientX - panDrag.x;
+      panY = event.clientY - panDrag.y;
+      clampPan(stage.getBoundingClientRect());
+      return;
+    }
+    if (!draft) return;
+    const { x, y } = imagePercent(event);
     draft = { ...draft, x2: x, y2: y };
+  }
+
+  function onPointerUp() {
+    panDrag = null;
+    endDraw(); // no-op when no box was being drawn
   }
 
   function endDraw() {
@@ -148,10 +230,50 @@
     }
   }
 
-  /** Keyboard path: nudge the selected box with the arrows, remove with Delete. */
+  /** Keyboard: space pans, +/−/0 zoom, arrows nudge a selected box or pan the image, Delete removes. */
   function onKeydown(event: KeyboardEvent) {
-    if (!form?.editingId) return;
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    if (event.code === 'Space') {
+      // Holding space pans instead of drawing — but a focused button keeps
+      // its normal space behaviour.
+      if (!(event.target instanceof HTMLElement && ['BUTTON', 'SELECT'].includes(event.target.tagName))) {
+        event.preventDefault();
+        spaceHeld = true;
+      }
+      return;
+    }
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      zoomBy(1.5);
+      return;
+    }
+    if (event.key === '-' || event.key === '_') {
+      event.preventDefault();
+      zoomBy(1 / 1.5);
+      return;
+    }
+    if (event.key === '0') {
+      event.preventDefault();
+      resetView();
+      return;
+    }
+    if (!form?.editingId) {
+      // Nothing selected: the arrows pan the image (the keyboard pan path).
+      const pans: Record<string, [number, number]> = {
+        ArrowLeft: [80, 0],
+        ArrowRight: [-80, 0],
+        ArrowUp: [0, 80],
+        ArrowDown: [0, -80]
+      };
+      if (event.key in pans && stage) {
+        event.preventDefault();
+        const [dx, dy] = pans[event.key]!;
+        panX += dx;
+        panY += dy;
+        clampPan(stage.getBoundingClientRect());
+      }
+      return;
+    }
     const step = event.shiftKey ? 3 : 0.5;
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [-step, 0],
@@ -174,6 +296,10 @@
       event.preventDefault();
       removeRegion(form.editingId);
     }
+  }
+
+  function onKeyup(event: KeyboardEvent) {
+    if (event.code === 'Space') spaceHeld = false;
   }
 
   // --- Saving ----------------------------------------------------------
@@ -212,7 +338,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onkeyup={onKeyup} />
 
 <main class="editor">
   <header class="bar">
@@ -232,8 +358,9 @@
   </header>
 
   <p class="hint">
-    Drag a rectangle over each blank canvas on the wall. The readout while dragging is the box size in degrees. Click a
-    box to fix it up; arrows nudge, Delete removes.
+    Scroll to move around the image, pinch (or ctrl-scroll) to zoom — or hold space and drag, like Photoshop. Drag a
+    rectangle over each blank canvas; the readout while dragging is the box size in degrees. Click a box to fix it up;
+    arrows nudge, Delete removes.
   </p>
 
   {#if form}
@@ -274,43 +401,57 @@
   <!-- svelte-ignore a11y_no_static_element_interactions — drawing needs a pointer; the keyboard path is the "Add blank box" button plus the number fields and arrow nudging -->
   <div
     class="stage"
+    class:panning={spaceHeld}
+    class:grabbing={!!panDrag}
     role="application"
-    aria-label="Panorama drawing surface. Drag to draw a canvas box."
+    aria-label="Panorama drawing surface. Drag to draw a canvas box; hold space and drag to pan; plus and minus to zoom."
     bind:this={stage}
-    onpointerdown={beginDraw}
-    onpointermove={moveDraw}
-    onpointerup={endDraw}
-    onpointercancel={() => (draft = null)}
+    onpointerdown={onPointerDown}
+    onpointermove={onPointerMove}
+    onpointerup={onPointerUp}
+    onpointercancel={() => {
+      panDrag = null;
+      draft = null;
+    }}
+    onwheel={onWheel}
   >
-    <img src={PANORAMA} alt={`Flat view of the ${room} panorama for drawing canvas boxes`} draggable="false" />
-    {#each art as region (region.id)}
-      {@const boxes = regionBoxes(region)}
-      {#each boxes as box, i}
-        <button
-          type="button"
-          class="box"
-          class:selected={form?.editingId === region.id}
-          style="left:{box.left}%; top:{box.top}%; width:{box.width}%; height:{box.height}%;"
-          aria-label="Canvas box {region.label}, {region.yawSpan} by {region.pitchSpan} degrees"
-          onclick={(e) => {
-            e.stopPropagation();
-            form = { editingId: region.id, label: region.label, yaw: region.yaw, pitch: region.pitch, yawSpan: region.yawSpan, pitchSpan: region.pitchSpan };
-          }}
-        >
-          {#if i === 0}<span class="tag">{region.label}</span>{/if}
-        </button>
+    <div class="surface" style="transform: translate({panX}px, {panY}px) scale({zoom}); --z: {zoom};">
+      <img src={PANORAMA} alt={`Flat view of the ${room} panorama for drawing canvas boxes`} draggable="false" />
+      {#each art as region (region.id)}
+        {@const boxes = regionBoxes(region)}
+        {#each boxes as box, i}
+          <button
+            type="button"
+            class="box"
+            class:selected={form?.editingId === region.id}
+            style="left:{box.left}%; top:{box.top}%; width:{box.width}%; height:{box.height}%;"
+            aria-label="Canvas box {region.label}, {region.yawSpan} by {region.pitchSpan} degrees"
+            onclick={(e) => {
+              e.stopPropagation();
+              form = { editingId: region.id, label: region.label, yaw: region.yaw, pitch: region.pitch, yawSpan: region.yawSpan, pitchSpan: region.pitchSpan };
+            }}
+          >
+            {#if i === 0}<span class="tag">{region.label}</span>{/if}
+          </button>
+        {/each}
       {/each}
-    {/each}
-    {#if draftBox}
-      <div
-        class="box draft"
-        style="left:{draftBox.x1}%; top:{draftBox.y1}%; width:{draftBox.x2 - draftBox.x1}%; height:{draftBox.y2 - draftBox.y1}%;"
-      >
-        <span class="tag"
-          >{round1(((draftBox.x2 - draftBox.x1) / 100) * 360)}° × {round1(((draftBox.y2 - draftBox.y1) / 100) * 180)}°</span
+      {#if draftBox}
+        <div
+          class="box draft"
+          style="left:{draftBox.x1}%; top:{draftBox.y1}%; width:{draftBox.x2 - draftBox.x1}%; height:{draftBox.y2 - draftBox.y1}%;"
         >
-      </div>
-    {/if}
+          <span class="tag"
+            >{round1(((draftBox.x2 - draftBox.x1) / 100) * 360)}° × {round1(((draftBox.y2 - draftBox.y1) / 100) * 180)}°</span
+          >
+        </div>
+      {/if}
+    </div>
+    <div class="zoombar">
+      <button type="button" onclick={() => zoomBy(1 / 1.5)} aria-label="Zoom out">−</button>
+      <span class="zoom-level">{Math.round(zoom * 100)}%</span>
+      <button type="button" onclick={() => zoomBy(1.5)} aria-label="Zoom in">+</button>
+      <button type="button" onclick={resetView}>Fit</button>
+    </div>
   </div>
 
   {#if art.length > 0}
@@ -441,6 +582,21 @@
     touch-action: none; // let pointer events draw instead of scroll
     user-select: none;
 
+    &.panning {
+      cursor: grab;
+    }
+    &.grabbing {
+      cursor: grabbing;
+    }
+  }
+
+  // The moving image. --z (the zoom factor) lets borders and labels below
+  // divide by it, so they stay the same visual size at every zoom.
+  .surface {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 0;
+
     img {
       display: block;
       width: 100%;
@@ -451,7 +607,7 @@
 
   .box {
     position: absolute;
-    border: 3px dashed $cadmium-orange;
+    border: calc(3px / var(--z, 1)) dashed $cadmium-orange;
     background: rgb(232 116 42 / 0.12);
     padding: 0;
     min-width: 0;
@@ -474,14 +630,38 @@
 
     .tag {
       position: absolute;
-      left: 0.25rem;
-      top: 0.25rem;
-      padding: 0.1rem 0.4rem;
+      left: calc(0.25rem / var(--z, 1));
+      top: calc(0.25rem / var(--z, 1));
+      padding: 0.15em 0.5em;
       border-radius: $radius-pill;
       background: rgb(24 16 11 / 0.85);
       color: $cream;
-      font-size: 0.75rem;
+      font-size: calc(0.75rem / var(--z, 1));
       white-space: nowrap;
+    }
+  }
+
+  .zoombar {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem;
+    border-radius: $radius-pill;
+    background: rgb(24 16 11 / 0.85);
+
+    button {
+      min-height: $tap-min;
+      min-width: 2.75rem;
+      padding: 0 0.75rem;
+    }
+    .zoom-level {
+      min-width: 3.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: $cream-muted;
     }
   }
 
