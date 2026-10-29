@@ -108,3 +108,13 @@ thinking as masking in Photoshop — rather than in the 3D view, because a
 straight drag is the simplest honest way to say "this rectangle on this
 wall"; the 3D-correct hang (with perspective) comes with the feature itself.
 Saved via dev-gated `PUT /api/art/:room` (same SPOTS_EDITOR switch as spots).
+
+### 2026-10-28 — Art boxes became warpable quads
+
+Rectangles (center + size) can't follow how the flattened panorama skews a
+canvas, so a box is now four corner points (yaw/pitch each). In the editor
+the selected box shows corner handles (drag one to warp), edge handles
+(resize) and a body drag (move); arrows nudge a focused corner or the whole
+box. The sanitizer unwraps corners around the back seam, so a canvas that
+straddles yaw ±180 stays one connected quad. The four-point model is also
+exactly what corner-pinning real artwork onto the 3D wall will need.

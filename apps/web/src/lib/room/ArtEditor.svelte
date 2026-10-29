@@ -1,13 +1,15 @@
 <!--
-  Wall art editor (?art=<room>): draw the boundary boxes of the blank canvases
-  that hang in the room, to set up the "hang the party's artwork on the walls"
-  feature. Works on the flat equirectangular panorama — the same view you'd
-  mask in Photoshop — because a straight drag there is the simplest way to say
-  "this rectangle on this wall". Saved to art.json next to spots.json.
+  Wall art editor (?art=<room>): draw boxes over the blank canvases that hang
+  in the room, to set up the "hang the party's artwork on the walls" feature.
+  Boxes are drawn on the flat equirectangular panorama (the same view you'd
+  mask in Photoshop) — and because that photo flattens the room, each box's
+  four corners drag on their own so the quad can follow a canvas's skew.
+  Selected boxes get corner handles (warp), edge handles (resize) and a body
+  drag (move). Saved to art.json next to spots.json as four yaw/pitch points.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { ArtFile, ArtRegion } from '@ptc/shared';
+  import type { ArtRegion } from '@ptc/shared';
 
   let { room }: { room: string } = $props();
 
@@ -21,10 +23,11 @@
   let dirty = $state(false);
   let status = $state('');
 
-  /** The form opens after a drag (new box) or when editing one from the list. */
-  let form = $state<{ editingId: string | null; label: string; yaw: number; pitch: number; yawSpan: number; pitchSpan: number } | null>(null);
+  /** The selected box gets handles; the form below renames it. */
+  let selectedId = $state<string | null>(null);
+  let selected = $derived(art.find((a) => a.id === selectedId) ?? null);
 
-  /** Live rectangle while dragging on the panorama. Percent coordinates. */
+  /** Live rectangle while drawing a fresh box. Percent coordinates. */
   let draft = $state<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   let stage: HTMLDivElement | null = null;
 
@@ -32,8 +35,9 @@
     // No art.json yet just means "no boxes drawn" — start empty.
     fetch(ART_URL)
       .then((r) => (r.ok ? r.json() : { room, art: [] }))
-      .then((file: ArtFile) => {
-        art = file.art ?? [];
+      .then((file: { art?: unknown[] }) => {
+        // Older saves were rectangles (center + size); turn them into quads.
+        art = (file.art ?? []).map(fromLegacy).filter((r): r is ArtRegion => r !== null);
         loaded = true;
       })
       .catch(() => {
@@ -41,6 +45,26 @@
         loaded = true;
       });
   });
+
+  /** Accepts the current quad format and the old rectangle format. */
+  function fromLegacy(entry: unknown): ArtRegion | null {
+    if (!entry || typeof entry !== 'object') return null;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.id !== 'string' || typeof e.label !== 'string') return null;
+    if (Array.isArray(e.corners) && e.corners.length === 4) return entry as ArtRegion;
+    const { yaw, pitch, yawSpan, pitchSpan } = e as Record<string, unknown>;
+    if (typeof yaw !== 'number' || typeof pitch !== 'number' || typeof yawSpan !== 'number' || typeof pitchSpan !== 'number') return null;
+    return {
+      id: e.id,
+      label: e.label,
+      corners: [
+        { yaw: yaw - yawSpan / 2, pitch: pitch + pitchSpan / 2 },
+        { yaw: yaw + yawSpan / 2, pitch: pitch + pitchSpan / 2 },
+        { yaw: yaw + yawSpan / 2, pitch: pitch - pitchSpan / 2 },
+        { yaw: yaw - yawSpan / 2, pitch: pitch - pitchSpan / 2 }
+      ] as ArtRegion['corners']
+    };
+  }
 
   // --- Zoom and pan ---------------------------------------------------------
   // Photoshop habits: hold space (or use the middle button) to drag the image
@@ -102,18 +126,38 @@
     }
   }
 
-  // --- Drawing ------------------------------------------------------------
-  // Pointer percent → angles: left edge of the image is yaw −180, top is
-  // pitch +90. Drawing is clamped at the image edges, so a box never wraps
-  // past the seam at the back of the room.
+  // --- Drawing and box editing ---------------------------------------------
+  // Percent ↔ angles: left edge of the image is yaw −180, top is pitch +90.
 
-  /** Pointer position as percents of the image, undoing the zoom/pan. */
-  function imagePercent(event: PointerEvent) {
+  /** Pointer position as percents of the image, undoing zoom/pan. */
+  function imagePercent(event: { clientX: number; clientY: number }, limitToImage = true) {
     const rect = stage!.getBoundingClientRect();
-    const x = clamp(((event.clientX - rect.left - panX) / (rect.width * zoom)) * 100, 0, 100);
-    const y = clamp(((event.clientY - rect.top - panY) / (rect.height * zoom)) * 100, 0, 100);
-    return { x, y };
+    const x = ((event.clientX - rect.left - panX) / (rect.width * zoom)) * 100;
+    const y = ((event.clientY - rect.top - panY) / (rect.height * zoom)) * 100;
+    // Fresh boxes stay inside the photo; corner drags stay free so a corner
+    // can be dragged across the back seam (the image's left/right edge)
+    // without sticking to it.
+    return limitToImage ? { x: clamp(x, 0, 100), y: clamp(y, 0, 100) } : { x, y };
   }
+
+  /**
+   * The drag in progress on an existing box: which corners move, and how.
+   * `absolute` (corner drags) place corners at the pointer; the others shift
+   * corners by the pointer's delta. `wrap` is the corner's percent offset
+   * across the back seam (0, or ±100), so a corner dragged off one edge of
+   * the photo keeps moving smoothly on the other side.
+   */
+  let boxDrag = $state<{
+    regionId: string;
+    corners: number[]; // indexes into the quad
+    absolute: boolean;
+    wrap: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    moved: boolean;
+  } | null>(null);
 
   function onPointerDown(event: PointerEvent) {
     if (!stage) return;
@@ -121,7 +165,39 @@
       event.preventDefault(); // middle button would otherwise autoscroll
       panDrag = { x: event.clientX - panX, y: event.clientY - panY };
     } else if (event.button === 0) {
-      beginDraw(event);
+      const target = event.target as HTMLElement;
+      const cornerEl = target.closest<HTMLElement>('[data-corner]');
+      const edgeEl = target.closest<HTMLElement>('[data-edge]');
+      const polyEl = target.closest<HTMLElement>('[data-region]');
+      const { x, y } = imagePercent(event, false);
+      if (cornerEl) {
+        boxDrag = {
+          regionId: cornerEl.dataset.regionId!,
+          corners: [Number(cornerEl.dataset.corner)],
+          absolute: true,
+          wrap: Number(cornerEl.dataset.wrap ?? 0),
+          startX: x, startY: y, lastX: x, lastY: y, moved: false
+        };
+      } else if (edgeEl) {
+        const i = Number(edgeEl.dataset.edge);
+        boxDrag = {
+          regionId: edgeEl.dataset.regionId!,
+          corners: [i, (i + 1) % 4],
+          absolute: false,
+          wrap: 0,
+          startX: x, startY: y, lastX: x, lastY: y, moved: false
+        };
+      } else if (polyEl) {
+        boxDrag = {
+          regionId: polyEl.dataset.region!,
+          corners: [0, 1, 2, 3],
+          absolute: false,
+          wrap: 0,
+          startX: x, startY: y, lastX: x, lastY: y, moved: false
+        };
+      } else {
+        beginDraw(event);
+      }
     }
     try {
       stage.setPointerCapture(event.pointerId);
@@ -132,12 +208,11 @@
   }
 
   function beginDraw(event: PointerEvent) {
-    // Pressing an existing box selects it (its own click handler) — don't
-    // also start drawing underneath it. Same for the zoom control.
-    if ((event.target as HTMLElement).closest('.box, .zoombar')) return;
+    // Pressing a handle or box selects it — don't also start drawing.
+    if ((event.target as HTMLElement).closest('.zoombar')) return;
     const { x, y } = imagePercent(event);
     draft = { x1: x, y1: y, x2: x, y2: y };
-    form = null;
+    selectedId = null;
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -148,6 +223,32 @@
       clampPan(stage.getBoundingClientRect());
       return;
     }
+    if (boxDrag) {
+      // Keep a plain copy: `boxDrag` is reactive and TS can't promise it
+      // stays non-null across the statements below.
+      const drag = boxDrag;
+      const region = art.find((a) => a.id === drag.regionId);
+      if (!region) return;
+      const { x, y } = imagePercent(event, false);
+      // A tiny slip (or a plain click) must select, not nudge the box.
+      if (Math.abs(x - boxDrag.startX) > 0.15 || Math.abs(y - boxDrag.startY) > 0.15) boxDrag.moved = true;
+      if (boxDrag.moved) {
+        if (boxDrag.absolute) {
+          // Place the corner at the pointer: bring the pointer into its wrap
+          // lane (0–100) first, then add the corner's own seam offset.
+          const wrappedX = x - Math.floor(x / 100) * 100;
+          setCorner(region, boxDrag.corners[0]!, wrappedX + boxDrag.wrap, y);
+        } else {
+          const dx = x - boxDrag.lastX;
+          const dy = y - boxDrag.lastY;
+          for (const i of boxDrag.corners) shiftCorner(region, i, dx, dy);
+        }
+        boxDrag.lastX = x;
+        boxDrag.lastY = y;
+        dirty = true;
+      }
+      return;
+    }
     if (!draft) return;
     const { x, y } = imagePercent(event);
     draft = { ...draft, x2: x, y2: y };
@@ -155,69 +256,105 @@
 
   function onPointerUp() {
     panDrag = null;
-    endDraw(); // no-op when no box was being drawn
+    if (boxDrag) {
+      const drag = boxDrag;
+      boxDrag = null;
+      const region = art.find((a) => a.id === drag.regionId);
+      if (!region) return;
+      if (drag.moved) {
+        normalizeRegion(region);
+        art = art;
+      } else {
+        // A plain click on a box or handle selects it.
+        selectedId = region.id;
+      }
+      return;
+    }
+    endDraw();
+  }
+
+  function setCorner(region: ArtRegion, index: number, xPercent: number, yPercent: number) {
+    region.corners[index] = {
+      yaw: xPercent * 3.6 - 180,
+      pitch: clamp(90 - yPercent * 1.8, -90, 90)
+    };
+    art = art;
+  }
+
+  function shiftCorner(region: ArtRegion, index: number, dxPercent: number, dyPercent: number) {
+    const c = region.corners[index]!;
+    region.corners[index] = {
+      yaw: c.yaw + dxPercent * 3.6,
+      pitch: clamp(c.pitch - dyPercent * 1.8, -90, 90)
+    };
+    art = art;
   }
 
   function endDraw() {
     if (!draft) return;
     const box = normalize(draft);
     draft = null;
-    const yawSpan = round1(((box.x2 - box.x1) / 100) * 360);
-    const pitchSpan = round1(((box.y2 - box.y1) / 100) * 180);
+    const yawSpan = (box.x2 - box.x1) * 3.6;
+    const pitchSpan = (box.y2 - box.y1) * 1.8;
     // A slip of the pointer shouldn't create a speck — the sanitizer's own
     // minimum is 2°.
     if (yawSpan < 2 || pitchSpan < 2) return;
-    const yaw = round1(((box.x1 + box.x2) / 200) * 360 - 180);
-    const pitch = round1(90 - ((box.y1 + box.y2) / 200) * 180);
-    form = { editingId: null, label: '', yaw, pitch, yawSpan, pitchSpan };
-  }
-
-  function normalize(d: { x1: number; y1: number; x2: number; y2: number }) {
-    return { x1: Math.min(d.x1, d.x2), y1: Math.min(d.y1, d.y2), x2: Math.max(d.x1, d.x2), y2: Math.max(d.y1, d.y2) };
-  }
-
-  // --- Boxes on the image --------------------------------------------------
-
-  /** One region in percent of the image; a box over the back seam becomes two. */
-  function regionBoxes(r: ArtRegion): { left: number; top: number; width: number; height: number }[] {
-    const width = (r.yawSpan / 360) * 100;
-    const left = ((r.yaw + 180) / 360) * 100 - width / 2;
-    const top = ((90 - r.pitch) / 180) * 100 - (r.pitchSpan / 180) * 50;
-    const height = (r.pitchSpan / 180) * 100;
-    const right = left + width;
-    if (left >= 0 && right <= 100) return [{ left, top, width, height }];
-    // A span can't reach from past one edge to past the other (max 120° of
-    // 360°), so exactly one of these slivers applies.
-    if (left < 0) return [{ left: 0, top, width: right, height }];
-    return [
-      { left, top, width: 100 - left, height },
-      { left: 0, top, width: right - 100, height }
-    ];
-  }
-
-  // --- The form --------------------------------------------------------
-
-  function slug(text: string) {
-    return text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
-  }
-
-  function saveForm() {
-    if (!form || form.label.trim() === '') return;
-    const f = { ...form };
-    const label = f.label.trim();
-    if (f.editingId) {
-      const region = art.find((a) => a.id === f.editingId);
-      if (region) Object.assign(region, { label, yaw: f.yaw, pitch: f.pitch, yawSpan: f.yawSpan, pitchSpan: f.pitchSpan });
-    } else {
-      let id = `art_${slug(label) || 'canvas'}`;
-      let n = 2;
-      while (art.some((a) => a.id === id)) id = `art_${slug(label) || 'canvas'}_${n++}`;
-      art.push({ id, label, yaw: f.yaw, pitch: f.pitch, yawSpan: f.yawSpan, pitchSpan: f.pitchSpan });
-    }
-    art = art; // reassign so the boxes re-render
+    const region: ArtRegion = {
+      id: nextId('canvas'),
+      label: `Canvas ${art.length + 1}`,
+      corners: [
+        { yaw: box.x1 * 3.6 - 180, pitch: 90 - box.y1 * 1.8 },
+        { yaw: box.x2 * 3.6 - 180, pitch: 90 - box.y1 * 1.8 },
+        { yaw: box.x2 * 3.6 - 180, pitch: 90 - box.y2 * 1.8 },
+        { yaw: box.x1 * 3.6 - 180, pitch: 90 - box.y2 * 1.8 }
+      ]
+    };
+    normalizeRegion(region);
+    art = [...art, region];
     dirty = true;
     status = '';
-    form = null;
+    selectedId = region.id;
+  }
+
+  function addBlankBox() {
+    // Center the new quad on whatever part of the photo is on screen.
+    const cx = stage ? (stage.clientWidth / 2 - panX) / (stage.clientWidth * zoom) * 100 : 50;
+    const cy = stage ? (stage.clientHeight / 2 - panY) / (stage.clientHeight * zoom) * 100 : 50;
+    const w = 24 / 3.6; // 24° wide, 16° tall — a canvas, not a wall
+    const h = 16 / 1.8;
+    const region: ArtRegion = {
+      id: nextId('canvas'),
+      label: `Canvas ${art.length + 1}`,
+      corners: [
+        { yaw: (cx - w / 2) * 3.6 - 180, pitch: 90 - (cy - h / 2) * 1.8 },
+        { yaw: (cx + w / 2) * 3.6 - 180, pitch: 90 - (cy - h / 2) * 1.8 },
+        { yaw: (cx + w / 2) * 3.6 - 180, pitch: 90 - (cy + h / 2) * 1.8 },
+        { yaw: (cx - w / 2) * 3.6 - 180, pitch: 90 - (cy + h / 2) * 1.8 }
+      ]
+    };
+    normalizeRegion(region);
+    art = [...art, region];
+    dirty = true;
+    status = '';
+    selectedId = region.id;
+  }
+
+  /** Straighten a warped quad back to its upright bounding rectangle. */
+  function straighten(region: ArtRegion) {
+    const quad = quadOf(region);
+    const x1 = Math.min(...quad.map((p) => p.x));
+    const x2 = Math.max(...quad.map((p) => p.x));
+    const y1 = Math.min(...quad.map((p) => p.y));
+    const y2 = Math.max(...quad.map((p) => p.y));
+    region.corners = [
+      { yaw: x1 * 3.6 - 180, pitch: 90 - y1 * 1.8 },
+      { yaw: x2 * 3.6 - 180, pitch: 90 - y1 * 1.8 },
+      { yaw: x2 * 3.6 - 180, pitch: 90 - y2 * 1.8 },
+      { yaw: x1 * 3.6 - 180, pitch: 90 - y2 * 1.8 }
+    ] as ArtRegion['corners'];
+    normalizeRegion(region);
+    art = art;
+    dirty = true;
   }
 
   function removeRegion(id: string) {
@@ -226,11 +363,81 @@
       art = art.filter((a) => a.id !== id);
       art = art;
       dirty = true;
-      form = null;
+      if (selectedId === id) selectedId = null;
     }
   }
 
-  /** Keyboard: space pans, +/−/0 zoom, arrows nudge a selected box or pan the image, Delete removes. */
+  // --- Rendering helpers ----------------------------------------------------
+
+  /**
+   * A region's corners as image percents. Yaws are unwrapped relative to the
+   * first corner, so a box that crosses the back seam keeps its true shape
+   * instead of flipping across the photo; `wrap` records each corner's seam
+   * offset (0 or ±100 percent) for handle drags.
+   */
+  function quadOf(region: ArtRegion) {
+    const anchor = region.corners[0].yaw;
+    return region.corners.map((c) => {
+      const yaw = c.yaw + 360 * Math.round((anchor - c.yaw) / 360);
+      return {
+        x: ((yaw + 180) / 360) * 100,
+        y: ((90 - c.pitch) / 180) * 100,
+        wrap: Math.round((yaw - c.yaw) / 360) * 100
+      };
+    });
+  }
+
+  /** Copies of the quad to draw: one, or a second when it crosses the seam. */
+  function seamCopies(quad: { x: number; y: number }[]) {
+    const xs = quad.map((p) => p.x);
+    const copies: { x: number; y: number }[][] = [quad];
+    if (Math.max(...xs) > 100) copies.push(quad.map((p) => ({ ...p, x: p.x - 100 })));
+    if (Math.min(...xs) < 0) copies.push(quad.map((p) => ({ ...p, x: p.x + 100 })));
+    return copies;
+  }
+
+  function pointsOf(quad: { x: number; y: number }[]) {
+    return quad.map((p) => `${p.x},${p.y}`).join(' ');
+  }
+
+  /** Rough size of the quad in degrees, for the list and the form. */
+  function sizeText(region: ArtRegion) {
+    const quad = quadOf(region);
+    const w = (Math.max(...quad.map((p) => p.x)) - Math.min(...quad.map((p) => p.x))) * 3.6;
+    const h = (Math.max(...quad.map((p) => p.y)) - Math.min(...quad.map((p) => p.y))) * 1.8;
+    return `${round1(w)}° wide × ${round1(h)}° tall`;
+  }
+
+  /** The drag rectangle with its corners ordered top-left → bottom-right. */
+  let draftBox = $derived(draft ? normalize(draft) : null);
+
+  function normalize(d: { x1: number; y1: number; x2: number; y2: number }) {
+    return { x1: Math.min(d.x1, d.x2), y1: Math.min(d.y1, d.y2), x2: Math.max(d.x1, d.x2), y2: Math.max(d.y1, d.y2) };
+  }
+
+  /** Wrap every yaw into −180…180 and clamp pitches, ready for saving. */
+  function normalizeRegion(region: ArtRegion) {
+    region.corners = region.corners.map((c) => ({
+      yaw: round1(wrapYaw(c.yaw)),
+      pitch: round1(clamp(c.pitch, -90, 90))
+    })) as ArtRegion['corners'];
+  }
+
+  function nextId(base: string) {
+    let id = `art_${slug(base) || 'canvas'}`;
+    let n = 2;
+    while (art.some((a) => a.id === id)) id = `art_${slug(base) || 'canvas'}_${n++}`;
+    return id;
+  }
+
+  function slug(text: string) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+  }
+
+  // --- Keyboard ---------------------------------------------------------------
+  // Space pans, +/−/0 zoom, arrows nudge a focused corner handle or the
+  // selected box (or pan the image when nothing is selected), Delete removes.
+
   function onKeydown(event: KeyboardEvent) {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
     if (event.code === 'Space') {
@@ -257,23 +464,7 @@
       resetView();
       return;
     }
-    if (!form?.editingId) {
-      // Nothing selected: the arrows pan the image (the keyboard pan path).
-      const pans: Record<string, [number, number]> = {
-        ArrowLeft: [80, 0],
-        ArrowRight: [-80, 0],
-        ArrowUp: [0, 80],
-        ArrowDown: [0, -80]
-      };
-      if (event.key in pans && stage) {
-        event.preventDefault();
-        const [dx, dy] = pans[event.key]!;
-        panX += dx;
-        panY += dy;
-        clampPan(stage.getBoundingClientRect());
-      }
-      return;
-    }
+
     const step = event.shiftKey ? 3 : 0.5;
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [-step, 0],
@@ -281,20 +472,60 @@
       ArrowUp: [0, step],
       ArrowDown: [0, -step]
     };
-    if (event.key in moves) {
-      event.preventDefault();
-      const [dy, dp] = moves[event.key]!;
-      form = { ...form, yaw: wrapYaw(form.yaw + dy), pitch: clamp(form.pitch + dp, -90, 90) };
-      const region = art.find((a) => a.id === form?.editingId);
-      if (region) {
-        region.yaw = form.yaw;
-        region.pitch = form.pitch;
+
+    // A focused corner handle: the arrows move just that corner.
+    const target = event.target as HTMLElement;
+    const cornerEl = target.dataset?.corner !== undefined ? target : null;
+    if (cornerEl) {
+      const region = art.find((a) => a.id === cornerEl.dataset.regionId);
+      if (!region) return;
+      if (event.key in moves) {
+        event.preventDefault();
+        const [dy, dp] = moves[event.key]!;
+        const index = Number(cornerEl.dataset.corner);
+        const c = region.corners[index]!;
+        region.corners[index] = { yaw: wrapYaw(c.yaw + dy), pitch: clamp(c.pitch + dp, -90, 90) };
         art = art;
         dirty = true;
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        removeRegion(region.id);
       }
-    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      return;
+    }
+
+    if (selectedId) {
+      // The selected box: the arrows move the whole quad.
+      const region = art.find((a) => a.id === selectedId);
+      if (region && event.key in moves) {
+        event.preventDefault();
+        const [dy, dp] = moves[event.key]!;
+        region.corners = region.corners.map((c) => ({
+          yaw: wrapYaw(c.yaw + dy),
+          pitch: clamp(c.pitch + dp, -90, 90)
+        })) as ArtRegion['corners'];
+        art = art;
+        dirty = true;
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        removeRegion(selectedId);
+      }
+      return;
+    }
+
+    // Nothing selected: the arrows pan the image (the keyboard pan path).
+    if (event.key in moves && stage) {
       event.preventDefault();
-      removeRegion(form.editingId);
+      const pans: Record<string, [number, number]> = {
+        ArrowLeft: [80, 0],
+        ArrowRight: [-80, 0],
+        ArrowUp: [0, 80],
+        ArrowDown: [0, -80]
+      };
+      const [dx, dy] = pans[event.key]!;
+      panX += dx;
+      panY += dy;
+      clampPan(stage.getBoundingClientRect());
     }
   }
 
@@ -302,18 +533,29 @@
     if (event.code === 'Space') spaceHeld = false;
   }
 
-  // --- Saving ----------------------------------------------------------
+  // --- Saving -----------------------------------------------------------------
 
   async function save() {
     try {
+      // Build plain copies (Svelte's reactive proxies can't be structured-
+      // cloned, and we only want to send clean numbers anyway).
+      const clean = art.map((region) => {
+        const copy: ArtRegion = {
+          id: region.id,
+          label: region.label,
+          corners: region.corners.map((c) => ({ yaw: c.yaw, pitch: c.pitch })) as ArtRegion['corners']
+        };
+        normalizeRegion(copy);
+        return copy;
+      });
       const response = await fetch(`/api/art/${room}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ room, art })
+        body: JSON.stringify({ room, art: clean })
       });
       if (!response.ok) throw new Error(await response.text());
       dirty = false;
-      status = `Saved ${art.length} canvas ${art.length === 1 ? 'box' : 'boxes'} to studio/${room}/art.json`;
+      status = `Saved ${clean.length} canvas ${clean.length === 1 ? 'box' : 'boxes'} to studio/${room}/art.json`;
     } catch (error) {
       status = `Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
     }
@@ -324,9 +566,6 @@
     status = 'JSON copied to the clipboard';
   }
 
-  /** The drag rectangle with its corners ordered top-left → bottom-right. */
-  let draftBox = $derived(draft ? normalize(draft) : null);
-
   function wrapYaw(yaw: number) {
     return round1((((yaw + 180) % 360) + 360) % 360 - 180);
   }
@@ -335,6 +574,9 @@
   }
   function round1(n: number) {
     return Math.round(n * 10) / 10;
+  }
+  function mod100(n: number) {
+    return ((n % 100) + 100) % 100;
   }
 </script>
 
@@ -347,58 +589,33 @@
       {dirty ? 'Save' : 'Saved'}
     </button>
     <button type="button" onclick={copyJson} disabled={!loaded}>Copy JSON</button>
-    <button
-      type="button"
-      onclick={() => (form = { editingId: null, label: '', yaw: 0, pitch: 0, yawSpan: 24, pitchSpan: 16 })}
-      disabled={!loaded}
-    >
-      Add blank box
-    </button>
+    <button type="button" onclick={addBlankBox} disabled={!loaded}>Add blank box</button>
     <p class="status" role="status">{status}</p>
   </header>
 
   <p class="hint">
     Scroll to move around the image, pinch (or ctrl-scroll) to zoom — or hold space and drag, like Photoshop. Drag a
-    rectangle over each blank canvas; the readout while dragging is the box size in degrees. Click a box to fix it up;
-    arrows nudge, Delete removes.
+    rectangle over a blank canvas to add it, then drag its corners to follow the canvas's skew; edge handles resize, the
+    middle moves. Arrows nudge a corner or the whole box, Delete removes.
   </p>
 
-  {#if form}
-    <form class="form" onsubmit={(e) => { e.preventDefault(); saveForm(); }}>
-      <h2>{form.editingId ? 'Edit canvas box' : 'New canvas box'}</h2>
+  {#if selected}
+    <form class="form" onsubmit={(e) => { e.preventDefault(); selectedId = null; }}>
+      <h2>{selected.label}</h2>
       <label>
         <span>Label</span>
-        <input bind:value={form.label} placeholder="Brick wall, left" required maxlength="60" />
+        <input bind:value={selected.label} maxlength="60" oninput={() => (dirty = true)} />
       </label>
-      <div class="numbers">
-        <label>
-          <span>Yaw °</span>
-          <input type="number" min="-180" max="180" step="0.1" bind:value={form.yaw} />
-        </label>
-        <label>
-          <span>Pitch °</span>
-          <input type="number" min="-90" max="90" step="0.1" bind:value={form.pitch} />
-        </label>
-        <label>
-          <span>Width °</span>
-          <input type="number" min="2" max="120" step="0.1" bind:value={form.yawSpan} />
-        </label>
-        <label>
-          <span>Height °</span>
-          <input type="number" min="2" max="120" step="0.1" bind:value={form.pitchSpan} />
-        </label>
-      </div>
+      <p class="sizes">{sizeText(selected)}</p>
       <div class="actions">
-        <button type="submit" class="primary">{form.editingId ? 'Update' : 'Add box'}</button>
-        {#if form.editingId}
-          <button type="button" class="danger" onclick={() => removeRegion(form!.editingId!)}>Remove</button>
-        {/if}
-        <button type="button" onclick={() => (form = null)}>Cancel</button>
+        <button type="submit" class="primary">Done</button>
+        <button type="button" onclick={() => straighten(selected)}>Straighten</button>
+        <button type="button" class="danger" onclick={() => removeRegion(selected.id)}>Remove</button>
       </div>
     </form>
   {/if}
 
-  <!-- svelte-ignore a11y_no_static_element_interactions — drawing needs a pointer; the keyboard path is the "Add blank box" button plus the number fields and arrow nudging -->
+  <!-- svelte-ignore a11y_no_static_element_interactions — drawing needs a pointer; the keyboard path is the handle buttons, the list, and the arrow keys -->
   <div
     class="stage"
     class:panning={spaceHeld}
@@ -411,38 +628,60 @@
     onpointerup={onPointerUp}
     onpointercancel={() => {
       panDrag = null;
+      boxDrag = null;
       draft = null;
     }}
     onwheel={onWheel}
   >
     <div class="surface" style="transform: translate({panX}px, {panY}px) scale({zoom}); --z: {zoom};">
       <img src={PANORAMA} alt={`Flat view of the ${room} panorama for drawing canvas boxes`} draggable="false" />
-      {#each art as region (region.id)}
-        {@const boxes = regionBoxes(region)}
-        {#each boxes as box, i}
+      <svg class="boxes" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {#each art as region (region.id)}
+          {@const quad = quadOf(region)}
+          {#each seamCopies(quad) as copy, i (i)}
+            <polygon
+              class="art-poly"
+              class:selected={selectedId === region.id}
+              points={pointsOf(copy)}
+              data-region={region.id}
+              vector-effect="non-scaling-stroke"
+            />
+          {/each}
+        {/each}
+        {#if draftBox}
+          <polygon
+            class="art-poly draft"
+            points="{draftBox.x1},{draftBox.y1} {draftBox.x2},{draftBox.y1} {draftBox.x2},{draftBox.y2} {draftBox.x1},{draftBox.y2}"
+            vector-effect="non-scaling-stroke"
+          />
+        {/if}
+      </svg>
+      {#if selected}
+        {@const quad = quadOf(selected)}
+        {#each quad as pt, i}
+          {@const next = quad[(i + 1) % 4]!}
           <button
             type="button"
-            class="box"
-            class:selected={form?.editingId === region.id}
-            style="left:{box.left}%; top:{box.top}%; width:{box.width}%; height:{box.height}%;"
-            aria-label="Canvas box {region.label}, {region.yawSpan} by {region.pitchSpan} degrees"
-            onclick={(e) => {
-              e.stopPropagation();
-              form = { editingId: region.id, label: region.label, yaw: region.yaw, pitch: region.pitch, yawSpan: region.yawSpan, pitchSpan: region.pitchSpan };
-            }}
-          >
-            {#if i === 0}<span class="tag">{region.label}</span>{/if}
-          </button>
+            class="handle corner"
+            data-region-id={selected.id}
+            data-corner={i}
+            data-wrap={pt.wrap}
+            style="left:{mod100(pt.x)}%; top:{pt.y}%;"
+            aria-label="Corner {i + 1} of {selected.label}. Arrow keys nudge this corner."
+          ></button>
+          <button
+            type="button"
+            class="handle edge"
+            data-region-id={selected.id}
+            data-edge={i}
+            style="left:{mod100((pt.x + next.x) / 2)}%; top:{(pt.y + next.y) / 2}%;"
+            aria-label="Edge {i + 1} of {selected.label}"
+          ></button>
         {/each}
-      {/each}
+      {/if}
       {#if draftBox}
-        <div
-          class="box draft"
-          style="left:{draftBox.x1}%; top:{draftBox.y1}%; width:{draftBox.x2 - draftBox.x1}%; height:{draftBox.y2 - draftBox.y1}%;"
-        >
-          <span class="tag"
-            >{round1(((draftBox.x2 - draftBox.x1) / 100) * 360)}° × {round1(((draftBox.y2 - draftBox.y1) / 100) * 180)}°</span
-          >
+        <div class="draft-tag" style="left:{draftBox.x1}%; top:{draftBox.y1}%;">
+          {round1((draftBox.x2 - draftBox.x1) * 3.6)}° × {round1((draftBox.y2 - draftBox.y1) * 1.8)}°
         </div>
       {/if}
     </div>
@@ -460,13 +699,10 @@
       <ul>
         {#each art as region (region.id)}
           <li>
-            <button
-              type="button"
-              onclick={() => (form = { editingId: region.id, label: region.label, yaw: region.yaw, pitch: region.pitch, yawSpan: region.yawSpan, pitchSpan: region.pitchSpan })}
-            >
+            <button type="button" class:selected={selectedId === region.id} onclick={() => (selectedId = region.id)}>
               {region.label}
             </button>
-            <span class="meta">{region.yawSpan}° × {region.pitchSpan}° at {region.yaw}° / {region.pitch}°</span>
+            <span class="meta">{sizeText(region)}</span>
           </li>
         {/each}
       </ul>
@@ -559,14 +795,15 @@
       background: rgb(0 0 0 / 0.3);
       color: $cream;
     }
-    .numbers {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-      gap: 0.75rem;
+    .sizes {
+      margin: 0;
+      font-size: 0.875rem;
+      color: $cream-muted;
     }
     .actions {
       display: flex;
       gap: 0.75rem;
+      flex-wrap: wrap;
     }
   }
 
@@ -590,7 +827,7 @@
     }
   }
 
-  // The moving image. --z (the zoom factor) lets borders and labels below
+  // The moving image. --z (the zoom factor) lets handles and labels below
   // divide by it, so they stay the same visual size at every zoom.
   .surface {
     position: absolute;
@@ -605,40 +842,81 @@
     }
   }
 
-  .box {
+  .boxes {
     position: absolute;
-    border: calc(3px / var(--z, 1)) dashed $cadmium-orange;
-    background: rgb(232 116 42 / 0.12);
-    padding: 0;
-    min-width: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  :global(.art-poly) {
+    fill: rgb(232 116 42 / 0.1);
+    stroke: $cadmium-orange;
+    stroke-width: 2;
+    cursor: move;
+  }
+  :global(.art-poly.selected) {
+    fill: rgb(232 116 42 / 0.2);
+    stroke-width: 3;
+  }
+  :global(.art-poly.draft) {
+    fill: rgb(232 116 42 / 0.16);
+    stroke-width: 3;
+    pointer-events: none;
+  }
+
+  // Handles sit at percent positions inside the surface, so their pixel
+  // sizes divide by the zoom to stay visually constant.
+  .handle {
+    position: absolute;
     min-height: 0;
-    font: inherit;
-    color: $cream;
+    min-width: 0;
+    width: calc(28px / var(--z, 1));
+    height: calc(28px / var(--z, 1));
+    padding: 0;
+    transform: translate(-50%, -50%);
+    background: transparent;
+    border: 0;
+    cursor: move;
 
-    &:focus-visible {
-      outline: 3px solid $focus;
-      outline-offset: 1px;
-    }
-    &.selected {
-      border-style: solid;
-      background: rgb(232 116 42 / 0.22);
-    }
-    &.draft {
-      border-style: dashed;
-      pointer-events: none;
-    }
-
-    .tag {
+    &::after {
+      content: '';
       position: absolute;
-      left: calc(0.25rem / var(--z, 1));
-      top: calc(0.25rem / var(--z, 1));
-      padding: 0.15em 0.5em;
-      border-radius: $radius-pill;
-      background: rgb(24 16 11 / 0.85);
-      color: $cream;
-      font-size: calc(0.75rem / var(--z, 1));
-      white-space: nowrap;
+      inset: 50% auto auto 50%;
+      transform: translate(-50%, -50%);
+      width: calc(11px / var(--z, 1));
+      height: calc(11px / var(--z, 1));
+      border-radius: 50%;
+      background: $cream;
+      border: calc(2px / var(--z, 1)) solid $cadmium-orange;
+      box-sizing: border-box;
     }
+    &.edge {
+      width: calc(22px / var(--z, 1));
+      height: calc(22px / var(--z, 1));
+      cursor: pointer;
+      &::after {
+        border-radius: calc(2px / var(--z, 1));
+        width: calc(9px / var(--z, 1));
+        height: calc(9px / var(--z, 1));
+      }
+    }
+    &:focus-visible {
+      outline: calc(3px / var(--z, 1)) solid $focus;
+      outline-offset: calc(1px / var(--z, 1));
+    }
+  }
+
+  .draft-tag {
+    position: absolute;
+    transform: translate(0, calc(-100% - 4px / var(--z, 1)));
+    padding: 0.15em 0.5em;
+    border-radius: $radius-pill;
+    background: rgb(24 16 11 / 0.85);
+    color: $cream;
+    font-size: calc(0.75rem / var(--z, 1));
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   .zoombar {
@@ -685,16 +963,14 @@
     }
     button {
       text-align: left;
+      &.selected {
+        border-color: $cadmium-orange;
+        color: $cadmium-orange;
+      }
     }
     .meta {
       font-size: 0.875rem;
       color: $cream-muted;
-    }
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .box {
-      transition: background-color 0.15s ease;
     }
   }
 </style>
