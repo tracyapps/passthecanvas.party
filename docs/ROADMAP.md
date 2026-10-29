@@ -63,8 +63,12 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] Media set: watercolor, acrylic (viscosity slider), airbrush, charcoal, pastel + the existing pencil/round/flat/eraser
 - [x] Wet tools: water brush (dilutes + smears), finger (blends/smears), sponge (textured dabs), palette knife (opaque chisel strokes)
 - [x] Paint mixing on the palette (mix two paints, use the result)
-- [ ] **Redesign "Mix a color"** — the owner is sketching ideas; leave the current toggle alone until his plan lands
-- [ ] Collage: magazine cutouts, glue, fabric scraps, feathers, tape (needs placed-object messages, not strokes)
+- [x] Owner's first painting-workspace brief: review five mockups, research mixing/workspaces, compare actual tool assets in WebP; see [PAINTING-WORKSPACE.md](PAINTING-WORKSPACE.md), [research](PAINTING-INTERACTION-RESEARCH.md), and [asset review](PAINTING-ASSETS.md). Planning only; phase 1 gate remains open.
+- [x] First local selection study at `?demo=painting`: photographic tool buttons, no-tool/unloaded/loaded states, compatibility, local practice painting and one tray with reversible even/multicolor options. Desktop/mobile browser evidence and limits in `design-qa.md`; no party/protocol integration.
+- [x] Owner testing round two in the local study: canvas stacking/responsive supply layout, movable non-modal controls, Paint / Arrange & view, zoom/pan/navigator, owned contribution modifiers, differentiated brush tips and photo-derived material palettes. See `design-qa.md` round two; physical touch and real-party renderer integration remain open.
+- [ ] **Redesign "Mix a color"** — owner brief received; prototype multi-color recipes, streaked loads and reusable trays in the delivery order above; existing toggle unchanged so far
+- [ ] Gentle timer handoff: zero cues finishing rather than forcing a pass; explicit server-authorized handoff, final-stroke flush and recovery tests (brief above; not implemented)
+- [ ] Configurable photo-tool widgets, named layouts and local popouts; paired devices and private account albums need separate identity/protocol/persistence design (brief above; not implemented)
 - [ ] Wet-on-wet diffusion (watercolor bleeding into wet areas)
 - [ ] Watercolor edge darkening (pigment pooling at wash edges)
 - [ ] Per-tool pressure curves; airbrush spraying while held still
@@ -105,11 +109,20 @@ Replace placeholders with the real Blender studio.
   - [x] Boundary tool at `?art=cream-city`: draw the canvas boxes on the flat panorama → `art.json` per room *(dev-gated like the spots editor)*
   - [x] Demo seating at `?demo=seats`: fake guests (canvas-painted video tracks + initials cards) to judge seat spacing before LiveKit exists
   - [x] Placeholder-art proof at `?demo=art`: a deterministic painting hung in every quad, corner-pinned into the 3D room (screen-space homography, `matrix3d`)
-  - [ ] Owner decision: rounds match the wall quads (18 in cream-city), or fewer + overflow pieces "leaned" in extra lean-spots *(lean spots would be quads too, drawn in the same `?art=` editor with a wall/lean role — no pre-measured 3D spaces needed since the panorama is one fixed viewpoint)*
+  - [x] Owner decision (Oct 2026): **both layers** — pieces hang on wall quads first, overflow leans in freeform areas; lean areas are `role: "lean"` quads drawn in the same `?art=` editor (same warp, dashed-teal, per-group show/hide)
+  - [x] Gallery preview with host controls (`?demo=art`): hang mode + piece count; lean areas pack by dimensions (two tall canvases where one landscape fits)
+  - [x] Export preview (PNG of the current view, art composited) + shareable 3D room link in the URL hash (`?gallery=cream-city#g=…`, no server storage)
+  - [ ] Hang real party artwork (snapshots per round) + nicknames under pieces
+  - [ ] Later, if parties use it: drag artwork between spots before saving; server-saved rooms; social-photo layout design
 
 ---
 
 ## Phase 4: Extras
+
+### Owner's painting v2 scope
+
+- [ ] Collage crate: pre-cut objects first; placement, editing and shared object messages need a dedicated brief
+- [ ] Mnemonic/custom tool shortcuts (basic keyboard operation and keyboard painting remain accessibility requirements before v2)
 
 - [ ] More rooms for the scene library (Garden Atelier, Rooftop at Dusk, Cabin Workshop…)
 - [ ] Wandering 3D cats (three.js layer aligned to the panorama)

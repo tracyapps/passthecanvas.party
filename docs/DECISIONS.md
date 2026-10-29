@@ -27,6 +27,46 @@ A running log. Newest first. One line for small calls, a short paragraph for big
 
 ## Open questions
 
+### Painting workspace direction — 2026-10-29
+
+The owner supplied five artboards and a first interaction brief. Use the photos,
+silhouettes and dimensional canvas as the painting-view visual target; button
+styles remain provisional. Separate physical tool, medium and paint load in the
+design model, with standalone eraser/dry texture sponge. Timer expiry should
+gently cue a pass rather than forcibly stop painting. Collage and mnemonic tool
+shortcuts move to v2; keyboard accessibility does not. See
+[PAINTING-WORKSPACE.md](PAINTING-WORKSPACE.md) for proposed behavior and delivery
+gates. These are design requirements, not implemented protocol changes.
+
+Research/asset extracts stay beside the ignored `_design` sources for review;
+tracked docs retain the measurements and handoff. No new dependency, service,
+protocol, account storage, or public asset promotion is selected by this round.
+Personal online snapshots require a deliberate update to the existing
+party-only storage policy before implementation.
+
+### 2026-10-29 — Lean spaces, host hang modes, export preview, share links
+
+The owner chose the layered mechanic: pieces hang on wall quads first, then
+overflow "leans" in freeform areas. A lean area is just another quad in
+`art.json` with `role: "lean"` — drawn in the same `?art=` editor with the
+same corner warp (floor areas need it most), styled dashed-teal, and
+show/hide filters separate the two groups so each can be worked on alone.
+How many pieces fit a lean area is decided by dimensions at hang time
+(`leanLayout.ts`): columns ≈ area shape ÷ piece shape, so two tall canvases
+share the spot a landscape takes alone.
+
+The gallery preview (`?demo=art`, or a shared `?gallery=room#g=…`) gets a
+host panel: hang mode (walls + overflow / walls only / lean only), piece
+count, reshuffle. "Preview export" composes the current view into a PNG —
+it copies the viewer's WebGL canvas when the browser allows, else
+re-projects the panorama per pixel through PSV's own inverse mapping
+(half-res, smoothed), then paints each piece with an affine-subdivided quad
+mesh (`quadMesh.ts`). The shareable room link packs the whole arrangement
+into the URL hash (base64url JSON, `galleryLink.ts`) — no server storage,
+self-contained, and the same shape a server-saved room can use later. The
+camera gently swings to face the first piece when an arrangement lands
+off-view (instant under reduced motion).
+
 - [ ] **Cats:** filmed clips or rendered 3D loops? Whose cats star?
 - [ ] **Video provider:** stay on LiveKit Cloud's free tier for how long?
 - [ ] **Party size:** max guests per party (sets spots in the room and video cost)
@@ -138,3 +178,37 @@ the selected box shows corner handles (drag one to warp), edge handles
 box. The sanitizer unwraps corners around the back seam, so a canvas that
 straddles yaw ±180 stays one connected quad. The four-point model is also
 exactly what corner-pinning real artwork onto the 3D wall will need.
+
+### 2026-10-29 — Local photo-tool selection study
+
+Owner approved the first selection slice. `?demo=painting` is a development-only
+Svelte study; the party UI and shared protocol remain unchanged. Photo groups
+and the canvas-surface treatment come from the owner's SVG, with embedded WebP
+cutouts prepared by `studio/scripts/prepare_painting_study.py` inside ignored
+`_design`. Alpha expansion supplies a complete active contour while corrected
+vectors are pending. No new dependency or service is added.
+
+The owner clarified that evenly mixed and multicolor loads belong to **one
+color tray**: place colors, then choose Mix evenly or Keep colors separate.
+The local study preserves those dabs across mode changes. RGB averaging and
+parallel-band marks are explicit previews, not physical pigment simulation.
+The study's wide 1600×850 canvas matches the mockup proportions; it does not
+change the party's 1600×1200 document. Profile saving, renderer/protocol work,
+workspace persistence and paired devices remain separate slices.
+
+### 2026-10-29 — Painting study testing round two
+
+Keep Paint and Arrange & view explicit: arranging supplies or exploring a zoomed
+canvas must not make marks. Escape/bare-table clicks allow an empty hand. Supply
+and panel positions stay local and temporary; phone/tablet layouts flow and
+reorder rather than preserving an unusable desktop coordinate grid. Brush and
+palette panels use native non-modal controls and offer drag, keyboard and tap
+movement. No dependency, service or shared protocol change is needed.
+
+Use separate artist-owned contribution surfaces in the study. Modifiers never
+read the display composite. This establishes and locally tests the owner-layer
+rule without changing accepted party strokes/replay. Real-party ownership,
+network/replay, turn boundaries and shared undo remain an integration gate.
+Brush textures, water behavior and pigment mixing are intentionally approximate.
+Photo-derived per-material palettes replace the tiny generic chooser; sampling
+coordinates and limitations are recorded in PAINTING-PALETTE-SAMPLES.md.

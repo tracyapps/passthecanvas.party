@@ -4,6 +4,7 @@
     {
       "id": "art_panoramic_1",
       "label": "Panoramic - 1",
+      "role": "wall",
       "corners": [
         {
           "yaw": -109.3,
@@ -26,6 +27,7 @@
     {
       "id": "art_portrait_large_1",
       "label": "Portrait large -1",
+      "role": "wall",
       "corners": [
         {
           "yaw": -92.4,
@@ -48,6 +50,7 @@
     {
       "id": "art_small_square_1",
       "label": "Square - 1",
+      "role": "wall",
       "corners": [
         {
           "yaw": -103.6,
@@ -70,6 +73,7 @@
     {
       "id": "art_small_portrait_1",
       "label": "Small Portrait - 1",
+      "role": "wall",
       "corners": [
         {
           "yaw": -95.5,
@@ -92,6 +96,7 @@
     {
       "id": "art_small_square_2",
       "label": "Square - 2",
+      "role": "wall",
       "corners": [
         {
           "yaw": -76.7,
@@ -114,6 +119,7 @@
     {
       "id": "art_portrait_2",
       "label": "Portrait - 2",
+      "role": "wall",
       "corners": [
         {
           "yaw": -70.1,
@@ -136,6 +142,7 @@
     {
       "id": "art_portrait_3",
       "label": "Portrait - 3",
+      "role": "wall",
       "corners": [
         {
           "yaw": -56.4,
@@ -158,6 +165,7 @@
     {
       "id": "art_square_2",
       "label": "Square - 3",
+      "role": "wall",
       "corners": [
         {
           "yaw": -58.6,
@@ -180,6 +188,7 @@
     {
       "id": "art_canvas",
       "label": "Landscape - 1",
+      "role": "wall",
       "corners": [
         {
           "yaw": -115.5,
@@ -202,6 +211,7 @@
     {
       "id": "art_canvas_2",
       "label": "Square - 4",
+      "role": "wall",
       "corners": [
         {
           "yaw": -107.6,
@@ -224,6 +234,7 @@
     {
       "id": "art_canvas_3",
       "label": "Square - 5",
+      "role": "wall",
       "corners": [
         {
           "yaw": -66.6,
@@ -246,6 +257,7 @@
     {
       "id": "art_canvas_4",
       "label": "Landscape - 2",
+      "role": "wall",
       "corners": [
         {
           "yaw": -50.9,
@@ -268,6 +280,7 @@
     {
       "id": "art_canvas_5",
       "label": "Panoramic - 2",
+      "role": "wall",
       "corners": [
         {
           "yaw": -43.4,
@@ -290,6 +303,7 @@
     {
       "id": "art_canvas_6",
       "label": "Tall - 1",
+      "role": "wall",
       "corners": [
         {
           "yaw": -37.5,
@@ -312,6 +326,7 @@
     {
       "id": "art_canvas_7",
       "label": "Small Square - bookcase wall - 1",
+      "role": "wall",
       "corners": [
         {
           "yaw": 131.4,
@@ -334,6 +349,7 @@
     {
       "id": "art_canvas_8",
       "label": "Small Square - bookcase wall -  2",
+      "role": "wall",
       "corners": [
         {
           "yaw": 125.1,
@@ -356,6 +372,7 @@
     {
       "id": "art_canvas_9",
       "label": "Small Portrait - bookcase wall - 1",
+      "role": "wall",
       "corners": [
         {
           "yaw": 85.9,
@@ -378,6 +395,7 @@
     {
       "id": "art_canvas_10",
       "label": "Small Portrait - bookcase wall - 2",
+      "role": "wall",
       "corners": [
         {
           "yaw": 86,
@@ -394,6 +412,29 @@
         {
           "yaw": 86,
           "pitch": 8.6
+        }
+      ]
+    },
+    {
+      "id": "art_lean_space",
+      "label": "Lean area 19",
+      "role": "lean",
+      "corners": [
+        {
+          "yaw": -86.4,
+          "pitch": -9.9
+        },
+        {
+          "yaw": -50.4,
+          "pitch": -9.9
+        },
+        {
+          "yaw": -50.4,
+          "pitch": -26.1
+        },
+        {
+          "yaw": -86.4,
+          "pitch": -26.1
         }
       ]
     }

@@ -16,6 +16,13 @@ describe('sanitizeArt', () => {
     expect(clean?.art[0]?.corners[1]).toMatchObject({ yaw: -10.1, pitch: 22 });
   });
 
+  it('keeps the lean role and defaults missing/odd roles to wall', () => {
+    // Files saved before lean areas existed carry no role at all.
+    expect(sanitizeArt(good)?.art[0]?.role).toBe('wall');
+    expect(sanitizeArt({ ...good, art: [{ ...good.art[0], role: 'lean' }] })?.art[0]?.role).toBe('lean');
+    expect(sanitizeArt({ ...good, art: [{ ...good.art[0], role: 'ceiling' }] })?.art[0]?.role).toBe('wall');
+  });
+
   it('allows an empty art list (a room with no canvases yet)', () => {
     expect(sanitizeArt({ room: 'cream-city', art: [] })?.art).toEqual([]);
   });

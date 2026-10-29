@@ -1,60 +1,37 @@
 <!--
-  Artwork pinned to the room's wall canvases. Each art.json quad gets an
-  image corner-pinned to it: on every camera move, the four corners are
-  projected to screen points and a CSS matrix3d homography maps the image
-  onto them — so the piece appears painted onto the wall and stays put as
-  you look around. Overlay only: pointer-events none, nothing clickable.
+  Artwork pinned into the 360° room. Each hang is an image plus four
+  yaw/pitch corners: on every camera move, the corners are projected to
+  screen points and a CSS matrix3d homography maps the image onto them — so
+  the piece appears painted onto the wall (or leaning where it was placed)
+  and stays put as you look around. Overlay only: pointer-events none.
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { events, type Viewer } from '@photo-sphere-viewer/core';
-  import type { ArtRegion } from '@ptc/shared';
+  import type { ArtCorner } from '@ptc/shared';
   import { homography3d, type Point } from './homography';
-  import { paintPlaceholder } from './placeholderArt';
 
-  let {
-    viewer,
-    art,
-    /** Paintings to show, keyed by region id. Missing ids get a generated placeholder. */
-    works = new Map<string, HTMLCanvasElement>()
-  }: {
-    viewer: Viewer;
-    art: ArtRegion[];
-    works?: Map<string, HTMLCanvasElement>;
-  } = $props();
+  export interface Hang {
+    id: string; // unique per piece placement (region + piece index)
+    corners: ArtCorner[]; // TL, TR, BR, BL
+    painting: HTMLCanvasElement; // the image, sized to the quad's shape
+  }
+
+  let { viewer, hangs = [] }: { viewer: Viewer; hangs?: Hang[] } = $props();
 
   const DEG = Math.PI / 180;
 
-  /** One prepared painting per region: pixels sized from the quad's angular bounds. */
-  let pieces = $derived(
-    art.map((region) => {
-      // Big canvases get more pixels so they stay crisp up close. The
-      // fallback keeps one bad quad from taking the whole layer down.
-      const ys = region.corners.map((c) => c.yaw);
-      const ps = region.corners.map((c) => c.pitch);
-      const width = Math.max(...ys) - Math.min(...ys);
-      const height = Math.max(...ps) - Math.min(...ps);
-      const w = Number.isFinite(width) ? Math.max(48, Math.round(width * 24)) : 48;
-      const h = Number.isFinite(height) ? Math.max(48, Math.round(height * 24)) : 48;
-      let painting = works.get(region.id);
-      if (!painting) {
-        painting = document.createElement('canvas');
-        painting.width = w;
-        painting.height = h;
-        paintPlaceholder(painting, region.id);
-      }
-      return { region, painting, w, h };
-    })
-  );
-
   /** Screen-space transforms, recomputed on every camera move. */
   let transforms = $state<(string | null)[]>([]);
+
+  /** The last projected corners per hang, for the export renderer. */
+  let screenCorners = new Map<string, Point[] | null>();
 
   // Copy each painting into its on-screen canvas once it exists.
   let shown = $state<HTMLCanvasElement[]>([]);
   $effect(() => {
     shown.forEach((el, i) => {
-      el.getContext('2d')?.drawImage(pieces[i].painting, 0, 0);
+      el.getContext('2d')?.drawImage(hangs[i].painting, 0, 0);
     });
   });
 
@@ -74,22 +51,38 @@
     /* the effect cleanup removes the listeners */
   });
 
+  /** What the export renderer needs: each visible hang's painting + screen corners. */
+  export function getScreenPieces(): { id: string; painting: HTMLCanvasElement; pts: Point[] }[] {
+    const out: { id: string; painting: HTMLCanvasElement; pts: Point[] }[] = [];
+    for (const hang of hangs) {
+      const pts = screenCorners.get(hang.id);
+      if (pts) out.push({ id: hang.id, painting: hang.painting, pts });
+    }
+    return out;
+  }
+
   function update() {
     const viewYaw = viewer.getPosition().yaw / DEG;
-    transforms = pieces.map(({ region, painting }) => {
+    const next: (string | null)[] = [];
+    screenCorners = new Map();
+    for (const hang of hangs) {
       // Unwrap yaws relative to the first corner, so a quad crossing the
       // back seam (yaw ±180) stays one connected shape.
-      const anchor = region.corners[0].yaw;
+      const anchor = hang.corners[0].yaw;
       const unwrap = (yaw: number) => yaw + 360 * Math.round((anchor - yaw) / 360);
 
       // Hide pieces round the back, where the projection wraps wildly.
-      const a = unwrap(region.corners[0].yaw);
-      const c = unwrap(region.corners[2].yaw);
+      const a = unwrap(hang.corners[0].yaw);
+      const c = unwrap(hang.corners[2].yaw);
       const centerYaw = (a + c) / 2;
       const dYaw = Math.abs((((centerYaw - viewYaw) % 360) + 540) % 360 - 180);
-      if (dYaw > 100) return null;
+      if (dYaw > 100) {
+        next.push(null);
+        screenCorners.set(hang.id, null);
+        continue;
+      }
 
-      const pts: Point[] = region.corners.map((corner) =>
+      const pts: Point[] = hang.corners.map((corner) =>
         viewer.dataHelper.sphericalCoordsToViewerCoords({
           yaw: unwrap(corner.yaw) * DEG,
           pitch: corner.pitch * DEG
@@ -97,26 +90,28 @@
       );
       const src: Point[] = [
         { x: 0, y: 0 },
-        { x: painting.width, y: 0 },
-        { x: painting.width, y: painting.height },
-        { x: 0, y: painting.height }
+        { x: hang.painting.width, y: 0 },
+        { x: hang.painting.width, y: hang.painting.height },
+        { x: 0, y: hang.painting.height }
       ];
       const m = homography3d(src, pts);
-      return m ? `matrix3d(${m.join(',')})` : null;
-    });
+      next.push(m ? `matrix3d(${m.join(',')})` : null);
+      screenCorners.set(hang.id, m ? pts : null);
+    }
+    transforms = next;
   }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions — a purely visual overlay -->
 <div class="art-layer" aria-hidden="true">
-  {#each pieces as piece, i (piece.region.id)}
+  {#each hangs as hang, i (hang.id)}
     {#if transforms[i]}
       <canvas
         bind:this={shown[i]}
         class="piece"
-        data-art={piece.region.id}
-        width={piece.w}
-        height={piece.h}
+        data-art={hang.id}
+        width={hang.painting.width}
+        height={hang.painting.height}
         style="transform: {transforms[i]};"
       ></canvas>
     {/if}

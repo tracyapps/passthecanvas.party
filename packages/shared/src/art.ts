@@ -1,9 +1,16 @@
-// Wall art regions: the blank canvases hanging in a 360° room, drawn with the
-// art editor (?art=<room>). A region is a quad with four corner points — the
-// flattened panorama skews canvases, so each corner is placed on its own.
-// The party feature that hangs real artwork on them is not built yet; this
-// file only describes where each canvas hangs, so both server and web
-// validate the same way.
+// Art regions: the places finished artwork can go in a 360° room, drawn with
+// the art editor (?art=<room>). A region is a quad with four corner points —
+// the flattened panorama skews everything, so each corner is placed on its own.
+// Two kinds of region:
+//   role "wall" — a set-size blank canvas hanging on a wall. One piece hangs
+//                 per wall region, sized to the quad.
+//   role "lean"  — a freeform floor/furniture area (in front of the boombox,
+//                 on the leather chair…). How many pieces fit is decided by
+//                 the area's shape versus each piece's shape at hang time.
+// The party feature that hangs real artwork is not built yet; this file only
+// describes where art goes, so both server and web validate the same way.
+
+export type ArtRole = 'wall' | 'lean';
 
 export interface ArtCorner {
   yaw: number; // degrees, 0 = straight ahead (image center)
@@ -13,6 +20,7 @@ export interface ArtCorner {
 export interface ArtRegion {
   id: string; // e.g. "art_brick_wall_left"
   label: string; // e.g. "Brick wall, left of the shelves"
+  role: ArtRole; // wall canvases hang one piece; lean areas hold as many as fit
   /** Corner points in viewing order: top-left, top-right, bottom-right, bottom-left. */
   corners: [ArtCorner, ArtCorner, ArtCorner, ArtCorner];
 }
@@ -41,11 +49,13 @@ export function sanitizeArt(input: unknown): ArtFile | null {
   const clean: ArtRegion[] = [];
   for (const raw of art) {
     if (!raw || typeof raw !== 'object') return null;
-    const { id, label, corners } = raw as Record<string, unknown>;
+    const { id, label, role, corners } = raw as Record<string, unknown>;
     if (typeof id !== 'string' || !SAFE_ID.test(id)) return null;
     if (seenIds.has(id)) return null; // duplicate ids would confuse placement
     seenIds.add(id);
     if (typeof label !== 'string' || label.trim() === '' || label.length > 60) return null;
+    // Files saved before lean areas existed have no role — they're all walls.
+    const cleanRole: ArtRole = role === 'lean' ? 'lean' : 'wall';
     if (!Array.isArray(corners) || corners.length !== 4) return null;
 
     // Unwrap every corner into the first corner's wrap lane, so a canvas
@@ -71,6 +81,7 @@ export function sanitizeArt(input: unknown): ArtFile | null {
     clean.push({
       id,
       label: label.trim().slice(0, 60),
+      role: cleanRole,
       corners: pts.map((c) => ({ yaw: round1(wrap180(c.yaw)), pitch: round1(c.pitch) })) as ArtRegion['corners']
     });
   }

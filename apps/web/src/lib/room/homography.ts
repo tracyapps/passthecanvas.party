@@ -11,6 +11,19 @@ export type Point = { x: number; y: number };
  * or null when the points don't define a proper quad (degenerate system).
  */
 export function homography3d(src: Point[], dst: Point[]): number[] | null {
+  const h = homography8(src, dst);
+  if (!h) return null;
+  // CSS matrix3d is column-major; this layout makes the browser apply the
+  // same x' = (h0x + h1y + h2) / (h6x + h7y + 1) mapping.
+  return [h[0]!, h[3]!, 0, h[6]!, h[1]!, h[4]!, 0, h[7]!, 0, 0, 1, 0, h[2]!, h[5]!, 0, 1];
+}
+
+/**
+ * The same mapping as its 8 raw coefficients h0…h7, where
+ * x' = (h0x + h1y + h2) / (h6x + h7y + 1). Exported for quadMesh.ts, which
+ * applies the mapping point-by-point instead of through CSS.
+ */
+export function homography8(src: Point[], dst: Point[]): number[] | null {
   // Classic 8×8 linear system: each point pair contributes two equations.
   // Solved with plain Gaussian elimination — 8 unknowns, no library needed.
   const A: number[][] = [];
@@ -23,11 +36,7 @@ export function homography3d(src: Point[], dst: Point[]): number[] | null {
     A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]);
     b.push(Y);
   }
-  const h = solve(A, b);
-  if (!h) return null;
-  // CSS matrix3d is column-major; this layout makes the browser apply the
-  // same x' = (h0x + h1y + h2) / (h6x + h7y + 1) mapping.
-  return [h[0]!, h[3]!, 0, h[6]!, h[1]!, h[4]!, 0, h[7]!, 0, 0, 1, 0, h[2]!, h[5]!, 0, 1];
+  return solve(A, b);
 }
 
 /** Gaussian elimination with partial pivoting. Null when singular. */

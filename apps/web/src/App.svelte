@@ -12,7 +12,9 @@
   const editRoom = params.get('spots'); // "?spots=cream-city" opens the spot editor
   const artRoom = params.get('art'); // "?art=cream-city" opens the wall art editor
   const demoSeats = params.get('demo') === 'seats'; // "?demo=seats" fills the room with fake guests
-  const demoArt = params.get('demo') === 'art'; // "?demo=art" pins placeholder art on the walls
+  const demoArt = params.get('demo') === 'art'; // "?demo=art" previews the gallery
+  const galleryRoom = params.get('gallery'); // "?gallery=cream-city#g=…" opens a shared gallery room
+  const paintingStudy = import.meta.env.DEV && params.get('demo') === 'painting';
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
 
   const party = new PartyConnection();
@@ -50,12 +52,19 @@
   {:then { default: DemoRoom }}
     <DemoRoom />
   {/await}
-{:else if demoArt}
-  <!-- Owner tool: placeholder artwork pinned into the wall canvas boxes. -->
-  {#await import('./lib/room/ArtDemo.svelte')}
+{:else if demoArt || galleryRoom}
+  <!-- Gallery preview: placeholder party artwork hung + leaned in the room, export + share. -->
+  {#await import('./lib/room/Gallery.svelte')}
     <main class="loading">Hanging the artwork…</main>
-  {:then { default: ArtDemo }}
-    <ArtDemo />
+  {:then { default: Gallery }}
+    <Gallery room={galleryRoom ?? 'cream-city'} />
+  {/await}
+{:else if paintingStudy}
+  <!-- Local interaction study. Excluded from production until the painting design is approved. -->
+  {#await import('./lib/canvas/PaintingStudy.svelte')}
+    <main class="loading">Setting out the art supplies…</main>
+  {:then { default: PaintingStudy }}
+    <PaintingStudy />
   {/await}
 {:else if !joined}
   <main class="join">
@@ -73,6 +82,7 @@
       </fieldset>
       <button type="submit">Join the party</button>
       <p class="hint">Party: <code>{partyId}</code>. Share this page's link to invite friends.</p>
+      {#if import.meta.env.DEV}<a href="?demo=painting">Try the new painting table</a>{/if}
     </form>
   </main>
 {:else}

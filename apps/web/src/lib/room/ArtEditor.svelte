@@ -27,6 +27,16 @@
   let selectedId = $state<string | null>(null);
   let selected = $derived(art.find((a) => a.id === selectedId) ?? null);
 
+  /** Show/hide each group so one can be worked on alone, and what a fresh drag draws. */
+  let showWalls = $state(true);
+  let showLean = $state(true);
+  let drawRole = $state<'wall' | 'lean'>('wall');
+  let walls = $derived(art.filter((a) => a.role !== 'lean'));
+  let leans = $derived(art.filter((a) => a.role === 'lean'));
+  function visible(region: ArtRegion) {
+    return region.role === 'lean' ? showLean : showWalls;
+  }
+
   /** Live rectangle while drawing a fresh box. Percent coordinates. */
   let draft = $state<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   let stage: HTMLDivElement | null = null;
@@ -51,12 +61,15 @@
     if (!entry || typeof entry !== 'object') return null;
     const e = entry as Record<string, unknown>;
     if (typeof e.id !== 'string' || typeof e.label !== 'string') return null;
-    if (Array.isArray(e.corners) && e.corners.length === 4) return entry as ArtRegion;
+    // Files saved before lean areas existed have no role — they're all walls.
+    const role: ArtRegion['role'] = e.role === 'lean' ? 'lean' : 'wall';
+    if (Array.isArray(e.corners) && e.corners.length === 4) return { ...(entry as ArtRegion), role };
     const { yaw, pitch, yawSpan, pitchSpan } = e as Record<string, unknown>;
     if (typeof yaw !== 'number' || typeof pitch !== 'number' || typeof yawSpan !== 'number' || typeof pitchSpan !== 'number') return null;
     return {
       id: e.id,
       label: e.label,
+      role,
       corners: [
         { yaw: yaw - yawSpan / 2, pitch: pitch + pitchSpan / 2 },
         { yaw: yaw + yawSpan / 2, pitch: pitch + pitchSpan / 2 },
@@ -300,8 +313,9 @@
     // minimum is 2°.
     if (yawSpan < 2 || pitchSpan < 2) return;
     const region: ArtRegion = {
-      id: nextId('canvas'),
-      label: `Canvas ${art.length + 1}`,
+      id: nextId(drawRole === 'lean' ? 'lean_space' : 'canvas'),
+      label: `${drawRole === 'lean' ? 'Lean area' : 'Canvas'} ${art.length + 1}`,
+      role: drawRole,
       corners: [
         { yaw: box.x1 * 3.6 - 180, pitch: 90 - box.y1 * 1.8 },
         { yaw: box.x2 * 3.6 - 180, pitch: 90 - box.y1 * 1.8 },
@@ -323,8 +337,9 @@
     const w = 24 / 3.6; // 24° wide, 16° tall — a canvas, not a wall
     const h = 16 / 1.8;
     const region: ArtRegion = {
-      id: nextId('canvas'),
-      label: `Canvas ${art.length + 1}`,
+      id: nextId(drawRole === 'lean' ? 'lean_space' : 'canvas'),
+      label: `${drawRole === 'lean' ? 'Lean area' : 'Canvas'} ${art.length + 1}`,
+      role: drawRole,
       corners: [
         { yaw: (cx - w / 2) * 3.6 - 180, pitch: 90 - (cy - h / 2) * 1.8 },
         { yaw: (cx + w / 2) * 3.6 - 180, pitch: 90 - (cy - h / 2) * 1.8 },
@@ -543,6 +558,7 @@
         const copy: ArtRegion = {
           id: region.id,
           label: region.label,
+          role: region.role === 'lean' ? 'lean' : 'wall',
           corners: region.corners.map((c) => ({ yaw: c.yaw, pitch: c.pitch })) as ArtRegion['corners']
         };
         normalizeRegion(copy);
@@ -555,7 +571,9 @@
       });
       if (!response.ok) throw new Error(await response.text());
       dirty = false;
-      status = `Saved ${clean.length} canvas ${clean.length === 1 ? 'box' : 'boxes'} to studio/${room}/art.json`;
+      const wallsSaved = clean.filter((r) => r.role !== 'lean').length;
+      const leansSaved = clean.length - wallsSaved;
+      status = `Saved ${wallsSaved} wall ${wallsSaved === 1 ? 'box' : 'boxes'} and ${leansSaved} lean ${leansSaved === 1 ? 'area' : 'areas'} to studio/${room}/art.json`;
     } catch (error) {
       status = `Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
     }
@@ -590,13 +608,38 @@
     </button>
     <button type="button" onclick={copyJson} disabled={!loaded}>Copy JSON</button>
     <button type="button" onclick={addBlankBox} disabled={!loaded}>Add blank box</button>
+    <span class="filters" role="group" aria-label="Show or hide box groups">
+      <button
+        type="button"
+        class="filter"
+        class:off={!showWalls}
+        aria-pressed={showWalls}
+        onclick={() => (showWalls = !showWalls)}
+      >
+        Wall canvases ({walls.length})
+      </button>
+      <button
+        type="button"
+        class="filter lean"
+        class:off={!showLean}
+        aria-pressed={showLean}
+        onclick={() => (showLean = !showLean)}
+      >
+        Lean spaces ({leans.length})
+      </button>
+    </span>
+    <fieldset class="drawrole">
+      <legend class="sr-only">What a new drag creates</legend>
+      <label><input type="radio" name="drawrole" bind:group={drawRole} value="wall" /> Draw wall canvas</label>
+      <label><input type="radio" name="drawrole" bind:group={drawRole} value="lean" /> Draw lean space</label>
+    </fieldset>
     <p class="status" role="status">{status}</p>
   </header>
 
   <p class="hint">
-    Scroll to move around the image, pinch (or ctrl-scroll) to zoom — or hold space and drag, like Photoshop. Drag a
-    rectangle over a blank canvas to add it, then drag its corners to follow the canvas's skew; edge handles resize, the
-    middle moves. Arrows nudge a corner or the whole box, Delete removes.
+    Scroll to move around the image, pinch (ctrl-scroll) to zoom — or hold space and drag, like Photoshop. Drag a
+    rectangle to add the kind picked above; corners follow the canvas's skew (same warp for lean areas), edges resize,
+    the middle moves. Arrows nudge a corner or the whole box, Delete removes.
   </p>
 
   {#if selected}
@@ -606,6 +649,11 @@
         <span>Label</span>
         <input bind:value={selected.label} maxlength="60" oninput={() => (dirty = true)} />
       </label>
+      <fieldset class="typerole">
+        <legend>Type</legend>
+        <label><input type="radio" name="typerole" bind:group={selected.role} value="wall" oninput={() => (dirty = true)} /> Wall canvas</label>
+        <label><input type="radio" name="typerole" bind:group={selected.role} value="lean" oninput={() => (dirty = true)} /> Lean space</label>
+      </fieldset>
       <p class="sizes">{sizeText(selected)}</p>
       <div class="actions">
         <button type="submit" class="primary">Done</button>
@@ -637,20 +685,24 @@
       <img src={PANORAMA} alt={`Flat view of the ${room} panorama for drawing canvas boxes`} draggable="false" />
       <svg class="boxes" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {#each art as region (region.id)}
-          {@const quad = quadOf(region)}
-          {#each seamCopies(quad) as copy, i (i)}
-            <polygon
-              class="art-poly"
-              class:selected={selectedId === region.id}
-              points={pointsOf(copy)}
-              data-region={region.id}
-              vector-effect="non-scaling-stroke"
-            />
-          {/each}
+          {#if visible(region)}
+            {@const quad = quadOf(region)}
+            {#each seamCopies(quad) as copy, i (i)}
+              <polygon
+                class="art-poly"
+                class:selected={selectedId === region.id}
+                class:lean={region.role === 'lean'}
+                points={pointsOf(copy)}
+                data-region={region.id}
+                vector-effect="non-scaling-stroke"
+              />
+            {/each}
+          {/if}
         {/each}
         {#if draftBox}
           <polygon
             class="art-poly draft"
+            class:lean={drawRole === 'lean'}
             points="{draftBox.x1},{draftBox.y1} {draftBox.x2},{draftBox.y1} {draftBox.x2},{draftBox.y2} {draftBox.x1},{draftBox.y2}"
             vector-effect="non-scaling-stroke"
           />
@@ -693,13 +745,33 @@
     </div>
   </div>
 
-  {#if art.length > 0}
-    <section class="list">
-      <h2>Canvas boxes</h2>
+  {#if walls.length > 0}
+    <section class="list" class:hidden={!showWalls}>
+      <h2>Wall canvases ({walls.length})</h2>
       <ul>
-        {#each art as region (region.id)}
+        {#each walls as region (region.id)}
           <li>
             <button type="button" class:selected={selectedId === region.id} onclick={() => (selectedId = region.id)}>
+              {region.label}
+            </button>
+            <span class="meta">{sizeText(region)}</span>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+  {#if leans.length > 0}
+    <section class="list" class:hidden={!showLean}>
+      <h2>Lean spaces ({leans.length})</h2>
+      <ul>
+        {#each leans as region (region.id)}
+          <li>
+            <button
+              type="button"
+              class="lean"
+              class:selected={selectedId === region.id}
+              onclick={() => (selectedId = region.id)}
+            >
               {region.label}
             </button>
             <span class="meta">{sizeText(region)}</span>
@@ -744,6 +816,73 @@
     @include tape-label;
     margin: 0;
     font-size: 1.25rem;
+  }
+
+  // Show/hide one group at a time while working on the other.
+  .filters {
+    display: inline-flex;
+    gap: 0.5rem;
+  }
+  .filter {
+    &.lean {
+      color: #6fd6c8;
+      border-color: rgb(111 214 200 / 0.45);
+    }
+    &.off {
+      opacity: 0.45;
+      border-style: dashed;
+    }
+    &[aria-pressed='false']::after {
+      content: ' — hidden';
+      font-size: 0.75rem;
+    }
+  }
+
+  .drawrole,
+  .typerole {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    font-size: 0.875rem;
+
+    legend {
+      font-weight: 700;
+    }
+    label {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: $tap-min;
+    }
+    input {
+      width: 1.15rem;
+      height: 1.15rem;
+      accent-color: $cadmium-orange;
+    }
+  }
+
+  .typerole {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: $cream-muted;
+  }
+
+  // Screen-reader-only text (the draw-role legend is obvious visually).
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   button {
@@ -864,6 +1003,19 @@
     stroke-width: 3;
     pointer-events: none;
   }
+  // Lean areas are a different animal: dashed teal, lighter fill, so a floor
+  // space reads at a glance as "freeform area", not "canvas on the wall".
+  :global(.art-poly.lean) {
+    fill: rgb(64 169 156 / 0.12);
+    stroke: #45b8aa;
+    stroke-dasharray: 7 5; // px dashes — the stroke itself is non-scaling
+  }
+  :global(.art-poly.lean.selected) {
+    fill: rgb(64 169 156 / 0.24);
+  }
+  :global(.art-poly.draft.lean) {
+    fill: rgb(64 169 156 / 0.18);
+  }
 
   // Handles sit at percent positions inside the surface, so their pixel
   // sizes divide by the zoom to stay visually constant.
@@ -944,6 +1096,9 @@
   }
 
   .list {
+    &.hidden {
+      display: none;
+    }
     h2 {
       margin: 0 0 0.5rem;
       font-size: 1rem;
@@ -966,6 +1121,13 @@
       &.selected {
         border-color: $cadmium-orange;
         color: $cadmium-orange;
+      }
+      &.lean {
+        border-color: rgb(111 214 200 / 0.45);
+        &.selected {
+          border-color: #45b8aa;
+          color: #6fd6c8;
+        }
       }
     }
     .meta {
