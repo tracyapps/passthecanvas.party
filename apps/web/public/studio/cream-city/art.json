@@ -1,4 +1,401 @@
 {
   "room": "cream-city",
-  "art": []
+  "art": [
+    {
+      "id": "art_panoramic_1",
+      "label": "Panoramic - 1",
+      "corners": [
+        {
+          "yaw": -109.3,
+          "pitch": 15.9
+        },
+        {
+          "yaw": -96.2,
+          "pitch": 15.9
+        },
+        {
+          "yaw": -96.2,
+          "pitch": 10.1
+        },
+        {
+          "yaw": -109.4,
+          "pitch": 10.8
+        }
+      ]
+    },
+    {
+      "id": "art_portrait_large_1",
+      "label": "Portrait large -1",
+      "corners": [
+        {
+          "yaw": -92.4,
+          "pitch": 30.4
+        },
+        {
+          "yaw": -79.3,
+          "pitch": 30.5
+        },
+        {
+          "yaw": -79.4,
+          "pitch": 13.3
+        },
+        {
+          "yaw": -92.7,
+          "pitch": 13.4
+        }
+      ]
+    },
+    {
+      "id": "art_small_square_1",
+      "label": "Square - 1",
+      "corners": [
+        {
+          "yaw": -103.6,
+          "pitch": 26.2
+        },
+        {
+          "yaw": -99.3,
+          "pitch": 26.4
+        },
+        {
+          "yaw": -99.2,
+          "pitch": 21.1
+        },
+        {
+          "yaw": -103.6,
+          "pitch": 21.1
+        }
+      ]
+    },
+    {
+      "id": "art_small_portrait_1",
+      "label": "Small Portrait - 1",
+      "corners": [
+        {
+          "yaw": -95.5,
+          "pitch": 39.4
+        },
+        {
+          "yaw": -91.2,
+          "pitch": 39.7
+        },
+        {
+          "yaw": -91.2,
+          "pitch": 34.2
+        },
+        {
+          "yaw": -95.6,
+          "pitch": 34
+        }
+      ]
+    },
+    {
+      "id": "art_small_square_2",
+      "label": "Square - 2",
+      "corners": [
+        {
+          "yaw": -76.7,
+          "pitch": 37.4
+        },
+        {
+          "yaw": -70,
+          "pitch": 37.2
+        },
+        {
+          "yaw": -70,
+          "pitch": 31.3
+        },
+        {
+          "yaw": -76.9,
+          "pitch": 31.4
+        }
+      ]
+    },
+    {
+      "id": "art_portrait_2",
+      "label": "Portrait - 2",
+      "corners": [
+        {
+          "yaw": -70.1,
+          "pitch": 28.3
+        },
+        {
+          "yaw": -60.6,
+          "pitch": 27.6
+        },
+        {
+          "yaw": -60.5,
+          "pitch": 15.2
+        },
+        {
+          "yaw": -70.2,
+          "pitch": 15.4
+        }
+      ]
+    },
+    {
+      "id": "art_portrait_3",
+      "label": "Portrait - 3",
+      "corners": [
+        {
+          "yaw": -56.4,
+          "pitch": 39.9
+        },
+        {
+          "yaw": -48.4,
+          "pitch": 38.2
+        },
+        {
+          "yaw": -48.6,
+          "pitch": 28.2
+        },
+        {
+          "yaw": -56.5,
+          "pitch": 29.2
+        }
+      ]
+    },
+    {
+      "id": "art_square_2",
+      "label": "Square - 3",
+      "corners": [
+        {
+          "yaw": -58.6,
+          "pitch": 15.4
+        },
+        {
+          "yaw": -52.4,
+          "pitch": 15.4
+        },
+        {
+          "yaw": -52.4,
+          "pitch": 9
+        },
+        {
+          "yaw": -58.6,
+          "pitch": 8.9
+        }
+      ]
+    },
+    {
+      "id": "art_canvas",
+      "label": "Landscape - 1",
+      "corners": [
+        {
+          "yaw": -115.5,
+          "pitch": 33.8
+        },
+        {
+          "yaw": -106.4,
+          "pitch": 35.5
+        },
+        {
+          "yaw": -106.6,
+          "pitch": 27.9
+        },
+        {
+          "yaw": -115.4,
+          "pitch": 26.9
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_2",
+      "label": "Square - 4",
+      "corners": [
+        {
+          "yaw": -107.6,
+          "pitch": 7
+        },
+        {
+          "yaw": -103.6,
+          "pitch": 6.7
+        },
+        {
+          "yaw": -103.7,
+          "pitch": 1.7
+        },
+        {
+          "yaw": -107.6,
+          "pitch": 2.1
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_3",
+      "label": "Square - 5",
+      "corners": [
+        {
+          "yaw": -66.6,
+          "pitch": 9.9
+        },
+        {
+          "yaw": -61.7,
+          "pitch": 9.9
+        },
+        {
+          "yaw": -61.7,
+          "pitch": 4.3
+        },
+        {
+          "yaw": -66.6,
+          "pitch": 4.3
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_4",
+      "label": "Landscape - 2",
+      "corners": [
+        {
+          "yaw": -50.9,
+          "pitch": 25.8
+        },
+        {
+          "yaw": -39.9,
+          "pitch": 24.3
+        },
+        {
+          "yaw": -39.8,
+          "pitch": 15.5
+        },
+        {
+          "yaw": -51,
+          "pitch": 15.8
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_5",
+      "label": "Panoramic - 2",
+      "corners": [
+        {
+          "yaw": -43.4,
+          "pitch": 32.8
+        },
+        {
+          "yaw": -33.1,
+          "pitch": 30
+        },
+        {
+          "yaw": -33,
+          "pitch": 25.3
+        },
+        {
+          "yaw": -43.6,
+          "pitch": 27.5
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_6",
+      "label": "Tall - 1",
+      "corners": [
+        {
+          "yaw": -37.5,
+          "pitch": 21.4
+        },
+        {
+          "yaw": -34.2,
+          "pitch": 21.4
+        },
+        {
+          "yaw": -34.2,
+          "pitch": 10.1
+        },
+        {
+          "yaw": -37.5,
+          "pitch": 10.1
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_7",
+      "label": "Small Square - bookcase wall - 1",
+      "corners": [
+        {
+          "yaw": 131.4,
+          "pitch": 22.1
+        },
+        {
+          "yaw": 134.1,
+          "pitch": 21.9
+        },
+        {
+          "yaw": 134.1,
+          "pitch": 18.8
+        },
+        {
+          "yaw": 131.3,
+          "pitch": 18.9
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_8",
+      "label": "Small Square - bookcase wall -  2",
+      "corners": [
+        {
+          "yaw": 125.1,
+          "pitch": 20
+        },
+        {
+          "yaw": 128.3,
+          "pitch": 19.9
+        },
+        {
+          "yaw": 128.3,
+          "pitch": 16.7
+        },
+        {
+          "yaw": 125.1,
+          "pitch": 16.7
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_9",
+      "label": "Small Portrait - bookcase wall - 1",
+      "corners": [
+        {
+          "yaw": 85.9,
+          "pitch": 20.8
+        },
+        {
+          "yaw": 88.7,
+          "pitch": 20.8
+        },
+        {
+          "yaw": 88.8,
+          "pitch": 16.3
+        },
+        {
+          "yaw": 85.8,
+          "pitch": 16.2
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_10",
+      "label": "Small Portrait - bookcase wall - 2",
+      "corners": [
+        {
+          "yaw": 86,
+          "pitch": 13
+        },
+        {
+          "yaw": 88.8,
+          "pitch": 13
+        },
+        {
+          "yaw": 88.8,
+          "pitch": 8.6
+        },
+        {
+          "yaw": 86,
+          "pitch": 8.6
+        }
+      ]
+    }
+  ]
 }

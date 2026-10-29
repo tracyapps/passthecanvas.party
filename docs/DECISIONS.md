@@ -109,6 +109,26 @@ straight drag is the simplest honest way to say "this rectangle on this
 wall"; the 3D-correct hang (with perspective) comes with the feature itself.
 Saved via dev-gated `PUT /api/art/:room` (same SPOTS_EDITOR switch as spots).
 
+### 2026-10-28 — Artwork pinned into the 3D room with a screen-space homography
+
+`?demo=art` hangs a deterministic placeholder painting in every `art.json`
+quad, live in the 360° room. Rendering is *corner-pinning, not 3D*: on every
+camera move the four corners are projected to screen pixels
+(`viewer.dataHelper.sphericalCoordsToViewerCoords`), an 8×8 homography maps
+the flat painting onto that quad, and the piece is placed with CSS
+`matrix3d(...)` (`apps/web/src/lib/room/homography.ts`, unit-tested). This
+buys real perspective for near-wall canvases with zero 3D engine and zero
+new dependencies, and it is the same math a video-edit corner-pin uses.
+Pieces more than 100° off-view are hidden instead of projected (projection
+goes wild at grazing angles). Quads that straddle the yaw ±180 seam are
+unwrapped relative to their own first corner before projecting.
+
+Two Svelte 5 lessons worth remembering (they cost a silent white-overlay
+bug): Photo Sphere Viewer must be held in `$state.raw` (a deep `$state`
+proxy breaks its private fields), and a throw during a component's mount
+silently tears down the whole containing `{#if}` block — wrap suspicious
+mount code in try/catch while debugging.
+
 ### 2026-10-28 — Art boxes became warpable quads
 
 Rectangles (center + size) can't follow how the flattened panorama skews a

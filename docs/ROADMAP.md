@@ -104,6 +104,8 @@ Replace placeholders with the real Blender studio.
 - [ ] **Wall gallery**: hang each party's artwork on the room's blank canvases, export a social-ready photo and a shareable pan-able room save, nicknames under each piece *(details pending from the owner)*
   - [x] Boundary tool at `?art=cream-city`: draw the canvas boxes on the flat panorama → `art.json` per room *(dev-gated like the spots editor)*
   - [x] Demo seating at `?demo=seats`: fake guests (canvas-painted video tracks + initials cards) to judge seat spacing before LiveKit exists
+  - [x] Placeholder-art proof at `?demo=art`: a deterministic painting hung in every quad, corner-pinned into the 3D room (screen-space homography, `matrix3d`)
+  - [ ] Owner decision: rounds match the wall quads (18 in cream-city), or fewer + overflow pieces "leaned" in extra lean-spots *(lean spots would be quads too, drawn in the same `?art=` editor with a wall/lean role — no pre-measured 3D spaces needed since the panorama is one fixed viewpoint)*
 
 ---
 

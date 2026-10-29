@@ -3,6 +3,7 @@ node_modules/
 dist/
 .svelte-kit/
 *.tsbuildinfo
+_design/
 
 # env
 .env

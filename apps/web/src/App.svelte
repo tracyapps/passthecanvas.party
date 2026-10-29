@@ -12,6 +12,7 @@
   const editRoom = params.get('spots'); // "?spots=cream-city" opens the spot editor
   const artRoom = params.get('art'); // "?art=cream-city" opens the wall art editor
   const demoSeats = params.get('demo') === 'seats'; // "?demo=seats" fills the room with fake guests
+  const demoArt = params.get('demo') === 'art'; // "?demo=art" pins placeholder art on the walls
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
 
   const party = new PartyConnection();
@@ -48,6 +49,13 @@
     <main class="loading">Filling the seats…</main>
   {:then { default: DemoRoom }}
     <DemoRoom />
+  {/await}
+{:else if demoArt}
+  <!-- Owner tool: placeholder artwork pinned into the wall canvas boxes. -->
+  {#await import('./lib/room/ArtDemo.svelte')}
+    <main class="loading">Hanging the artwork…</main>
+  {:then { default: ArtDemo }}
+    <ArtDemo />
   {/await}
 {:else if !joined}
   <main class="join">
