@@ -113,3 +113,22 @@ Photoshop texture edit `_design/panorama-edit.png`, retaining the existing scene
 asset credits above. No new third-party artwork added. Export: Pillow WebP,
 quality 90, method 6, RGB, 4096 × 2048, 1,472,468 bytes. No resize or projection
 change; original PNG preserved in `_design`.
+
+### Public site type — October 30, 2026
+
+Days One (Jovanny Lemonad) and Square Peg (Robert Leuschke), Google Fonts,
+SIL Open Font License 1.1. Locally served regular TTF files from the official
+Google Fonts CSS endpoints. License texts retained alongside the fonts:
+`site/days-one-OFL.txt` and `site/square-peg-OFL.txt`.
+Official sources: https://fonts.google.com/specimen/Days+One and
+https://fonts.google.com/specimen/Square+Peg; license copies from the respective
+`ofl/daysone` and `ofl/squarepeg` directories in github.com/google/fonts.
+
+### Viga and original avatar badges — October 30, 2026
+
+Viga by FontFuror, from Google Fonts (https://fonts.google.com/specimen/Viga),
+SIL Open Font License 1.1. Local regular TTF with `site/viga-OFL.txt`, retrieved
+from Google's official font CSS and google/fonts `ofl/viga/OFL.txt` respectively.
+It replaces Days One for public headings. Square Peg remains the handwriting.
+The brush/star/cat/swirl SVG avatar badges are original code-created artwork in
+`StudioAvatar.svelte`, with no external character-kit or hosted avatar assets.

@@ -125,3 +125,26 @@ pages. Paper objects and artwork retain their original colors. Footer wood uses
 one covered image with a dark overlay in both themes. The Cream City panorama
 now serves the owner's Photoshop texture edit, exported to 4K quality-90 WebP;
 its URL and all viewpoint geometry remain the same.
+
+## Hero and type refresh (October 30, 2026)
+
+Public headings now use Days One and handwriting uses Square Peg. Both are
+served from `public/site` with their SIL OFL files; private painting-app typography
+is unchanged. The hero embeds `PublicStudio` in its `hero` variant behind the
+smaller paper invitation. It slowly turns until paused or interacted with. The
+small instruction strip offers Pause/Rotate, with arrow-key viewing on focus and
+two-finger touch exploration. Single-finger scrolling and mouse-wheel page
+scrolling remain available. Reduced-motion preference disables rotation and
+inertia; rotation also stops offscreen and in hidden tabs. The static scene
+remains a fallback while the viewer loads. The gallery's full room dialog remains.
+The old Lights wash and duplicate decorative wall lettering are removed. Actual
+room lighting, including lamps, shadows and exposure, is on the public roadmap.
+
+## Viga and account foundation (October 30, 2026)
+
+Viga replaces Days One for public headings; Square Peg remains. `/account` now
+contains an unsaved avatar/profile preview until Clerk is configured, and loads
+private profile, friend and party-planning controls for an authenticated account
+when the account backend is connected. Source/API/delivery boundaries and setup
+are in `ACCOUNT-COMMUNITY.md`. Hosted sign-in, mail delivery and completed party
+history must not be advertised as available until their acceptance checks pass.

@@ -420,3 +420,54 @@ bottom pad position and the working-end priority. Local study scope only.
   works; no browser console errors. Restored future Vite/npm-ci build settings.
 - Review images: `output/playwright/public-site-themes/` (ignored). Physical
   touch, Safari and a real screen-reader session were not exercised this round.
+
+## October 30, 2026 — Public hero, fonts and stronger color
+
+- `npm run check`: zero errors/warnings; `npm test`: 80 tests / 18 files pass;
+  final production build passes (existing optional studio/3D size advisory).
+- All nine public routes checked at 360px in both themes; Days One caused one
+  paint-page heading overflow, corrected with responsive heading sizing. Final
+  dark sweep has no clipped headings. Desktop and 800px hero reviewed as well.
+- Actual hero panorama loads behind the smaller poster. Observed automatic room
+  movement in screenshots; pointer drag changes the room and switches the control
+  to Rotate. Pause/Rotate and focused arrow-key room viewing exercised. No console
+  errors on the live production page. Font-family DOM inspection confirms Days
+  One and Square Peg. New fonts/license texts are local site assets.
+- Reviewed reduced-motion branches: no automatic rotation/inertia, preference
+  change listener, disabled rotation control. Browser tooling has no media-query
+  emulation, so a real reduced-motion OS session remains unverified. Physical
+  multi-touch and VoiceOver also remain owner/device checks.
+- Vercel `dpl_WAsDBv9GR7xn5gjnxqeHHjHbDtvy` READY on the existing public alias;
+  live hero and pause behavior checked. Restored future Vite/npm-ci/LFS settings.
+  No Git commit/push, new dependency/service, DNS or backend change.
+- Review images: `output/playwright/public-site-hero/`; `live-hero.png` shows the
+  published dark appearance. Flat Lights switch removed; real room lighting
+  appears in the public workbench copy and repository roadmap.
+
+## October 30, 2026 — Viga and account-community foundation
+
+- `PTC_TEST_DATABASE_URL=postgres://ptc_test@127.0.0.1:55439/postgres npm test`:
+  **92 tests / 20 files pass**, including actual Postgres 18 SQL/HTTP boundaries,
+  mutual friendship, private profiles, invite/RSVP access, token revocation/expiry,
+  calendar injection/UTF-8 handling and opt-in mail/retry/concurrent-worker checks.
+  Test identity verification and mail transport are injected; no real message sent.
+  Temporary local test cluster stopped after verification; test schemas removed.
+- `npm run check`: zero errors/warnings. Production build passes with nine metadata
+  routes +404; existing optional 3D chunk advisory remains. CI now provisions an
+  ephemeral local Postgres service so SQL tests will run rather than skip; hosted
+  CI itself was not triggered (no Git commit/push).
+- Browser: Viga inspected on all nine public routes at 360px, no clipped headings
+  or horizontal page overflow. Account preview inspected at 1440/360 in light/dark.
+  Cat/magenta badge controls work with click/Space; unsigned Save stays disabled
+  and the screen explains that the preview is not uploaded/saved.
+- Production static deployment `dpl_DFttQGrKJ1wEikop9gt6wPyoKt4U` READY on the
+  existing alias. Live Viga bytes match the source font; account/avatar preview
+  works without console errors. Vercel future Vite/npm-ci/LFS settings restored.
+- Live `/api/account/community` remains 404 on the static host, intentionally not
+  rewritten to HTML or claimed as working backend. Railway connector requires
+  reauthentication; Clerk/Discord, database host and Resend sender configuration
+  were not supplied/provisioned. Authenticated browser flow and real mail delivery
+  remain unverified. Read `docs/ACCOUNT-COMMUNITY.md` for connection/acceptance steps.
+- Completed party/painting history, verified attendee links and private recap are
+  documented next steps, not fabricated current data. Physical touch, Safari and
+  real VoiceOver remain device checks. Review images: `output/playwright/account-foundation/`.

@@ -351,3 +351,52 @@ Replace the existing Cream City panorama with the owner's `_design/panorama-edit
 converted to quality-90, method-6 WebP at the same 4096 × 2048 dimensions. Preserve
 projection, viewpoint coordinates and the original PNG. The served image is
 1,472,468 bytes versus the 11,138,794-byte PNG (86.8% smaller).
+
+### 2026-10-30 — The hero is the room
+
+Use the existing Photo Sphere Viewer as the public home hero background, with
+Days One headings, Square Peg handwriting and stronger magenta/teal/yellow
+accents. Scope public typography changes to public pages, preserving painting
+app typography. Keep the fonts local and retain their SIL OFL license files.
+
+The room turns at about two degrees per second, pauses on pointer/focus input,
+and has a visible Pause/Rotate control. Stop rendering rotation offscreen or in
+hidden tabs. Reduced motion disables automatic rotation and inertia, including
+when the preference changes during a visit. Touch uses two fingers to explore
+so a single finger can still scroll the page. Keep the static panorama fallback
+while the interactive viewer loads. Remove decorative fake wall lettering and
+flat color-wash lights; real scene lighting is now an explicit roadmap item.
+
+### 2026-10-30 — Account community foundation and approved account mail
+
+Use Viga for public headings; keep Square Peg and the existing painting-app type.
+Continue with the owner's approved Clerk email/optional Discord and Railway
+Postgres choices. Clerk 6's prebuilt account UI is loaded from its configured
+frontend domain using the documented plain-JavaScript integration; no framework
+or authentication provider was added. Profile data uses the verified session
+subject; public profile links use unrelated UUIDs. Profiles are private by default,
+friendship requires explicit recipient acceptance, and declining/removing a
+connection prevents repeated requests from that pair. No public directory.
+
+Scheduled parties preserve an absolute start instant plus the host's IANA time
+zone. Account invitations are restricted to connected friends; a separately
+revocable share link can invite someone else. Store only SHA256 share-token hashes
+and put raw invitation tokens in URL fragments, not request URLs or server logs.
+Guest RSVP, rescheduling and durable party attendance remain later integration
+work. Calendar export provides a 15-minute device-calendar reminder; it does not
+pretend a downloaded file is a server-sent notification.
+
+The owner explicitly approved Resend for expected invitations and opt-in reminders.
+Use its REST API via built-in fetch (no added SDK dependency). A Postgres outbox
+leases and deduplicates jobs, rechecks consent/RSVP/cancellation, sends only to a
+Clerk-verified primary address and stops ambiguous retry before the provider's
+24-hour idempotency window. Email invitations require an existing friend connection
+and recipient opt-in; arbitrary third-party email submission is not accepted.
+Delivery stays off until approved sender/domain, credentials and operational gates
+are ready. No email or provider credentials were supplied or used in this change.
+
+Start with original local paper/paint badge avatars; they require no photos,
+biometrics or remote avatar service. Avatar research compares self-hosted DiceBear
+and future 3D/upload options without adding those dependencies. Completed party
+history can only come from a future verified server-completion adapter, never a
+browser's claim that a party occurred. No WebSocket message shape changed here.

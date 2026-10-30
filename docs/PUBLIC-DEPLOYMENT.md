@@ -180,3 +180,13 @@ October 30 appearance/room update: production artifact deployment
 Only compiled public files were uploaded. Restored Vite / Node 22 / npm ci /
 `npm run build` / `apps/web/dist` / Git LFS settings after the static upload.
 Git remains unlinked pending reviewed source commit; no DNS/backend changes.
+
+October 30 hero/type/color refresh: `dpl_WAsDBv9GR7xn5gjnxqeHHjHbDtvy` READY.
+Production alias verified with the interactive room as the hero background and
+locally served Days One / Square Peg. Future Git build settings restored; source
+remains uncommitted and Git linking is still pending owner review.
+
+October 30 Viga/account-preview artifact: `dpl_DFttQGrKJ1wEikop9gt6wPyoKt4U`
+READY. Static frontend only; account backend is not hosted by this artifact.
+Railway connection currently needs reauthentication. Follow `ACCOUNT-COMMUNITY.md`
+for Clerk/Discord/Postgres/approved-Resend setup and real-session verification.

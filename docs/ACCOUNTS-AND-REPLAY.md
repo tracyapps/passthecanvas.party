@@ -139,3 +139,14 @@ The owner's request authorizes planning art-stroke replay; it does not authorize
 Local tests exercise verified-subject isolation, origin/session rejection, bounded
 input and storage failure. They do not establish live Clerk, Discord or Postgres
 readiness. No external project was provisioned in this change.
+
+## October 30 account-community extension
+
+Profiles, original local avatar badges, mutual friendship, scheduled parties,
+account invitations, revocable share links, RSVP/calendar export and an approved
+Resend opt-in outbox are now implemented locally. See `ACCOUNT-COMMUNITY.md` for
+exact source/API/configuration and hosted acceptance checks. The real local
+Postgres integration suite is exercised; no live Clerk/Discord or email delivery
+is claimed. Railway inspection requires connector reauthentication. No party
+WebSocket message changed, and completed art/attendance/replay history remains
+behind the durable verified-party integration described above.

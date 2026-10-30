@@ -155,3 +155,29 @@ Replace placeholders with the real Blender studio.
   retention/deletion and sharing gates before advertising those as available.
 - [x] Public light/dark appearance with remembered choice; dark, non-repeating
   footer in both themes; publish the owner's texture-edited 4K WebP panorama.
+- [x] Days One headings and Square Peg handwriting; draggable hero panorama with
+  pausable, offscreen-aware slow rotation and static reduced-motion appearance.
+- [ ] Real room lighting: adjustable lamps, light colors and rendered scene moods
+  with matching shadows/exposure. Replace the retired flat color-wash switch.
+
+## Owner-requested accounts and community slice — October 30, 2026
+
+- [x] Viga public headings; retain Square Peg handwriting.
+- [x] Private-by-default profiles, original no-photo avatar badge editor, explicit
+  profile sharing, mutual friend requests, decline/remove and requests-off controls.
+- [x] Account-owned scheduled parties with time zones; connected-friend account
+  invitations, hashed/revocable share links, RSVP/cancel and calendar reminders.
+- [x] Approved Resend REST adapter and durable opt-in account-mail outbox; delivery
+  defaults off, verified primary email only, bounded idempotent retries/statuses.
+- [x] Real local Postgres authorization/visibility/friendship/invite/mail tests.
+- [ ] Reconnect Railway; configure Clerk email codes and production Discord OAuth;
+  deploy account server + Postgres and prove real two-account browser sessions.
+- [ ] Configure verified Resend sender, tracking-off settings, suppression/bounce
+  handling and expected-invite policy; test opt-in delivery, opt-out and cancellation
+  with consenting recipients before setting ACCOUNT_EMAIL_ENABLED=1.
+- [ ] Authenticated party-join tickets and verified account/member mapping; Add friend
+  during a party without trusting a browser-supplied account ID.
+- [ ] Server-written completed-party/painting history, private recap room image of
+  artwork/avatars, attendee profile/friend actions and authorized shared-art links.
+- [ ] Guest/nonmember RSVP, rescheduling with updated calendar/email jobs, reporting,
+  account deletion/retention and real-device avatar/call checks before broad launch.

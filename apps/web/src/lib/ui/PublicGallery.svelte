@@ -100,7 +100,7 @@
 <style lang="scss">
   .gallery-wall { position: relative; isolation: isolate; padding: clamp(28px,5vw,70px) clamp(18px,4vw,60px); background: var(--gallery-wall, #e9deca); color: var(--gallery-ink, #30281f); box-shadow: inset 0 8px 22px #41352716; }
   .gallery-wall::before { content: ''; position: absolute; z-index: -1; inset: 0; opacity: .22; background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23978973' filter='url(%23n)' d='M0 0h200v200H0z'/%3E%3C/svg%3E"); }
-  .wall-label { max-width: 550px; margin: 0 auto 65px; text-align: center; } .wall-label span { font-size: .8rem; letter-spacing: .2em; font-weight: 700; } .wall-label strong { display: block; font: 500 clamp(2.4rem,5vw,4rem)/1.1 'Caveat',cursive; } .wall-label p { font-size: 1rem; line-height: 1.6; }
+  .wall-label { max-width: 550px; margin: 0 auto 65px; text-align: center; } .wall-label span { font-size: .8rem; letter-spacing: .2em; font-weight: 700; } .wall-label strong { display: block; font: 500 clamp(2.4rem,5vw,4rem)/1.1 'Square Peg',cursive; } .wall-label p { font-size: 1rem; line-height: 1.6; }
   .hung-art { display: flex; align-items: start; gap: clamp(24px,4vw,65px); }
   .painting { flex: 1; min-width: 0; margin: 0; position: relative; }
   .painting-1 { transform: rotate(-2deg); margin-top: 25px; } .painting-2 { margin-top: 95px; transform: rotate(2deg); } .painting-3 { transform: rotate(-1deg); }
@@ -108,7 +108,7 @@
   .frame { padding: clamp(10px,1.5vw,20px); border: 2px solid #644326; background: #714b2e url('/site/walnut.webp') center/700px; box-shadow: inset 2px 2px 2px #b99065, inset -3px -3px 2px #281a10, 5px 12px 12px #3929164d; }
   .frame > svg { display: block; width: 100%; height: auto; box-shadow: 0 0 0 2px #251d18, inset 2px 2px 5px #0005; }
   figcaption { padding: 18px 16px; margin: 22px auto 0; width: 95%; background: #fbf5e7; color: #30281f; box-shadow: 1px 3px 5px #48331e24; transform: rotate(1deg); }
-  .sample { font-size: .65rem; font-weight: 700; letter-spacing: .1em; color: #61513d; } h3 { font: 600 1.55rem/1.15 'Caveat',cursive; margin: 7px 0; } figcaption p { font-size: .88rem; line-height: 1.5; margin: 0 0 12px; }
+  .sample { font-size: .65rem; font-weight: 700; letter-spacing: .1em; color: #61513d; } h3 { font: 600 1.55rem/1.15 'Square Peg',cursive; margin: 7px 0; } figcaption p { font-size: .88rem; line-height: 1.5; margin: 0 0 12px; }
   .playback { display: flex; gap: 6px; flex-wrap: wrap; } button { min-height: 44px; min-width: 44px; padding: 8px 10px; border: 1px solid #887251; background: #f0e4cb; color: #30281f; border-radius: 3px; font: inherit; font-size: .85rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
   .scrub { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; font-size: .8rem; margin-top: 12px; } input { width: 100%; min-height: 44px; accent-color: #765132; } output { font-variant-numeric: tabular-nums; }
   :is(button,input):focus-visible { outline: 3px solid #794007; outline-offset: 3px; }

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import AccountControls from '../account/AccountControls.svelte';
   import PublicSupport from './PublicSupport.svelte';
   import { site, navigation, pages, partySteps, workbench } from './public-site-content';
   import '../../styles/public-site.scss';
@@ -7,7 +6,6 @@
   let page = $derived(pages[path] ?? pages['/']);
   let roomDialog: HTMLDialogElement;
   let roomOpen = $state(false);
-  let light = $state(0);
   let dark = $state(document.documentElement.dataset.siteTheme === 'dark');
   function toggleTheme() {
     dark = !dark;
@@ -16,7 +14,6 @@
     try { localStorage.setItem('ptc-site-theme-v1', dark ? 'dark' : 'light'); } catch { /* Keep the choice for this page even without storage. */ }
   }
   let trinketMessage = $state('');
-  const lightNames = ['Warm & cozy', 'A little pink', 'After-hours blue'];
   function explore() { roomOpen = true; roomDialog.showModal(); }
   function closeRoom() { roomDialog.close(); roomOpen = false; }
   function comfort() { trinketMessage = trinketMessage ? '' : 'This is your emotional support reminder: it is allowed to look weird.'; }
@@ -26,7 +23,7 @@
   <title>{path === '/' ? 'Pass the Canvas — Make something. Together.' : `${page.title} — Pass the Canvas`}</title>
 </svelte:head>
 
-<div class="public-site" class:rose-light={light === 1} class:blue-light={light === 2}>
+<div class="public-site">
   <a class="public-skip" href="#main-content">Skip to content</a>
   <header class="site-header">
     <a class="wordmark" href="/" aria-label="Pass the Canvas home"><svg viewBox="0 0 46 46" aria-hidden="true"><path d="M7 6l30 3-2 29-29-2z" fill="#f0bb36" stroke="currentColor" stroke-width="2"/><path d="M14 15q9-9 17 1t-9 7-8 9" fill="none" stroke="#bc395f" stroke-width="5" stroke-linecap="round"/></svg><span>PASS THE<br/>CANVAS<span class="wordmark-dot">.party</span></span></a>
@@ -38,7 +35,7 @@
   <main id="main-content">
   {#if path === '/'}
     <section class="studio-hero" aria-labelledby="home-title">
-      <div class="room-backdrop" aria-hidden="true"></div><div class="light-wash" aria-hidden="true"></div>
+      <div class="hero-room">{#await import('./PublicStudio.svelte')}{:then { default: PublicStudio }}<PublicStudio hero />{/await}</div>
       <div class="hero-poster paper">
         <span class="tape top-tape" aria-hidden="true"></span>
         <p class="eyebrow">Pull up a chair. Make a little mess.</p>
@@ -47,10 +44,6 @@
         <div class="hero-actions"><a href="/try" class="ink-button">Get a little paint on your hands <span aria-hidden="true">↗</span></a><a href="/how-it-works" class="text-link">Wait, how does this work?</a></div>
         <p class="handwritten hero-note">No masterpiece required.</p>
       </div>
-      <div class="wall-lettering" aria-hidden="true"><span>MAKE</span><span>SOME</span><span>THING.</span><small>yes, you.</small></div>
-      <div class="preview-ticket"><span class="ticket-hole" aria-hidden="true"></span><b>PAINT PREVIEW<br/>NOW OPEN</b><span>The party is still<br/>on the workbench.</span></div>
-      <button class="room-invite" type="button" onclick={explore}><svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="16" cy="16" rx="14" ry="6"/><path d="M7 9q9-8 18 0M7 23q9 8 18 0M25 2v7h-7"/></svg><span>Take a look around<small>A real 360° studio preview</small></span></button>
-      <button class="light-switch" type="button" onclick={() => light = (light + 1) % 3} aria-label={`Change studio lighting. Current mood: ${lightNames[light]}`}><span aria-hidden="true"></span>Lights</button>
     </section>
 
     <section class="manifesto wall-section">
@@ -93,7 +86,7 @@
     <section class="page-opening support-opening wall-section"><div><p class="eyebrow">Independently made. A little paint-covered.</p><h1>Help keep<br/><em>the paint flowing.</em></h1><p class="lead">Hi. I’m Tapps. I’m making a place for people to make things together.</p><p>This started with wanting a better way for my church community to have virtual art parties. And the very strong belief that making art belongs to everybody.</p><p>Not just people who already think they’re good at it.</p><div class="support-slip paper"><PublicSupport /></div><a class="text-link" href={site.contactUrl} rel="noopener noreferrer">Questions or feedback? Get in touch <span aria-hidden="true">↗</span></a></div><div class="support-friends"><button type="button" class="trinket" onclick={comfort} aria-label="Get encouragement from the emotional support dumpster"><img src="/site/studio-friends.webp" alt="The studio’s very supportive crocheted dumpster, rubber duck and cassette." width="600" height="400"/></button><p class="handwritten">The studio support department.</p><p aria-live="polite">{trinketMessage}</p></div></section>
 
   {:else if path === '/account'}
-    <section class="page-opening account-opening wall-section"><p class="eyebrow">A place to leave your paint-covered things.</p><h1>Your corner<br/><em>of the studio.</em></h1><div class="account-paper paper"><span class="tape" aria-hidden="true"></span><h2>Come as you are.</h2><p>Email sign-in, with Discord as an optional way in when enabled. The public paint preview always works without an account.</p><AccountControls/><p class="account-future">Saved painting workspaces are being connected. Personal artwork albums and private galleries aren’t available yet.</p><a href="/try" class="text-link">Just here to try the paints?</a></div></section>
+    <section class="page-opening account-opening wall-section"><p class="eyebrow">A place for your paint-covered people.</p><h1>Your corner<br/><em>of the studio.</em></h1><p class="lead">Make yourself at home. Find your friends. Put something playful on the calendar.</p>{#await import('../account/AccountStudio.svelte')}<p>Opening your studio…</p>{:then { default: AccountStudio }}<AccountStudio />{/await}</section>
 
   {:else if path === '/privacy' || path === '/terms'}
     <article class="legal-page wall-section"><p class="eyebrow">The studio noticeboard · Updated October 29, 2026</p><h1>{path === '/privacy' ? 'Privacy, in' : 'A few studio'}<br/><em>{path === '/privacy' ? 'plain language.' : 'ground rules.'}</em></h1>
@@ -103,7 +96,8 @@
       <p>Your light or dark appearance choice is saved in this browser so it stays the same when you return. It is not sent to an account or used for tracking.</p>
       <h2>No call recording. No advertising trackers.</h2><p>We do not record, store or analyze anyone’s camera video or microphone audio. This preview has no advertising trackers or application analytics. The future art replay feature records artwork operations, not your call.</p>
       <h2>Hosting and basic requests</h2><p>Loading the site sends ordinary web requests, including an IP address, to the hosting provider. The planned public host is Vercel; its service may keep operational logs. Fonts and site images are served with the website. Interactive 360° viewing uses your device’s graphics capabilities and does not request camera or microphone access.</p>
-      <h2>If you choose to sign in</h2><p>When account sign-in is configured, Clerk handles email verification and optional Discord sign-in. Signing in sends the information needed for that flow to Clerk and, if you choose it, Discord. We do not need your Discord messages or server membership. Account workspace storage uses the verified account identifier and your saved layout settings on the app server and database.</p>
+      <h2>If you choose to sign in</h2><p>When account sign-in is configured, Clerk handles email verification and optional Discord sign-in. Signing in sends the information needed for that flow to Clerk and, if you choose it, Discord. We do not need your Discord messages or server membership. When the account server is enabled, it stores your profile and avatar choices, saved layouts, friend requests and connections, party plans and RSVPs under your verified account identifier. Profiles are private by default. A shared profile link is visible to signed-in visitors when you enable it; friends and people you request can see your profile. Your email address is not displayed on profiles or guest lists.</p>
+      <h2>Invitations and reminders</h2><p>Account invitations appear in your studio. Shared invitation links reveal the party details, not the guest list; the host can replace or cancel them. Manual email invitations open your own email app. When Resend delivery is enabled, only connected friends who have opted into email invitations and people who have opted into reminders for parties they host or accept are emailed. The server gets your verified primary email from Clerk for delivery; it is not copied into profile cards. Turn either preference off in your profile. A calendar download includes an optional 15-minute reminder handled by your calendar after import. Calendar entries need updating if a party changes.</p><h2>Account launch status</h2><p>Account services and email delivery are not enabled on this public preview yet. Unsigned profile and avatar previews stay in this tab. Before hosted account history and artwork launch, we will publish retention and deletion choices and verify account isolation and delivery.</p>
       <h2>Optional support and contact</h2><p>Support links take you to Cash App, Venmo or PayPal. We do not embed a checkout, track payment clicks or receive your payment details through this website. Copy buttons only put the displayed public handle on your clipboard when you ask. The contact form opens on tapps.design; information you choose to submit there is handled on that site.</p>
       <h2>Party artwork and sharing</h2><p>Hosted party rooms, durable artwork history and account galleries are not enabled in this public preview. Before those launch, this notice will describe retention, deletion, party access and sharing choices. Artwork will not quietly become a public gallery entry.</p>
       <h2>Questions or data requests</h2><p>For privacy questions or account-data requests, <a href={site.contactUrl} rel="noopener noreferrer">contact Tapps using the contact form</a>.</p>

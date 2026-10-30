@@ -5,6 +5,26 @@ const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '';
 export const accountState = $state({ userId: null as string | null, ready: !publishableKey, configured: Boolean(publishableKey), error: '' });
 let clerk: Clerk | null = null;
 let initialization: Promise<void> | null = null;
+type ClerkOptions = NonNullable<Parameters<Clerk['load']>[0]>;
+type ClerkUI = NonNullable<ClerkOptions['ui']>['ClerkUI'];
+async function loadAccountUI(): Promise<ClerkUI> {
+  const browser = window as Window & { __internal_ClerkUICtor?: ClerkUI };
+  if (browser.__internal_ClerkUICtor) return browser.__internal_ClerkUICtor;
+  // Clerk 6 separates its prebuilt sign-in/account UI from its session client.
+  const domain = atob(publishableKey.split('_')[2] ?? '').replace(/\$$/, '');
+  if (!/^[a-z0-9.-]+$/i.test(domain)) throw new Error('Invalid account domain');
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    const timeout = window.setTimeout(() => { script.remove(); reject(new Error('Account UI timed out')); }, 20000);
+    script.src = `https://${domain}/npm/@clerk/ui@1/dist/ui.browser.js`;
+    script.async = true; script.crossOrigin = 'anonymous';
+    script.onload = () => { clearTimeout(timeout); resolve(); };
+    script.onerror = () => { clearTimeout(timeout); script.remove(); reject(new Error('Account UI unavailable')); };
+    document.head.append(script);
+  });
+  if (!browser.__internal_ClerkUICtor) throw new Error('Account UI unavailable');
+  return browser.__internal_ClerkUICtor;
+}
 
 export function initializeAccount(): Promise<void> {
   if (!publishableKey) return Promise.resolve();
@@ -12,7 +32,7 @@ export function initializeAccount(): Promise<void> {
     try {
       const { Clerk } = await import('@clerk/clerk-js');
       clerk = new Clerk(publishableKey);
-      await clerk.load({ telemetry: { disabled: true } });
+      await clerk.load({ telemetry: { disabled: true }, ui: { ClerkUI: await loadAccountUI() } });
       clerk.addListener(({ user }) => { accountState.userId = user?.id ?? null; });
       accountState.userId = clerk.user?.id ?? null;
       accountState.error = '';
@@ -47,15 +67,15 @@ export async function signOutAccount(): Promise<void> {
     accountState.error = 'Sign-out failed. Please try again.';
   }
 }
-async function request(method: 'GET' | 'PUT', value?: unknown): Promise<unknown | null> {
+export async function accountRequest<T>(path: string, method: 'GET' | 'PUT' | 'POST' = 'GET', value?: unknown): Promise<T> {
   await initializeAccount();
   const userId = accountState.userId;
   const token = await clerk?.session?.getToken();
   if (!token || !userId) throw new Error('Sign in to access account views.');
   const base = (import.meta.env.VITE_ACCOUNT_API_URL ?? '').replace(/\/$/, '');
-  const response = await fetch(`${base}/api/account/workspaces`, {
-    method, headers: { Authorization: `Bearer ${token}`, ...(method === 'PUT' ? { 'Content-Type': 'application/json' } : {}) },
-    body: method === 'PUT' ? JSON.stringify(value) : undefined, cache: 'no-store'
+  const response = await fetch(`${base}/api/account/${path}`, {
+    method, headers: { Authorization: `Bearer ${token}`, ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}) },
+    body: method !== 'GET' ? JSON.stringify(value) : undefined, cache: 'no-store'
   });
   // A result from an earlier identity must not be applied after switching accounts.
   if (userId !== accountState.userId) throw new Error('The signed-in account changed. Try again.');
@@ -65,7 +85,9 @@ async function request(method: 'GET' | 'PUT', value?: unknown): Promise<unknown 
   }
   const result = response.status === 204 ? null : await response.json();
   if (userId !== accountState.userId) throw new Error('The signed-in account changed. Try again.');
-  return result;
+  return result as T;
 }
-export function loadAccountWorkspaces(): Promise<unknown | null> { return request('GET'); }
-export async function saveAccountWorkspaces(value: unknown): Promise<void> { await request('PUT', value); }
+export function loadAccountWorkspaces(): Promise<unknown | null> { return accountRequest('workspaces'); }
+export async function saveAccountWorkspaces(value: unknown): Promise<void> { await accountRequest('workspaces', 'PUT', value); }
+
+export function manageAccount(): void { clerk?.openUserProfile(); }

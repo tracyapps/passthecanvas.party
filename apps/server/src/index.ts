@@ -13,6 +13,8 @@ import { sanitizeArt, sanitizeSpots } from '@ptc/shared';
 import { getParty, SNAPSHOT_DIR } from './party.ts';
 import { makeLiveKitToken } from './livekit.ts';
 import { configuredAccountHandler } from './accounts.ts';
+import { configuredCommunityHandler } from './community.ts';
+import { configuredAccountMail } from './account-mail.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.url));
@@ -22,9 +24,16 @@ const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.
 const SAFE_ID = /^[a-z0-9-]{3,40}$/;
 const SAFE_FILE = /^round-\d{1,3}\.png$/;
 const accountHandler = configuredAccountHandler();
+const communityHandler = configuredCommunityHandler();
+configuredAccountMail();
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
+
+  if (url.pathname === '/api/account/community' || url.pathname.startsWith('/api/account/community/')) {
+    await communityHandler(req, res);
+    return;
+  }
 
   if (url.pathname === '/api/account/workspaces') {
     await accountHandler(req, res);

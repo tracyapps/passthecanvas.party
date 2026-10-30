@@ -143,7 +143,7 @@
 
 <style lang="scss">
   .paint-table { position: relative; isolation: isolate; color: #fff4df; padding: clamp(20px, 4vw, 60px); background: #49301e url('/site/walnut.webp') center / 900px; box-shadow: inset 0 5px 18px #0007, 0 16px 35px #23180e40; min-height: 600px; border-radius: 4px; }
-  .table-note { display: inline-block; margin: 0 0 20px 2%; padding: 12px 22px; background: #f5e6bb; color: #372719; box-shadow: 2px 5px 10px #0005; transform: rotate(-3deg); font: 700 1.1rem var(--font-hand, 'Caveat', cursive); }
+  .table-note { display: inline-block; margin: 0 0 20px 2%; padding: 12px 22px; background: #f5e6bb; color: #372719; box-shadow: 2px 5px 10px #0005; transform: rotate(-3deg); font: 700 1.1rem var(--font-hand, 'Square Peg', cursive); }
   .table-note span { letter-spacing: .08em; } .table-note p { margin: 2px 0; font: 400 1rem system-ui; }
   .paint-tin { position: absolute; width: 185px; height: auto; top: 45px; left: 43%; transform: rotate(5deg); filter: drop-shadow(3px 7px 3px #0007); pointer-events: none; }
   @media(max-width: 1100px) { .paint-tin { display: none; } }
@@ -158,7 +158,7 @@
   canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
   .keyboard-cursor { display: none; position: absolute; width: 18px; height: 18px; border: 2px solid #111; outline: 2px solid white; border-radius: 50%; transform: translate(-50%,-50%); pointer-events: none; }
   .paper:focus-within .keyboard-cursor { display: block; } .keyboard-cursor.down { background: #1117; }
-  .paper-caption { display: block; margin: 20px 0 0; text-align: center; font: 1.4rem 'Caveat', cursive; color: #fff4df; }
+  .paper-caption { display: block; margin: 20px 0 0; text-align: center; font: 1.4rem 'Square Peg', cursive; color: #fff4df; }
   .paint-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
   .palette { display: flex; flex-wrap: wrap; border: none; gap: 2px; padding: 5px 12px; margin: 0; border-radius: 40px 28px 35px 20px; background: #e2d4b9; box-shadow: 3px 5px 3px #0006; }
   .palette legend { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
