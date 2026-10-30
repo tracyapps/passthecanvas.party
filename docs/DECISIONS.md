@@ -289,3 +289,65 @@ Start replay capture now with bounded, versioned emitted stamps including owned
 contribution, elapsed time, load, size, intensity and stamp index/angle. Export
 art-only JSON from the study menu. No durable journal, replay player or party
 reconnect guarantee is implied. No video/audio recording is introduced.
+
+### 2026-10-29 — Public studio invitation before hosted party rollout
+
+The owner requested a public website ready for Vercel and later provider wiring.
+Reuse the Svelte/Vite app with native path links and explicit static page metadata;
+keep existing query-based party/development entry points. Lazy-load the party
+studio and 360° viewer, and exclude owner editors/studies from production. No new
+framework, runtime dependency, analytics, storage or payment service.
+
+Use “Make something. Together.” and “No masterpiece required.” Tactile posters,
+paper/wood, the real studio render, asymmetrical framed examples and optional
+light/trinket interactions carry the invitation. Distinguish working paint/room/
+sample playback from the planned passing ring and durable replays. The gallery
+has only clearly labeled original examples; no private party art is made public.
+
+The supplied tool-photo license gate remains open, so ship original generated
+unbranded public brush/tin/trinket/wood assets and original vectors instead of
+publishing those private study images. The attached pillow photos remain reference
+only. Self-host licensed fonts to avoid visitor Google Fonts requests.
+
+Vercel native Git deployments plus token-free GitHub checks handle frontend CI;
+Railway retains the Node/WebSocket service. Provider settings, domains, secrets,
+LFS checkout and actual hosted behavior need separate owner/provider setup. Leave
+donation and public contact destinations unconnected until supplied; do not invent
+payment links or legal contact details.
+
+The owner's first-online-version request was completed using the connected Vercel
+account: create `passthecanvas-party`, upload only the reviewed static build and
+verify its public production alias. Preserve the team's existing deployment
+protection; the stable production alias is public without changing it. Configure
+future Vite/Node22/LFS builds, but leave Git unlinked until the new source is
+reviewed/committed, to avoid publishing the old repository state. No Git commits,
+pushes, DNS changes or backend/payment credentials were created. Public-site-origin
+env creation returned provider 403; use the verified live origin as the build
+fallback, with an optional dashboard override when the custom domain is connected.
+
+### 2026-10-29 — Reuse cleared photographs and the owner's support setup
+
+The owner confirmed public-use ownership/licensing for the photographed artist
+tools. Promote the four existing reviewed WebP derivatives used by the public
+paint table, without exposing `_design` files or changing tool behavior.
+
+Reuse the live `plugins.tapps.design/support/` setup, checked directly: Cash App
+`$therealtapps`, Venmo `@tracyapps`, PayPal `@tapps`, visible handles, copy buttons
+and optional manual payment in the provider's own service. No embedded checkout,
+payment events or new payment integration. Reuse its public contact destination
+`https://tapps.design/#contact`, rather than inventing a contact email. Update
+support/privacy/terms copy to reflect these actual outbound actions.
+
+### 2026-10-30 — Public appearance and owner-edited room
+
+Add a keyboard-operable, remembered light/dark appearance button on every public
+page. Preserve light as the default. Store only `ptc-site-theme-v1` in the browser;
+apply it before page paint to prevent flashes during navigation. Keep physical
+paper, paintings and the local paint surface in their original colors. Use warm
+charcoal walls and peach lettering for dark appearance. Both appearances share a
+single covered walnut footer with a dark overlay, so it has no repeating joins.
+
+Replace the existing Cream City panorama with the owner's `_design/panorama-edit.png`
+converted to quality-90, method-6 WebP at the same 4096 × 2048 dimensions. Preserve
+projection, viewpoint coordinates and the original PNG. The served image is
+1,472,468 bytes versus the 11,138,794-byte PNG (86.8% smaller).

@@ -1,0 +1,38 @@
+{
+  "/": {
+    "title": "Make something. Together.",
+    "description": "An online art party for people who make art. And people who think they don’t."
+  },
+  "/how-it-works": {
+    "title": "A painting party. With a plot twist.",
+    "description": "Pick a seat, start a painting, pass it around. Meet the idea behind Pass the Canvas."
+  },
+  "/gallery": {
+    "title": "Every painting has a story.",
+    "description": "An example gallery wall. Watch an artwork come together, one mark at a time."
+  },
+  "/roadmap": {
+    "title": "Still making things.",
+    "description": "What you can try today and what is still on the Pass the Canvas workbench."
+  },
+  "/support": {
+    "title": "Help keep the paint flowing.",
+    "description": "Meet the person making Pass the Canvas and help support the studio."
+  },
+  "/account": {
+    "title": "Your corner of the studio.",
+    "description": "Sign in to Pass the Canvas. Email and optional Discord accounts."
+  },
+  "/privacy": {
+    "title": "Privacy, in plain language.",
+    "description": "What this public preview uses, what stays on your device, and what we do not record."
+  },
+  "/terms": {
+    "title": "A few studio ground rules.",
+    "description": "Be kind, respect other people’s work, and make room for everyone."
+  },
+  "/try": {
+    "title": "No masterpiece required.",
+    "description": "Try the free painting preview. Real-feeling brushes, a fresh canvas, and no account needed."
+  }
+}

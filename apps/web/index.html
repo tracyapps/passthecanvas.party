@@ -4,11 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>Pass the Canvas</title>
-    <meta name="description" content="Paint one canvas together with friends on a video call, one turn at a time." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Caveat:wght@600;700&display=swap" rel="stylesheet" />
+    <title>Pass the Canvas — Make something. Together.</title>
+    <meta name="theme-color" content="#f5edda" />
+    <script>
+      // Apply the saved appearance before painting the page, so navigation never flashes light.
+      try {
+        if (localStorage.getItem('ptc-site-theme-v1') === 'dark') {
+          document.documentElement.dataset.siteTheme = 'dark';
+          document.querySelector('meta[name="theme-color"]').content = '#24231f';
+        }
+      } catch { /* The site still works when browser storage is unavailable. */ }
+    </script>
+    <link rel="icon" href="/site/favicon.svg" type="image/svg+xml" />
+    <meta name="description" content="Make something. Together. A little paint, a few friends, and no masterpiece required. Try the free paint preview." />
+    <link href="/site/fonts.css" rel="stylesheet" />
   </head>
   <body>
     <div id="app"></div>

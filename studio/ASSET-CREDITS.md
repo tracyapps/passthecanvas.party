@@ -50,3 +50,66 @@ verified for public redistribution. No third-party imagery is added this round.
 - `apps/web/src/lib/canvas/burnishing-pad.svg`: original project-authored vector
   folded cloth/pad, created for the local painting study (2026-10-29). Provisional
   tool artwork; no third-party source or imported texture.
+
+## Initial public website preview — 29 October 2026 (before owner clearance)
+
+At first publication, the site did not redistribute the supplied Downloads pillow
+photos or promote the private artist-tool photographs. The owner subsequently
+cleared the tool photographs, as recorded below. The pillow photos remain
+art-direction references.
+
+Public assets in `apps/web/public/site/`:
+
+- `studio-friends.webp`: original generated still life (crocheted emotional-support
+  flaming dumpster, rubber duck, paint block and cassette); generated with the
+  built-in image tool for this project. No supplied-photo pixels or branded
+  characters were used. Source: `exec-c276ecef-6204-4c55-85aa-f0131d5e30ab.png`.
+- `round.webp`, `watercolor.webp`: original generated, unbranded isolated artist
+  brush and used watercolor tin. Sources: `exec-d6a51ba4-a171-49cd-a806-3286e0a3503d.png`
+  and `exec-77d05732-67dd-4013-83ec-4bcbeb81a34b.png`.
+- `walnut.webp`: original generated overhead worn walnut material texture. Source:
+  `exec-33158fa4-f6ab-4aa0-986c-1701076acb5b.png`.
+- Generated masters are retained in the Codex generated-images folder for this
+  chat; reviewed resized WebP derivatives are copied into the project, retain
+  alpha when present and have no runtime dependency on that folder. These are
+  generated images, not photographs of physical objects owned by Tapps.
+- `paper.svg`, `wood.svg`, `pencil.svg`, `eraser.svg`, `tray.svg`, `favicon.svg`:
+  original project-authored vectors/materials. Gallery examples are original
+  illustrative SVG paintings in `PublicGallery.svelte`, not customer artwork.
+- Self-hosted Atkinson Hyperlegible, Bricolage Grotesque and Caveat Latin WOFF2
+  files come from Google Fonts (`fonts.gstatic.com`). Their SIL Open Font License
+  1.1 texts are shipped beside them, retrieved from the Google Fonts repository
+  (`ofl/atkinsonhyperlegible`, `ofl/bricolagegrotesque`, `ofl/caveat`). Fonts are
+  served locally; no Google Fonts request is needed by visitors.
+
+The existing Cream City panorama is reused from `public/studio/cream-city` with
+its existing Blender/Poly Haven/original-art provenance above, not a new room
+render. The public 360° preview has no live camera, microphone or seat collection.
+
+## Owner clearance and public photo promotion — 29 October 2026
+
+The owner explicitly confirmed: **“Yes, I own them or have a license for public
+website use”** for `_design/artist-tools`. This resolves the earlier public-use
+hold for those tool photographs. It does not change the pillow photos' reference
+status. Four existing reviewed, resized quality-90 WebP derivatives are copied
+into public assets without altering the supplied originals:
+
+| Public file | Supplied source in `_design/artist-tools` |
+| --- | --- |
+| `site/round-photo.webp` | `brush-round-clean.png` |
+| `site/pencils-photo.webp` | `art-pencils-selection.png` |
+| `site/eraser-photo.webp` | `eraser-large.png` |
+| `site/watercolor-photo.webp` | `watercolor-palette-36.png` |
+
+These replace the generated/vector brush, pencils, eraser and paint-tin images
+used by the initial public painting preview. Generated trinket and walnut assets
+remain. Further tool-photo promotion can use this owner clearance, while retaining
+per-file provenance and checking display quality/geometry.
+
+### Owner-edited Cream City panorama — October 30, 2026
+
+`apps/web/public/studio/cream-city/panorama.webp` now derives from the owner's
+Photoshop texture edit `_design/panorama-edit.png`, retaining the existing scene's
+asset credits above. No new third-party artwork added. Export: Pillow WebP,
+quality 90, method 6, RGB, 4096 × 2048, 1,472,468 bytes. No resize or projection
+change; original PNG preserved in `_design`.

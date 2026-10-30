@@ -1,5 +1,10 @@
 # Painting assets — measured review
 
+**Public-use update, 29 October 2026:** the owner explicitly confirms ownership
+or a license for public website use of the artist-tool photographs. Four reviewed
+WebP derivatives are now promoted to the public paint preview. The initial hold
+described below is historical; per-file provenance is in ASSET-CREDITS.md.
+
 29 October 2026. All five PNG artboards inspected; all five SVG exports parsed. Originals remain unchanged. Generated samples and reproducible script are in `_design/mockups/asset-review/` (ignored by Git, like the source `_design` folder). No assets have been promoted into the application.
 
 ## Actual WebP measurements

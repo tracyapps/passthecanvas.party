@@ -138,3 +138,20 @@ Replace placeholders with the real Blender studio.
 - [ ] A panorama per spot (see the room from where you sit)
 - [ ] Prints: partner TBD
 - [ ] `passthe.art` short links for sharing finished pieces
+
+## Owner-requested public website slice — October 2026
+
+- [x] Public studio-style home, planned how-it-works, local paint preview, illustrative
+  replay gallery, roadmap, support, account and preview privacy/terms pages.
+- [x] Vercel/Railway configurations, native Git auto-deployment handoff and GitHub
+  source checks; static route/link-preview metadata and locally served fonts.
+- [x] Publish first Vercel static preview; verify nine public routes, real panorama
+  delivery, paint/studio/gallery interactions and static social metadata.
+- [ ] Commit reviewed website changes, link the existing Vercel project to Git,
+  choose production branch, prove a Git-triggered build, and connect the custom domain.
+- [x] Owner clears photographed tools for public use; reuse Cash App/Venmo/PayPal
+  and the existing tapps.design contact form from the supplied support page.
+- [ ] Configure Clerk/Railway and verify real account saves. Complete party, replay,
+  retention/deletion and sharing gates before advertising those as available.
+- [x] Public light/dark appearance with remembered choice; dark, non-repeating
+  footer in both themes; publish the owner's texture-edited 4K WebP panorama.

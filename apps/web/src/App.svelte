@@ -6,13 +6,15 @@
 <script lang="ts">
   import type { Presence } from '@ptc/shared';
   import { PartyConnection } from './lib/party/connection.svelte';
-  import Studio from './lib/Studio.svelte';
 
   const params = new URLSearchParams(location.search);
-  const editRoom = params.get('spots'); // "?spots=cream-city" opens the spot editor
-  const artRoom = params.get('art'); // "?art=cream-city" opens the wall art editor
-  const demoSeats = params.get('demo') === 'seats'; // "?demo=seats" fills the room with fake guests
-  const demoArt = params.get('demo') === 'art'; // "?demo=art" previews the gallery
+  const publicPath = location.pathname.replace(/\/$/, '') || '/';
+  const developmentRoute = import.meta.env.DEV && ['demo', 'spots', 'art'].some(key => params.has(key));
+  const showPublicSite = !params.has('party') && !params.has('gallery') && !developmentRoute;
+  const editRoom = import.meta.env.DEV ? params.get('spots') : null; // "?spots=cream-city" opens the spot editor
+  const artRoom = import.meta.env.DEV ? params.get('art') : null; // "?art=cream-city" opens the wall art editor
+  const demoSeats = import.meta.env.DEV && params.get('demo') === 'seats'; // "?demo=seats" fills the room with fake guests
+  const demoArt = import.meta.env.DEV && params.get('demo') === 'art'; // "?demo=art" previews the gallery
   const galleryRoom = params.get('gallery'); // "?gallery=cream-city#g=…" opens a shared gallery room
   const paintingStudy = import.meta.env.DEV && params.get('demo') === 'painting';
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
@@ -31,7 +33,13 @@
   }
 </script>
 
-{#if editRoom}
+{#if showPublicSite}
+  {#await import('./lib/ui/PublicSite.svelte')}
+    <main class="loading">Opening the studio…</main>
+  {:then { default: PublicSite }}
+    <PublicSite path={publicPath} />
+  {/await}
+{:else if editRoom}
   <!-- Owner tool: plot seats in a room. Loaded separately so party guests never download it. -->
   {#await import('./lib/room/SpotsEditor.svelte')}
     <main class="loading">Opening the spot editor…</main>
@@ -86,7 +94,11 @@
     </form>
   </main>
 {:else}
-  <Studio {party} onleave={() => (joined = false)} />
+  {#await import('./lib/Studio.svelte')}
+    <main class="loading">Opening your party…</main>
+  {:then { default: Studio }}
+    <Studio {party} onleave={() => (joined = false)} />
+  {/await}
 {/if}
 
 <style lang="scss">

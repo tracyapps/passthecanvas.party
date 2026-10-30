@@ -348,3 +348,75 @@ bottom pad position and the working-end priority. Local study scope only.
   migration advisory. No deployment/commit/provider provisioning performed.
 - Screenshots: `output/playwright/round-7/portrait-both-sides.png` (rotated portrait
   inside independent window with side columns) and `mobile-arrange.png`.
+
+## Public site v1 — 29 October 2026
+
+- Built nine public pages without new dependencies: studio home, how-to, paint,
+  illustrative gallery, roadmap, support, account, privacy and terms. Supplied
+  private pillow/tool photographs were not promoted; public generated/original
+  assets and locally licensed fonts are documented in ASSET-CREDITS.
+- Production browser checks at 360px: every page heading fits, no horizontal
+  document overflow; mobile paint buttons all measure at least 44px tall.
+  Fixed the initial home headline overhang. Checked native navigation, named
+  colors, keyboard paint, mouse drawing, Fresh paper/Undo clear.
+- Desktop checks at 1440px: studio modal opens/closes and named viewpoints work;
+  gallery Play/Pause/progress scrubbing work; light switch and encouragement
+  Easter egg work. No auto audio or camera/microphone requests.
+- Fresh `npm run check`: 0 errors/0 warnings. `npm test`: 80/80 across 18 files.
+  Production build succeeds; existing optional party/360 chunks retain the large
+  chunk advisory. Entry JS is approximately 52KB after lazy-loading party Studio.
+- Build inspection: nine static metadata shells + 404; no `_design`, PaintingStudy,
+  SpotsEditor or ArtEditor code in production chunks; all font URLs local; real
+  decoded panorama file instead of Git LFS pointer. This does not prove hosted
+  Git LFS checkout, because the first deployment uploaded local build artifacts.
+- Live Vercel production deployment `dpl_7eCX7oBncT9i9B4RYcYWyNiK3hrm` READY at
+  https://passthecanvas-party.vercel.app. Unauthenticated HTTP: nine routes 200,
+  missing API 404, real panorama 2,492,002 bytes; correct per-route title/social URLs.
+  Hosted browser: room, keyboard paint, gallery controls, no console errors.
+- Source remains uncommitted/unpushed by this work. Git linking/auto-deployment,
+  DNS, physical pen/touch, Safari/VoiceOver, real account/database saves and payment
+  processing remain unverified. Donation destination and public contact await owner.
+  Env-variable creation got Vercel 403; live origin is the build default instead.
+- Screenshots in `output/playwright/public-site-v1/`, including `live-home-desktop.png`,
+  `live-paint.png`, `live-gallery.png`, `live-studio.png`, and phone layout evidence.
+
+## Public support/photo follow-up — 29 October 2026
+
+- Owner confirms public-use ownership/licensing of `_design/artist-tools`; four
+  reviewed photo WebP derivatives replace generated/vector tool art in the public
+  preview. Supplied pillow photos remain reference-only.
+- Fetched the supplied live plugin support page and reused exact Cash App, Venmo
+  and PayPal destinations/handles plus `https://tapps.design/#contact`. Added
+  visible handles/copy buttons, optional manual-payment framing and clear provider
+  departure. Updated Privacy/Terms and footer contact. No payment processing added.
+- `npm run check`: zero errors/warnings. `npm test`: 80 passing. Production build
+  and whitespace checks pass. At 360px no overflow or sub-44px buttons; clipboard
+  success feedback and all promoted tool images verified in browser.
+- Live deployment `dpl_9CbprDqk2voQAvybzH2xJXsnnG5d` READY at the existing alias.
+  Exact provider URLs, new-tab/no-referrer attributes, clipboard success and loaded
+  tool photos verified; no browser console errors. No provider checkout/payment
+  transfer was attempted. Initial artifact build failure from inherited source
+  install settings was resolved with explicit static settings; Git build settings
+  restored after successful publication.
+- Screenshots: `support-live-mobile.png`, `support-live-desktop.png` in the existing
+  public-site-v1 screenshot directory.
+
+## October 30, 2026 — Public dark appearance and edited panorama
+
+- `npm run check`: zero errors/warnings. `npm test`: 80 tests / 18 files pass.
+  `npm run build`: passes, 9 metadata routes + 404; existing optional 3D/studio
+  chunk-size advisory remains.
+- Browser: all nine public routes in dark mode at 1440px and 360px; no horizontal
+  page overflow. Header also checked at 800px. Keyboard Space toggles appearance;
+  choice survives reload and full navigation. Light paper/painting colors remain.
+- Light footer inspected at 1440px: single covered walnut, no tile joins. Dark
+  overlay gives minimum colophon contrast 10.02:1 against every source texture
+  pixel (independent pixel luminance calculation). Same footer in both themes.
+- Owner-edited room loads and viewpoint buttons work in the actual 360° viewer,
+  locally and on production. Live WebP SHA1 equals the local converted asset:
+  aee21553e0cb4ea4e0f21a0ff0963fbd2204cb91. 4096 × 2048, 1,472,468 bytes.
+- Vercel production `dpl_4DnnzbtFiPd63g6eaaAcxgsjfmkm` READY; stable public
+  alias https://passthecanvas-party.vercel.app. Live keyboard theme toggle/reload
+  works; no browser console errors. Restored future Vite/npm-ci build settings.
+- Review images: `output/playwright/public-site-themes/` (ignored). Physical
+  touch, Safari and a real screen-reader session were not exercised this round.
