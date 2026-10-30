@@ -1,10 +1,12 @@
 # Account studio: implementation and connection handoff
 
-Checked October 30, 2026. This is a locally verified account foundation, not a
-claim that hosted accounts, Discord OAuth, Resend delivery or durable party
-recaps are live. Railway connector inspection returned reauthentication required.
-No local Clerk/database credentials were supplied. Resend was explicitly approved
-by the owner during this implementation; no provider account or message was created.
+Checked October 30, 2026. The canonical Vercel site now opens the existing Clerk
+development instance, and the Railway account API is publicly connected to that
+frontend with the Clerk secret and private Postgres reference configured. Hosted
+profile save/reload and two-account isolation still require real signed-in owner
+sessions. Discord production OAuth, Resend delivery and durable party recaps are
+not verified. The Railway connector still requires reauthentication; configuration
+was completed through the signed-in dashboard. No provider secret is in source.
 
 ## What is implemented
 

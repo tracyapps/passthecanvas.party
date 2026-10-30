@@ -262,3 +262,15 @@ forms, and offers a native expandable avatar preview. Fresh type checks report
 zero errors/warnings; unit tests report 82 passed and 10 optional SQL tests skipped
 without the local test database; the production build succeeds. Hosted signed-in
 profile persistence and two-account isolation still need real owner sessions.
+
+
+Live verification after the explicit port deployment: `/health` returns 200/`ok`;
+`/api/account/community` with the canonical Origin and no token returns 401 with
+the matching CORS header; an unapproved Origin returns 403 without an allow-origin
+header. Invalid-body PUT requests to `/api/art/setup-check` and
+`/api/spots/setup-check` return 403 with editor-disabled messages, before any file
+write. These checks do not establish authenticated profile persistence.
+
+Production Git deployment `dpl_7maYn8NfLMauFNP5QUfBGGZRJGBa` is READY for
+`24a8622`; `/account` returns 200 and the unknown frontend API route returns 404.
+The unsigned page and real Clerk development sign-in form were visually checked.
