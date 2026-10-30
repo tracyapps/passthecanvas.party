@@ -250,8 +250,12 @@ No Resend email was sent.
 Owner approved secret transfer, archive deletion, and committing/pushing the
 focused login cleanup. Only the live Vercel project remains. Added production
 `VITE_ACCOUNT_API_URL=https://ptcserver-production.up.railway.app`. Railway logs
-show the server listens on its injected port **8080**; the generated HTTPS
-domain must target 8080 (8787 is only the local fallback).
+initially showed the server on injected port 8080 while the domain targeted
+8787. Set explicit server `PORT=8787` to match that domain and the local fallback.
+Both values must match when changing either setting.
+
+Git-triggered production deployment `dpl_4D2iKecCc6BBYqWTQMhs5b3r1AUK` is READY
+for commit `83c867d`; the custom domain visibly serves the new login screen.
 
 The account screen now leads with sign-in, hides unsigned profile/privacy/mail
 forms, and offers a native expandable avatar preview. Fresh type checks report

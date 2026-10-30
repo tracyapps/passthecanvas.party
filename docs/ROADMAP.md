@@ -147,7 +147,7 @@ Replace placeholders with the real Blender studio.
   source checks; static route/link-preview metadata and locally served fonts.
 - [x] Publish first Vercel static preview; verify nine public routes, real panorama
   delivery, paint/studio/gallery interactions and static social metadata.
-- [ ] Commit reviewed website changes, link the existing Vercel project to Git,
+- [x] Commit reviewed website changes, link the existing Vercel project to Git,
   choose production branch, prove a Git-triggered build, and connect the custom domain.
 - [x] Owner clears photographed tools for public use; reuse Cash App/Venmo/PayPal
   and the existing tapps.design contact form from the supplied support page.
