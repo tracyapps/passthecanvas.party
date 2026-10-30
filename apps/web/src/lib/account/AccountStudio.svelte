@@ -97,9 +97,11 @@
 </script>
 
 <div class="account-studio">
-  <div class="account-entry paper"><AccountControls />
+  <div class="account-entry paper">
+    {#if !accountState.userId}<div class="welcome"><p class="eyebrow">A place at the table</p><h2>Come on in.</h2><p>Save your studio, find your friends and make room for your next art party.</p></div>{/if}
+    <AccountControls />
     {#if accountState.userId}<button type="button" onclick={manageAccount}>Sign-in & linked accounts</button><button type="button" disabled={busy} onclick={() => void refresh()}>Refresh studio</button>
-    {:else}<p>Sign in with email or optional Discord when configured. Link sign-in methods in your account settings. Discord is never required.</p><p>{accountState.configured ? 'Sign in to save a profile, connect with friends and plan a party.' : 'Account services are being connected. You can try the avatar styles below; nothing is saved yet.'}</p>{/if}
+    {:else}<p class="hint">No webcam needed. Your studio avatar is always welcome.</p>{/if}
     {#if invitationToken && !accountState.userId}<p>You have a party invitation. Sign in to view it and RSVP.</p>{/if}
     {#if profileId && !accountState.userId}<p>Sign in to open this shared profile.</p>{/if}
   </div>
@@ -110,21 +112,24 @@
   {#if shared}<section class="invitation-paper paper"><p class="eyebrow">You’re invited</p><h2>{shared.title}</h2><p>Hosted by {shared.hostName} · {date(shared.startsAt)} in your time zone.<br/>{shared.durationMinutes} minutes · host’s time zone: {shared.timeZone}</p><button type="button" disabled={busy || !home?.profile} onclick={() => void act('parties/join', { token: invitationToken }, 'You’re on the guest list.')}>Accept invitation</button>{#if !home?.profile}<p>Save your profile below before accepting.</p>{/if}<p>Planning is open; the multiplayer painting party is still being connected.</p></section>{/if}
   {#if visiting}<section class="invitation-paper paper"><div class="person-avatar"><StudioAvatar avatar={visiting.avatar} name={`${visiting.name}’s avatar`} /></div><h2>{visiting.name}</h2><p>{visiting.bio}</p>{#if visiting.id !== home?.profile?.id}<button type="button" disabled={busy || !home?.profile || !visiting.allowRequests || !visiting.share} onclick={() => void act('friends', { target: visiting!.id }, 'Friend request sent.')}>Add friend</button>{/if}<p>Paintings only appear here when their owners deliberately share them. Saved artwork is still being connected.</p></section>{/if}
 
-  <form class="profile-paper paper" onsubmit={saveProfile}>
+  <details class="profile-fold paper" open={!!accountState.userId}>
+    <summary>{accountState.userId ? 'Your studio profile' : 'Try a studio avatar'}</summary>
+  <form class="profile-paper" onsubmit={saveProfile}>
     <div><p class="eyebrow">Come as you are</p><h2>{home?.profile ? 'Your studio profile.' : 'Make yourself at home.'}</h2><p>Your avatar can always take your place on camera. No selfie or webcam needed.</p></div>
     <div class="avatar-preview"><StudioAvatar {avatar} name="Your avatar preview" /></div>
-    <label>Display name<input maxlength="40" required bind:value={name} autocomplete="nickname" /></label>
-    <label>A little about you<textarea maxlength="280" rows="3" bind:value={bio}></textarea></label>
+    {#if accountState.userId}<label>Display name<input maxlength="40" required bind:value={name} autocomplete="nickname" /></label>
+    <label>A little about you<textarea maxlength="280" rows="3" bind:value={bio}></textarea></label>{/if}
     <fieldset><legend>Avatar color</legend><div class="avatar-options">{#each colors as color}<button type="button" class:selected={avatar.color === color} aria-pressed={avatar.color === color} onclick={() => avatar = { ...avatar, color }}>{color}</button>{/each}</div></fieldset>
     <fieldset><legend>Avatar mark</legend><div class="avatar-options">{#each marks as mark}<button type="button" class:selected={avatar.mark === mark} aria-pressed={avatar.mark === mark} onclick={() => avatar = { ...avatar, mark }}>{mark}</button>{/each}</div></fieldset>
-    <label class="check"><input type="checkbox" bind:checked={share} />Let signed-in people open my profile with its link. Friends and people I request can see my profile too.</label>
+    {#if accountState.userId}<label class="check"><input type="checkbox" bind:checked={share} />Let signed-in people open my profile with its link. Friends and people I request can see my profile too.</label>
     <label class="check"><input type="checkbox" bind:checked={allowRequests} />Allow friend requests through my shared profile link.</label>
     <label class="check"><input type="checkbox" bind:checked={emailInvites} />Email me party invitations from connected friends, when delivery is enabled.</label>
     <label class="check"><input type="checkbox" bind:checked={emailReminders} />Email me a reminder 15 minutes before parties I host or accept, when delivery is enabled.</label>
-    <button type="submit" disabled={busy || !accountState.userId || !home}>Save profile</button>
+    <button type="submit" disabled={busy || !accountState.userId || !home}>Save profile</button>{/if}
     {#if !accountState.userId}<p class="hint">This is a preview until you sign in. Nothing here is uploaded or saved.</p>{/if}
     {#if home?.profile}<div class="profile-share"><label>Your profile link<input readonly value={`${location.origin}/account#profile=${home.profile.id}`} /></label><button type="button" disabled={!home.profile.share} onclick={() => void copy(`${location.origin}/account#profile=${home!.profile!.id}`)}>Copy profile link</button>{#if !home.profile.share}<p>Save with profile sharing on before sharing this link.</p>{/if}</div>{/if}
   </form>
+  </details>
 
   {#if home?.profile}
     <section class="friends-paper paper"><p class="eyebrow">Your kind of people</p><h2>Friends, with paint.</h2>
@@ -146,8 +151,13 @@
 <style>
   .account-studio { margin-top: 48px; display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:32px; align-items:start; }
   .paper { padding:30px; color:#2a261e; }
-  .account-entry,.studio-status,.studio-error,.invitation-paper,.profile-paper,.history-paper { grid-column:1/-1; }
+  .account-entry,.studio-status,.studio-error,.invitation-paper,.profile-fold,.history-paper { grid-column:1/-1; }
   .account-entry { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+  .welcome { flex-basis:100%; max-width:42rem; }
+  .welcome h2 { margin:.25rem 0 1rem; }
+  .profile-fold summary { cursor:pointer; min-height:44px; font-weight:700; padding:10px 0; }
+  .profile-fold[open] summary { margin-bottom:20px; }
+  summary:focus-visible { outline:3px solid #156879; outline-offset:4px; }
   .account-entry p { flex-basis:100%; margin:0; }
   .studio-status { min-height:26px; margin:0; } .studio-error { border:2px solid currentColor; padding:16px; }
   .profile-paper { display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:20px 32px; }

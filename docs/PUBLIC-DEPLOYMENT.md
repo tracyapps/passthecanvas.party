@@ -4,19 +4,19 @@ The public website and local painting preview can run on Vercel before Clerk,
 Railway or LiveKit are connected. They do not need a database to build. The
 gallery's examples are demonstrations, not a public feed of guests' work.
 
-The first static preview is live at **https://passthecanvas-party.vercel.app**
-in the existing Vercel team `tracyapps-projects`, project `passthecanvas-party`.
-The tested static artifact was uploaded directly; Git remains unlinked until the
-reviewed source changes are committed. No DNS changes, Git push or service secrets
-were configured.
+The current Git-backed production site is **https://passthecanvas.party** in
+Vercel team `tracyapps-projects`, project **`web`**
+(`prj_DEd59ZRzvLzafcskn5kcI0E5qHjL`). The owner imported/connected this project.
+A real Git build of main commit `6f4808d` succeeded on October 30 after correcting
+its saved build settings. The older `passthecanvas-party` project and
+https://passthecanvas-party.vercel.app remain the earlier static-artifact preview;
+do not confuse that project's deployment history with `web`.
 
 ## 1. Vercel website
 
-Use the existing `passthecanvas-party` project rather than importing a duplicate.
-After committing/pushing the reviewed source, open **Settings → Git → Connect Git
-Repository** and select `tracyapps/passthecanvas.party`. Choose the intended
-production branch. These build settings and Git LFS were already applied to the
-project for future source builds:
+Use the owner's Git-connected **`web`** project for the custom domain. Its build
+must start at the repository root so it reads root `vercel.json` and npm workspaces.
+Applied and verified settings:
 
 | Setting | Value |
 | --- | --- |
@@ -190,3 +190,71 @@ October 30 Viga/account-preview artifact: `dpl_DFttQGrKJ1wEikop9gt6wPyoKt4U`
 READY. Static frontend only; account backend is not hosted by this artifact.
 Railway connection currently needs reauthentication. Follow `ACCOUNT-COMMUNITY.md`
 for Clerk/Discord/Postgres/approved-Resend setup and real-session verification.
+
+
+## October 30 Git build repair
+
+The failed `web` redeploy `dpl_EaNS5j5TngcViP23MmgTiTqJwz3a` still looked for
+`dist` after a successful app build, despite updated dashboard settings. Redeploys
+inherit original settings unless explicitly overridden. Applied repository root,
+`npm ci`, `npm run build`, `apps/web/dist`, Node22 and Git LFS to `web`, then created
+a fresh Git-source production deployment of the same commit `6f4808d` with explicit
+settings: **`dpl_GPTbn51Zbe23eb6MBdvZPQJ8chhB` READY**. Logs show the root workspace
+build and `Deployment completed`. No source fix, new commit, push or DNS edit was
+needed. Existing project domain assignments applied automatically.
+
+Unauthenticated HTTPS verification: `/` and `/account` return 200 on
+`passthecanvas.party`; the panorama is a real 1,472,468-byte WebP, not a Git LFS
+pointer. This verifies the hosted Git build, not account/backend readiness or a
+future push-triggered deployment. For further settings changes use a fresh build
+or explicitly override inherited settings when redeploying old artifacts.
+
+
+## October 30 project consolidation and Clerk connection
+
+The live Git-backed project was named `web`, the auto-suggested name for the
+`apps/web` import. Its stable ID is `prj_DEd59ZRzvLzafcskn5kcI0E5qHjL`. Renamed it
+to **passthecanvas-party** and preserved `passthecanvas.party`, the Git connection
+and the fixed repository-root build settings. Fresh Git deployment
+`dpl_FozXDE5Pnx2ShWZgU2uq8dLB7dVM` is READY with the custom domain assigned.
+
+The earlier project `prj_ZXyzZKJyDmOAbgQAvGpfFOEgtByd` had only manually uploaded
+static previews and no Git connection. It is now **passthecanvas-preview-archive**
+and was paused, then permanently deleted after explicit owner confirmation.
+The disabled Railway marketplace integration predates these projects; there is
+no evidence it created either Vercel project. The direct Railway project works
+independently of that old integration.
+
+Clerk's integration had placed Next.js-named keys on the old preview project,
+in Development only. Added the existing development publishable key as
+`VITE_CLERK_PUBLISHABLE_KEY` to the live project's Production environment and
+`VITE_PUBLIC_SITE_URL=https://passthecanvas.party`. Verified the live account
+button opens the real Clerk form, explicitly marked Development mode. No server
+secret was placed in a frontend variable or source file. Discord has no connection
+yet. Production Clerk setup and real session/save/isolation checks remain open.
+
+Railway project `91b6652e-fe6e-476a-8797-5c205e48cff8` has the intended `@ptc/server`
+and an unnecessary `@ptc/web` frontend. The server was private and had no app
+variables. Applied `SPOTS_EDITOR=0`, `ACCOUNT_ALLOWED_ORIGINS` and
+`ACCOUNT_SITE_ORIGIN` for the custom domain. Added the previously approved
+Postgres service (`a2969d3c-bb13-483e-ae1c-094e7bb16204`); the server database
+reference and existing Clerk secret are now configured on the server. Vercel
+required the owner’s passkey/authenticator verification before revealing the key;
+the secret was transferred directly into Railway and never written to source,
+chat or frontend variables. Real account save/isolation checks remain open.
+No Resend email was sent.
+
+
+### Approved connection completion
+
+Owner approved secret transfer, archive deletion, and committing/pushing the
+focused login cleanup. Only the live Vercel project remains. Added production
+`VITE_ACCOUNT_API_URL=https://ptcserver-production.up.railway.app`. Railway logs
+show the server listens on its injected port **8080**; the generated HTTPS
+domain must target 8080 (8787 is only the local fallback).
+
+The account screen now leads with sign-in, hides unsigned profile/privacy/mail
+forms, and offers a native expandable avatar preview. Fresh type checks report
+zero errors/warnings; unit tests report 82 passed and 10 optional SQL tests skipped
+without the local test database; the production build succeeds. Hosted signed-in
+profile persistence and two-account isolation still need real owner sessions.

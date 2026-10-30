@@ -400,3 +400,25 @@ biometrics or remote avatar service. Avatar research compares self-hosted DiceBe
 and future 3D/upload options without adding those dependencies. Completed party
 history can only come from a future verified server-completion adapter, never a
 browser's claim that a party occurred. No WebSocket message shape changed here.
+
+### 2026-10-30 — Repair the owner's Git-connected Vercel project
+
+The owner's screenshot identified `web`, a separate Git-connected project from
+our older `passthecanvas-party` static preview. Apply the repo-root workspace
+settings to `web`, use Node22 to match `.nvmrc`, and start a fresh Git-source build
+of the already committed `6f4808d` rather than replay old deployment settings.
+`dpl_GPTbn51Zbe23eb6MBdvZPQJ8chhB` is READY and serves the owner's existing custom
+domain `passthecanvas.party`. No Git/source/dependency change or DNS action was
+necessary. Preserve the older preview project; update the runbook to identify
+`web` as the current custom-domain production project.
+
+
+### 2026-10-30 — One live Vercel project; sign-in before profile editing
+
+Keep the Git-backed project and custom domain, rename `web` to
+`passthecanvas-party`, and pause/label the old static preview while deletion is
+pending. Clerk integration variables used Next.js names on the wrong project;
+use the Vite publishable-key name on the live frontend and keep server secrets
+on Railway. The existing Clerk development instance is for internal testing.
+Unsigned visitors see sign-in first and can expand a native, keyboard-accessible
+avatar preview. Profile/sharing/notification forms appear after sign-in.
