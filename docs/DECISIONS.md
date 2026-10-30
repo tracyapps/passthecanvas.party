@@ -212,3 +212,80 @@ network/replay, turn boundaries and shared undo remain an integration gate.
 Brush textures, water behavior and pigment mixing are intentionally approximate.
 Photo-derived per-material palettes replace the tiny generic chooser; sampling
 coordinates and limitations are recorded in PAINTING-PALETTE-SAMPLES.md.
+
+### 2026-10-29 — Burnishing pad and portrait supply packing
+
+Preserve the owner's preferred accidental smudge/intensify effect as a separate
+standalone Burnishing pad, with a visible plain-language description. Source-over
+copies intentionally build opacity on owned contribution surfaces; the existing
+water/sponge paths still preserve/lift alpha. Real burnishing is the naming
+analogy, not a new material-physics claim. Reference rationale is recorded in
+PAINTING-WORKSPACE.md. The provisional folded-pad SVG is original project art.
+
+The tall 1309×1474 app preview exposed the landscape-only placement assumption.
+Use flowing canvas/panels/supply rows when viewport aspect ratio is below 1.35,
+as well as on narrow/short windows. Both panels and photos follow that same mode;
+wide landscape keeps its existing arrangement. No shared protocol, service,
+dependency or persistent layout format changes.
+
+### 2026-10-29 — Tool intensity and extended pencil/charcoal sets
+
+Use independent 0–100% Intensity controls for Airbrush and Burnishing pad. Default
+50% preserves their approved feel; full intensity doubles per-stamp opacity,
+zero is a no-op. Freeze intensity for a whole stroke and retain each tool's value
+across local selection changes. No pressure curve or other brush changes.
+
+Keep sampled colors and additional digital studio colors distinct in source
+and chooser copy. Extend pencils to 36 and charcoal to 18 with deep black in
+both. Preserve the photographic defaults and sampler regeneration path. No new
+dependency, persistence format or shared protocol change.
+
+### 2026-10-29 — Protect working ends rather than entire long handles
+
+The owner explicitly allows pencils, brush/foam/knife handles and airbrush bodies
+to overflow the display. Give those supplies a protected working-end rectangle;
+use it for desktop hit targeting and all placement constraints. Palette trays,
+paint sets, water and standalone objects retain whole-object containment. Also
+keep protected portions out from under the canvas. One shared geometry helper
+covers defaults, drag, keyboard/tap moves and resizing; portrait cards keep the
+existing full-image flow/reordering behavior. Neighboring objects may overlap,
+including the angled burnishing pad slightly over the texture sponge. No new
+dependency, protocol or persistence format.
+
+### 2026-10-29 — Arrange controls belong in the top bar
+
+Replace the tool/color readouts with the supply picker, movement controls and
+Reset layout while Arrange & view is active. This uses the already reserved
+header and removes the overlay over bottom-left supplies. Hide brush settings
+while arranging; returning to Paint restores settings and the previous selection.
+Narrow layouts wrap within the normal-flow header, keeping the canvas below it.
+No tool state, placement rule or painting behavior changes.
+
+### 2026-10-29 — Saved studio views, canvas windows and account boundary
+
+The owner approved Clerk email codes with optional Discord, Railway Postgres,
+and a chosen starting canvas per participant passed around a ring. Add the Clerk
+browser/backend SDKs and `pg` for account-owned workspace storage. Configure
+providers through environment files; no provider project, credentials or hosted
+resources were created. Verify subject and allowed origins on the server; do not
+trust user IDs supplied in request bodies. Account storage fails closed. Browser
+workspaces use separate guest/account keys, explicit guest import and visible
+sync failures. After the first successful account save/load, debounce current
+arrangement saves; cross-device revision conflicts remain future work.
+
+Named views contain normalized supply positions, order, dock, window size and
+local quarter-turn rotation. Restore/rebound them for the current screen. Phone
+Up/Down swaps the selected supply into the same column of another visual row;
+Left/Right move within its row. Side-column layouts leave the bottom available.
+
+Keep immutable document dimensions separate from a resizable viewing window.
+Zoom/pan/rotation transform the paper and its bevel; input maps back to document
+coordinates. Controls sit outside the drawable window, with measured toolbar
+clearance on narrow/portrait layouts. Canvas size starts a fresh local study;
+view rotation preserves marks and dimensions. The party server still uses its
+existing single-canvas model: the approved ring needs a shared-protocol change.
+
+Start replay capture now with bounded, versioned emitted stamps including owned
+contribution, elapsed time, load, size, intensity and stamp index/angle. Export
+art-only JSON from the study menu. No durable journal, replay player or party
+reconnect guarantee is implied. No video/audio recording is introduced.

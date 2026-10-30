@@ -66,6 +66,13 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] Owner's first painting-workspace brief: review five mockups, research mixing/workspaces, compare actual tool assets in WebP; see [PAINTING-WORKSPACE.md](PAINTING-WORKSPACE.md), [research](PAINTING-INTERACTION-RESEARCH.md), and [asset review](PAINTING-ASSETS.md). Planning only; phase 1 gate remains open.
 - [x] First local selection study at `?demo=painting`: photographic tool buttons, no-tool/unloaded/loaded states, compatibility, local practice painting and one tray with reversible even/multicolor options. Desktop/mobile browser evidence and limits in `design-qa.md`; no party/protocol integration.
 - [x] Owner testing round two in the local study: canvas stacking/responsive supply layout, movable non-modal controls, Paint / Arrange & view, zoom/pan/navigator, owned contribution modifiers, differentiated brush tips and photo-derived material palettes. See `design-qa.md` round two; physical touch and real-party renderer integration remain open.
+- [x] Owner testing round three: standalone Burnishing pad restores the smudge/intensify effect on owned pigment; tall windows pack supplies below the canvas using aspect-aware flow. Evidence and limits in `design-qa.md` round three.
+- [x] Owner testing round four: independent airbrush/burnisher intensity; 36 pencil colors and 18 charcoal shades including deep black. See `design-qa.md` round four; local study only.
+- [x] Owner testing round five: angled bottom burnishing pad, deliberate long-handle overflow and shared protected-working-end placement rules for defaults/drag/keyboard/reflow. Containers remain fully contained; local study only.
+- [x] Owner testing round six: Arrange controls replace painting readouts in the top bar, removing the supply-covering overlay; Paint restores selection/settings. Local study only.
+- [x] Owner testing round seven: local named views, visual-row movement, side columns, separate resizable canvas window, outside zoom/rotation controls, canvas-size preparation and emitted-stamp JSON export. Clerk + Railway Postgres account workspace boundary wired; hosted credentials/login/save evidence remains open.
+- [ ] Configure approved Clerk email + optional Discord and Railway Postgres; prove real account save/reload, account switching and cross-device behavior.
+- [ ] Implement approved one-canvas-per-guest passing ring with stable contributor ownership and durable accepted art events; shared types and both apps must change together.
 - [ ] **Redesign "Mix a color"** — owner brief received; prototype multi-color recipes, streaked loads and reusable trays in the delivery order above; existing toggle unchanged so far
 - [ ] Gentle timer handoff: zero cues finishing rather than forcing a pass; explicit server-authorized handoff, final-stroke flush and recovery tests (brief above; not implemented)
 - [ ] Configurable photo-tool widgets, named layouts and local popouts; paired devices and private account albums need separate identity/protocol/persistence design (brief above; not implemented)
@@ -120,6 +127,8 @@ Replace placeholders with the real Blender studio.
 ## Phase 4: Extras
 
 ### Owner's painting v2 scope
+
+- [ ] Public introduction/site and optional Donate to the developer link; provider choice later.
 
 - [ ] Collage crate: pre-cut objects first; placement, editing and shared object messages need a dedicated brief
 - [ ] Mnemonic/custom tool shortcuts (basic keyboard operation and keyboard painting remain accessibility requirements before v2)

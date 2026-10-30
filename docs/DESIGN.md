@@ -1,5 +1,17 @@
 # Design
 
+## Painting workspace update — 29 October 2026
+
+The owner's five artboards in `_design/mockups/` are the current visual target
+for the painting interface: photographed tools around a dimensional canvas,
+shape-following selection outlines, and independently arranged tool panels.
+See [PAINTING-WORKSPACE.md](PAINTING-WORKSPACE.md) for the interaction brief,
+[research](PAINTING-INTERACTION-RESEARCH.md) for precedents and browser limits,
+and [asset review](PAINTING-ASSETS.md) for WebP measurements and SVG extracts.
+The earlier jar/sidebar description below is historical for this screen;
+other studio screens retain their existing direction. The new button styles
+and widget dimensions are provisional, and the production UI is not yet changed.
+
 **Design canvas:** [Claude Design, Pass the Canvas](https://claude.ai/artifact/TGRYKv8LbSE1kUhiebrtzV): four screens (Studio painting view, Room view, Studio library, Reveal). The painting view there is interactive and has a working brush engine to port.
 
 ## Direction

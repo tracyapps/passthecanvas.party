@@ -1,5 +1,13 @@
 # Pass the Canvas — Build Plan
 
+**29 October 2026 painting update:** the owner's
+[painting-workspace brief](PAINTING-WORKSPACE.md) supersedes the old painting-view
+control layout and hard timer cutoff described below. Timer zero is now intended
+as a gentle finish/pass cue, with an explicit server-authorized handoff. This is
+planned behavior; the current implementation still forces the pass. See the brief
+for tool/medium/load separation, named panels, trays, staged companion-device
+support and private-album requirements. Collage is deferred to v2.
+
 *As of Oct 26, 2026 · Owner: Tapps · Living version: [Claude Doc](https://claude.ai/artifact/XRbyGuhLJhfmsyvcqaFYf5) · Design canvas: [Claude Design](https://claude.ai/artifact/TGRYKv8LbSE1kUhiebrtzV)*
 
 ## Summary

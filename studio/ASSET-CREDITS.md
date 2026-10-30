@@ -35,3 +35,18 @@ used as a texture. Used in the photo-version Blender file and mosaic-sunset rend
   `assets/fonts/bangers/` and the font is packed into the Blender file.
 - Gradient paint, outlines, spray flecks and light/glass materials are original
   procedural work in `scripts/refine_graffiti_lighting.py`.
+
+## Painting interaction study — local review only
+
+Owner-supplied `_design/artist-tools/*.png` and `_design/mockups/*.svg` provide
+the photographic cutouts, wood table and exported canvas-surface effects.
+`studio/scripts/prepare_painting_study.py` derives embedded-WebP SVG groups and
+a WebP wood texture in the ignored `_design/mockups/asset-review/` folder.
+These derivatives are used only by the development-only `?demo=painting`
+study and are excluded from production builds. Owner authorization covers
+this local design study; underlying asset authors/licenses have not yet been
+verified for public redistribution. No third-party imagery is added this round.
+
+- `apps/web/src/lib/canvas/burnishing-pad.svg`: original project-authored vector
+  folded cloth/pad, created for the local painting study (2026-10-29). Provisional
+  tool artwork; no third-party source or imported texture.

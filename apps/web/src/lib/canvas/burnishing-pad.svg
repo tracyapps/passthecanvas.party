@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140">
+  <defs>
+    <linearGradient id="cloth" x2=".7" y2="1"><stop stop-color="#f2e9d0"/><stop offset=".55" stop-color="#b8a889"/><stop offset="1" stop-color="#79694e"/></linearGradient>
+    <linearGradient id="fold" x2="0" y2="1"><stop stop-color="#e9dcc0"/><stop offset="1" stop-color="#a18d69"/></linearGradient>
+    <pattern id="weave" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 1h4M1 0v4" stroke="#fff" stroke-opacity=".12" stroke-width=".6"/></pattern>
+  </defs>
+  <g transform="rotate(18 100 70)">
+    <path d="M27 38Q28 29 40 29L163 33Q175 35 175 47L169 111Q168 121 154 120L38 114Q26 112 26 100Z" fill="#5d503c"/>
+    <path d="M24 32Q27 22 41 22L161 27Q176 28 174 43L168 104Q168 113 153 112L35 105Q22 103 23 91Z" fill="url(#cloth)" stroke="#766447" stroke-width="2"/>
+    <path d="M24 32Q48 49 95 46Q141 44 172 34L166 66Q126 80 86 72L24 59Z" fill="url(#fold)" stroke="#a18d6b"/>
+    <path d="M24 32Q27 22 41 22L161 27Q176 28 174 43L168 104Q168 113 153 112L35 105Q22 103 23 91Z" fill="url(#weave)"/>
+    <path d="M35 96L154 103M35 99L154 106" fill="none" stroke="#e9dcbd" stroke-opacity=".55" stroke-dasharray="3 3"/>
+    <path d="M62 62q25 10 47 2M123 86q13-6 24-2" fill="none" stroke="#736953" stroke-opacity=".3" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>

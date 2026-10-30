@@ -4,6 +4,8 @@ dist/
 .svelte-kit/
 *.tsbuildinfo
 _design/
+output/
+tmp/
 
 # env
 .env

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cream City studio — panorama review</title>
+  <link rel="stylesheet" href="../../../node_modules/@photo-sphere-viewer/core/index.css">
+  <script type="importmap">
+    { "imports": { "three": "../../../node_modules/three/build/three.module.js" } }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #211a15; color: #fff8ec; font: 16px/1.5 system-ui, sans-serif; }
+    main { display: grid; grid-template-rows: auto 1fr; min-height: 100svh; }
+    header { padding: 1rem 1.4rem; display: flex; align-items: center; flex-wrap: wrap; gap: .7rem 1.4rem; }
+    h1 { margin: 0; font-size: 1.2rem; }
+    p { margin: 0; max-width: 65ch; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+    select, button, a { min-height: 44px; font: inherit; }
+    select, button { padding: .4rem .65rem; color: #251c15; background: #fff8ec; border: 1px solid #a99072; border-radius: 3px; }
+    a { display: inline-flex; align-items: center; color: #fff8ec; text-underline-offset: .2em; }
+    :focus-visible { outline: 3px solid #ffd38a; outline-offset: 3px; }
+    #room { width: 100%; height: max(60svh, calc(100svh - 150px)); }
+    #status { font-size: .85rem; color: #e4d5bd; }
+    .instructions { font-size: .85rem; }
+    @media (max-width: 600px) { header { padding: .8rem; } #room { height: 66svh; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Cream City studio</h1>
+    <div class="controls">
+      <label for="look">Look</label>
+      <select id="look">
+        <option value="lime">Lime / daylight</option>
+        <option value="red" selected>Red / afternoon</option>
+        <option value="charcoal">Charcoal / evening</option>
+      </select>
+      <label for="source">Image</label>
+      <select id="source">
+        <option value="neon" selected>Latest purple neon + redirected lights</option>
+        <option value="finish">Latest graffiti + coloured lights</option>
+        <option value="sunset">Latest layout + mosaic lamp / sunset</option>
+        <option value="cleaned">Cleaned 3D scene</option>
+        <option value="photos">Cleaned scene + your photo cutouts</option>
+        <option value="blender">Earlier Blender blockout</option>
+        <option value="study">Earlier AI style study</option>
+      </select>
+      <button id="reset" type="button">Face the table</button>
+      <button id="neon" type="button">Neon sign</button>
+      <button id="corner" type="button">Beanbag corner</button>
+      <button id="back" type="button">Back wall</button>
+      <button id="closer" type="button">Zoom in</button>
+      <button id="wider" type="button">Zoom out</button>
+      <a id="flat" href="./lime-photographic-study.png" target="_blank" rel="noopener">Open flat image</a>
+    </div>
+    <p class="instructions">Drag or swipe to look. Tab to the room, then use arrow keys. The cleaned images are actual Blender renders. Each file retains your saved camera position; photo furniture remains flat cutouts.</p>
+    <p id="status" role="status">Loading room…</p>
+  </header>
+  <div id="room" tabindex="0" role="region" aria-label="Studio panorama. Use arrow keys to look around."></div>
+</main>
+<script type="module">
+  import { Viewer } from '../../../node_modules/@photo-sphere-viewer/core/index.module.js';
+
+  const room = document.querySelector('#room');
+  const look = document.querySelector('#look');
+  const source = document.querySelector('#source');
+  const status = document.querySelector('#status');
+  const flat = document.querySelector('#flat');
+  const names = { lime: 'lime-daylight', red: 'red-afternoon', charcoal: 'charcoal-evening' };
+
+  function imagePath() {
+    if (source.value === 'neon') return './purple-neon/purple-neon-panorama-4k.png';
+    if (source.value === 'finish') return './graffiti-lighting/graffiti-lighting-panorama-4k.png';
+    if (['neon', 'finish', 'sunset'].includes(source.value)) return './mosaic-sunset/mosaic-sunset-panorama-4k.png';
+    if (source.value === 'cleaned' || source.value === 'photos') {
+      const file = source.value === 'photos' ? 'cream-city-studio-wphotos' : 'cream-city-studio';
+      const version = look.value === 'red' ? '4k' : 'review-2k';
+      return `./cleaned/${file}-${names[look.value]}-${version}.png`;
+    }
+    if (source.value === 'study') return `./${look.value}-photographic-study.png`;
+    return `./${names[look.value]}-panorama-draft.png`;
+  }
+
+  const viewer = new Viewer({
+    container: room,
+    panorama: imagePath(),
+    navbar: false,
+    keyboard: 'fullscreen',
+    mousewheel: false,
+    moveInertia: !matchMedia('(prefers-reduced-motion: reduce)').matches,
+    defaultYaw: -0.19,
+    defaultPitch: 0,
+    defaultZoomLvl: 0,
+  });
+
+  // Arrow keys belong to the panorama only while its region has focus.
+  room.addEventListener('focusin', () => viewer.startKeyboardControl());
+  room.addEventListener('focusout', (event) => {
+    if (!room.contains(event.relatedTarget)) viewer.stopKeyboardControl();
+  });
+
+  look.disabled = ['neon', 'finish', 'sunset'].includes(source.value);
+  flat.href = imagePath();
+  const cameraYaw = (kind) => ['neon', 'finish', 'sunset'].includes(kind) ? 1.18817 : kind === 'photos' ? 1.01197 : 0;
+  let previousSource = source.value;
+  let changeNumber = 0;
+  async function changeImage() {
+    look.disabled = ['neon', 'finish', 'sunset'].includes(source.value);
+    if (['neon', 'finish', 'sunset'].includes(source.value)) look.value = 'red';
+    const thisChange = ++changeNumber;
+    const path = imagePath();
+    // Match the room direction when comparing files with different saved cameras.
+    const direction = viewer.getPosition().yaw + cameraYaw(previousSource) - cameraYaw(source.value);
+    previousSource = source.value;
+    flat.href = path;
+    status.textContent = 'Loading room…';
+    try {
+      await viewer.setPanorama(path, { transition: false, position: { yaw: direction, pitch: viewer.getPosition().pitch } });
+      if (thisChange === changeNumber) status.textContent = 'Ready. Check the floor, ceiling and the join behind you.';
+    } catch {
+      if (thisChange === changeNumber) status.textContent = 'Could not load this preview. Use Open flat image to inspect the file.';
+    }
+  }
+
+  viewer.addEventListener('ready', () => { status.textContent = 'Ready. Check the floor, ceiling and the join behind you.'; });
+  viewer.addEventListener('panorama-error', () => { status.textContent = 'Could not load the panorama. Try Open flat image.'; });
+  look.addEventListener('change', changeImage);
+  source.addEventListener('change', changeImage);
+  document.querySelector('#reset').addEventListener('click', () => {
+    const yaw = ['neon', 'finish', 'sunset'].includes(source.value) ? -0.09 : source.value === 'photos' ? 0.21 : source.value === 'cleaned' ? 1.1 : 0;
+    viewer.rotate({ yaw, pitch: 0 });
+    viewer.zoom(0);
+  });
+  document.querySelector('#neon').addEventListener('click', () => { viewer.rotate({ yaw: 0.995 - cameraYaw(source.value), pitch: 0.10 }); viewer.zoom(15); });
+  document.querySelector('#corner').addEventListener('click', () => { viewer.rotate({ yaw: 2.28817 - cameraYaw(source.value), pitch: 0.08 }); viewer.zoom(0); });
+  document.querySelector('#back').addEventListener('click', () => viewer.rotate({ yaw: Math.PI - cameraYaw(source.value), pitch: 0 }));
+  document.querySelector('#closer').addEventListener('click', () => viewer.zoom(Math.min(100, viewer.getZoomLevel() + 15)));
+  document.querySelector('#wider').addEventListener('click', () => viewer.zoom(Math.max(0, viewer.getZoomLevel() - 15)));
+</script>
+</body>
+</html>
