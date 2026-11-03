@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { defaultLayout, decodeWorkspaces, gridDestination } from './study-workspaces';
+import { defaultLayout, decodeWorkspaces, gridDestination } from './workspaces';
 it('moves vertically by actual grid rows, without wrapping left/right', () => {
   expect(gridDestination(1, 17, 3, 0, 1)).toBe(4);
   expect(gridDestination(4, 17, 3, 0, -1)).toBe(1);

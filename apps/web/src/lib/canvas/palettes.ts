@@ -1,7 +1,7 @@
 import type { PaintingMedium } from './painting-selection';
-import { EXTRA_PENCIL_COLORS, EXTRA_CHARCOAL_COLORS } from './study-palette-extras';
+import { EXTRA_PENCIL_COLORS, EXTRA_CHARCOAL_COLORS } from './palette-extras';
 
-// Photo appearance samples for this local study; these are not pigment identities.
+// Photo appearance samples for the painting table; these are not pigment identities.
 // Rebuild with studio/scripts/sample_study_palettes.py; source photos stay unchanged.
 export const PHOTO_PALETTES: Record<PaintingMedium, { name: string; hex: string }[]> = {
   acrylic: [
@@ -128,7 +128,7 @@ export const PHOTO_PALETTES: Record<PaintingMedium, { name: string; hex: string 
   ],
 };
 
-export const STUDY_PALETTES = {
+export const PALETTES = {
   ...PHOTO_PALETTES,
   pencil: [...PHOTO_PALETTES.pencil, ...EXTRA_PENCIL_COLORS],
   charcoal: [...PHOTO_PALETTES.charcoal, ...EXTRA_CHARCOAL_COLORS],

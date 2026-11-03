@@ -1,14 +1,44 @@
+<!--
+  The shared party canvas inside its movable, zoomable window.
+  - Your own marks: pointer/touch/keyboard input → evenly spaced stamps →
+    drawn into your turn's layer right away, and sent to the party in small
+    batches (about 20 a second).
+  - Everyone else's marks arrive from the party and go through the very same
+    layer engine, so every screen ends up with the same picture.
+  - Only the current painter can mark. Everyone can zoom, pan and rotate.
+-->
 <script lang="ts">
   import { onMount, onDestroy, untrack, tick } from 'svelte';
-  import type { StrokePoint } from '@ptc/shared';
+  import type { PaintedStroke, Stamp, Stroke } from '@ptc/shared';
   import { canPaint, TOOL_NAMES, type PaintingSelection } from './painting-selection';
-  import { drawStudyMark, studySpacing } from './study-brushes';
-  import { newRecording, recordStamp } from './study-recording';
-  import { editOwnedLayers, type OwnedLayer } from './study-layers';
-  import { fitCamera, zoomCamera, screenToCanvas, rotateVector, type CanvasCamera } from './study-camera';
+  import { stampSpacing, type StrokePoint } from './brushes';
+  import { TurnLayers } from './layers';
+  import { fitCamera, zoomCamera, screenToCanvas, rotateVector, type CanvasCamera } from './camera';
 
-  let { selection, size, intensity = 0.5, resetVersion = 0, mode = 'paint', painterId = '1', wheelZoom = false, documentWidth = 1600, documentHeight = 850, baseWidth = 800, rotation = $bindable(0), onresizewindow, onnewcanvas, onexportready, ontoolbarheight, fitVersion = 0 }:
-    { selection: PaintingSelection; size: number; intensity?: number; resetVersion?: number; mode?: 'paint' | 'arrange'; painterId?: string; wheelZoom?: boolean; documentWidth?: number; documentHeight?: number; baseWidth?: number; rotation?: number; onresizewindow?: (width: number, height: number) => void; onnewcanvas?: () => void; onexportready?: (download: () => void) => void; fitVersion?: number; ontoolbarheight?: (height: number) => void } = $props();
+  interface Props {
+    selection: PaintingSelection;
+    size: number;
+    intensity?: number;
+    mode?: 'paint' | 'arrange';
+    /** Is it your turn? */
+    canDraw: boolean;
+    /** Your party member id and the current round: they name your turn's layer. */
+    painterId: string;
+    round: number;
+    /** Spoken summary, e.g. "Round 2. Jordan is painting." */
+    label: string;
+    wheelZoom?: boolean;
+    documentWidth: number;
+    documentHeight: number;
+    baseWidth?: number;
+    rotation?: number;
+    fitVersion?: number;
+    onresizewindow?: (width: number, height: number) => void;
+    ontoolbarheight?: (height: number) => void;
+    onstroke?: (stroke: Stroke) => void;
+  }
+  let { selection, size, intensity = 0.5, mode = 'paint', canDraw, painterId, round, label, wheelZoom = false, documentWidth, documentHeight, baseWidth = 800, rotation = $bindable(0), fitVersion = 0, onresizewindow, ontoolbarheight, onstroke }: Props = $props();
+
   let element: HTMLCanvasElement;
   let viewport: HTMLDivElement;
   let toolbar: HTMLDivElement;
@@ -21,13 +51,14 @@
   let atFit = $derived(Math.abs(view.zoom - fitted.zoom) < 0.001 && Math.abs(view.x) < 0.5 && Math.abs(view.y) < 0.5);
   let resizeStart: { x: number; y: number; width: number; height: number } | null = null;
   let didFit = $state(false);
+  let painting = $derived(mode === 'paint' && canDraw);
   function fitView() { return fitCamera(view, frame); }
   function zoomView(camera: CanvasCamera, zoom: number, x = 0.5, y = 0.5) { return zoomCamera(camera, zoom, frame, x * frame.width, y * frame.height); }
   function panView(camera: CanvasCamera, x: number, y: number) { return { ...camera, x: camera.x - x * frame.width, y: camera.y - y * frame.height }; }
   $effect(() => { view.rotation = rotation; });
   $effect(() => { if (ready && frame.width > 0 && !didFit) { didFit = true; view = fitCamera(view, frame); } });
   $effect(() => {
-    const version = fitVersion;
+    void fitVersion;
     if (!ready) return;
     void tick().then(() => {
       windowSize = { width: viewport.clientWidth, height: viewport.clientHeight };
@@ -37,19 +68,23 @@
   let cursor = $state({ x: 800, y: 425 });
   let focused = $state(false);
   let announcement = $state('');
-  let layers: OwnedLayer<HTMLCanvasElement>[] = [];
-  let activeLayer: HTMLCanvasElement;
-  let owner = '';
-  let recording = untrack(() => newRecording(documentWidth, documentHeight));
-  let recordingStarted = 0;
-  let activeContribution = 0;
-  let previousReset = -1;
   let context: CanvasRenderingContext2D;
-  let stroke: { selection: PaintingSelection; size: number; intensity: number; last: StrokePoint; carry: number; index: number; angle: number } | null = null;
+  // svelte-ignore state_referenced_locally — the engine is rebuilt below when the shape changes
+  const layers = new TurnLayers(documentWidth, documentHeight);
+  /** Every stroke this screen has drawn, for the painting-data export. */
+  let log: PaintedStroke[] = [];
+
+  // ---- the stroke in progress ----
+  let stroke: { id: string; selection: PaintingSelection; size: number; intensity: number; last: StrokePoint; carry: number; index: number; angle: number } | null = null;
+  /** Stamps not yet sent to the party. */
+  let outgoing: Stamp[] = [];
+  let outgoingFirst = 0;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Touch strokes wait a moment before sending, so a second finger can still turn them into a pinch. */
+  let holdUntil = 0;
+  let sentAny = false;
   let pointerId: number | null = null;
   let touches = new Map<number, { x: number; y: number }>();
-  let touchRecordingStart = 0;
-  let touchRecordingTruncated = false;
   let touchBackup: { surface: HTMLCanvasElement; pixels: ImageData }[] = [];
   let gesture = false;
   let pendingTouch = false;
@@ -61,8 +96,6 @@
     context = element.getContext('2d')!;
     windowSize = { width: viewport.clientWidth, height: viewport.clientHeight };
     ready = true;
-    recordingStarted = performance.now();
-    onexportready?.(downloadRecording);
     let firstObservation = true;
     const observer = new ResizeObserver(() => {
       windowSize = { width: viewport.clientWidth, height: viewport.clientHeight };
@@ -74,39 +107,30 @@
     return () => { observer.disconnect(); toolbarObserver.disconnect(); };
   });
   onDestroy(stopStroke);
+
+  // A new canvas shape (chosen by the host in the lobby) starts a clean painting.
   $effect(() => {
-    const nextOwner = painterId;
-    const reset = resetVersion;
-    const dimensions = [documentWidth, documentHeight];
+    const width = documentWidth;
+    const height = documentHeight;
     if (!ready) return;
     untrack(() => {
+      if (layers.width === width && layers.height === height) return;
       stopStroke();
-      if (reset !== previousReset || element.width !== dimensions[0] || element.height !== dimensions[1]) { layers = []; previousReset = reset; cursor = { x: documentWidth / 2, y: documentHeight / 2 }; didFit = false; recording = newRecording(documentWidth, documentHeight); recordingStarted = performance.now(); }
-      if (owner !== nextOwner || layers.length === 0) {
-        activeLayer = document.createElement('canvas');
-        activeLayer.width = documentWidth; activeLayer.height = documentHeight;
-        layers.push({ owner: nextOwner, surface: activeLayer });
-        activeContribution = layers.length - 1;
-        recording.contributions.push({ id: activeContribution, owner: nextOwner });
-      }
-      owner = nextOwner;
+      layers.reset(width, height);
+      log = [];
+      cursor = { x: width / 2, y: height / 2 };
+      didFit = false;
       redraw();
     });
   });
+  // Turn over, tool down or Arrange mode: finish (and send) any stroke in progress.
   $effect(() => {
-    if (mode !== 'paint' || selection.tool === null) untrack(stopStroke);
+    if (!painting || selection.tool === null) untrack(stopStroke);
   });
 
-  function downloadRecording() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(recording)], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'pass-the-canvas-replay.json'; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    announcement = recording.truncated ? 'Replay data exported. The recording limit was reached; this file is incomplete.' : 'Replay data exported. Painting data only; no audio or video.';
-  }
   function redraw() {
     if (!context) return;
-    context.clearRect(0, 0, documentWidth, documentHeight);
-    for (const layer of layers) context.drawImage(layer.surface, 0, 0);
+    layers.composite(context);
     if (thumbnail) {
       const small = thumbnail.getContext('2d')!;
       small.clearRect(0, 0, thumbnail.width, thumbnail.height);
@@ -114,30 +138,94 @@
     }
   }
   $effect(() => { if (!atFit && ready && thumbnail) untrack(redraw); });
+
+  // ---------- called by the parent ----------
+
+  /** Someone else's stroke, relayed by the party. */
+  export function applyRemote(remote: PaintedStroke) {
+    layers.apply(remote);
+    log.push(remote);
+    redraw();
+  }
+
+  /** Late joiner: rebuild every turn's layer from the party's history. */
+  export async function loadHistory(strokes: PaintedStroke[], complete: boolean, snapshotUrl: string | null) {
+    layers.reset(documentWidth, documentHeight);
+    log = [];
+    if (!complete && snapshotUrl) {
+      // Too much history to replay: show the latest saved picture, protected.
+      const image = new Image();
+      image.src = snapshotUrl;
+      try { await image.decode(); layers.setBase(image); } catch { /* keep painting on a blank base */ }
+    }
+    for (const remote of strokes) { layers.apply(remote); log.push(remote); }
+    redraw();
+  }
+
+  /** The finished picture on paper, as a PNG data URL (for the round snapshot). */
+  export function snapshot(): string {
+    flush(true);
+    const flat = document.createElement('canvas');
+    flat.width = documentWidth;
+    flat.height = documentHeight;
+    const paper = flat.getContext('2d')!;
+    paper.fillStyle = '#e1dfda'; // the canvas color behind the paint
+    paper.fillRect(0, 0, flat.width, flat.height);
+    paper.drawImage(element, 0, 0);
+    return flat.toDataURL('image/png');
+  }
+
+  /** Painting data only (no audio or video), for the "Export painting data" menu item. */
+  export function downloadStrokes() {
+    const data = { format: 'ptc-party-strokes', version: 1, width: documentWidth, height: documentHeight, strokes: log };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'pass-the-canvas-strokes.json'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    announcement = 'Painting data exported. Strokes only; no audio or video.';
+  }
+
+  // ---------- your own painting ----------
+
   function point(event: PointerEvent): StrokePoint {
     const box = viewport.getBoundingClientRect();
     const local = screenToCanvas(event.clientX - box.left, event.clientY - box.top, view, frame);
     return { ...local, pressure: event.pointerType === 'mouse' || !event.pressure ? 0.5 : event.pressure };
   }
+
+  /** One stamp: draw it into your layer now, and queue it for the party. */
   function emit(at: StrokePoint) {
     if (!stroke) return;
-    const frozen = stroke;
-    recordStamp(recording, { at: performance.now() - recordingStarted, owner, contribution: activeContribution, selection: frozen.selection, size: frozen.size, intensity: frozen.intensity, point: at, angle: frozen.angle, index: frozen.index });
-    const modifies = frozen.selection.wet || frozen.selection.tool === 'sponge' || frozen.selection.tool === 'burnisher' || frozen.selection.tool === 'eraser';
-    if (modifies) {
-      editOwnedLayers(layers, owner, surface => {
-        // Older contributions by this artist may be worked, but only the newest
-        // contribution receives new pigment. Other artists are never sampled.
-        const state = surface === activeLayer ? frozen.selection : { ...frozen.selection, load: null };
-        drawStudyMark(surface.getContext('2d', { willReadFrequently: true })!, state, frozen.size, at, frozen.angle, frozen.index, frozen.intensity);
-      });
-    } else {
-      drawStudyMark(activeLayer.getContext('2d', { willReadFrequently: true })!, frozen.selection, frozen.size, at, frozen.angle, frozen.index, frozen.intensity);
-    }
-    frozen.index += 1;
+    const stamp: Stamp = { x: round1(at.x), y: round1(at.y), pressure: round3(at.pressure), angle: round3(stroke.angle) };
+    const batch = makeStroke([stamp], stroke.index, false);
+    layers.apply({ ...batch, painterId, round });
+    if (!outgoing.length) outgoingFirst = stroke.index;
+    outgoing.push(stamp);
+    stroke.index += 1;
+    if (performance.now() >= holdUntil) flushTimer ??= setTimeout(() => flush(false), 50);
   }
-  function begin(at: StrokePoint) {
-    stroke = { selection: $state.snapshot(selection), size, intensity, last: at, carry: 0, index: 0, angle: 0 };
+
+  function makeStroke(stamps: Stamp[], first: number, done: boolean): Stroke {
+    const held = stroke!;
+    return { id: held.id, tool: held.selection.tool!, load: held.selection.load, wet: held.selection.wet, size: held.size, intensity: held.intensity, first, stamps, done };
+  }
+
+  function flush(done: boolean) {
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = null;
+    if (!stroke || (!outgoing.length && !done)) return;
+    if (!done && performance.now() < holdUntil) return;
+    if (!outgoing.length && !sentAny) return; // nothing was ever sent: no need for a "done"
+    const batch = makeStroke(outgoing, outgoing.length ? outgoingFirst : stroke.index, done);
+    log.push({ ...batch, painterId, round });
+    onstroke?.(batch);
+    sentAny = true;
+    outgoing = [];
+  }
+
+  function begin(at: StrokePoint, touch = false) {
+    stroke = { id: crypto.randomUUID(), selection: $state.snapshot(selection), size, intensity, last: at, carry: 0, index: 0, angle: 0 };
+    outgoing = []; sentAny = false;
+    holdUntil = touch ? performance.now() + 200 : 0;
     emit(at);
     redraw();
     if (selection.tool === 'airbrush') spray = setInterval(() => { if (stroke) { emit(stroke.last); redraw(); } }, 40);
@@ -149,7 +237,7 @@
     const distance = Math.hypot(dx, dy);
     if (!distance) return;
     stroke.angle = Math.atan2(dy, dx);
-    const spacing = studySpacing(stroke.selection, stroke.size);
+    const spacing = stampSpacing(stroke.selection, stroke.size);
     let travel = spacing - stroke.carry;
     for (; travel <= distance; travel += spacing) {
       const fraction = travel / distance;
@@ -159,20 +247,33 @@
     stroke.last = next;
     redraw();
   }
+  /** Finish the stroke and send what's left. */
   function stopStroke() {
     if (spray) clearInterval(spray);
-    spray = undefined; stroke = null;
+    spray = undefined;
+    if (stroke) { holdUntil = 0; flush(true); }
+    stroke = null;
   }
+  /** A second finger arrived before anything was sent: undo the tentative mark. */
+  function cancelTentativeStroke(): boolean {
+    if (!stroke || sentAny || !touchBackup.length) return false;
+    if (spray) clearInterval(spray);
+    spray = undefined;
+    for (const backup of touchBackup) backup.surface.getContext('2d')!.putImageData(backup.pixels, 0, 0);
+    stroke = null; outgoing = [];
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = null;
+    return true;
+  }
+
   function down(event: PointerEvent) {
     if (event.pointerType === 'mouse' && ![0, 2].includes(event.button)) return;
     viewport.setPointerCapture(event.pointerId);
     touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (touches.size >= 2) {
-      // A second finger converts the interaction into navigation, including
-      // restoring any tentative one-finger paint from the start of this gesture.
-      if (touchBackup.length) { recording.stamps.length = touchRecordingStart; recording.truncated = touchRecordingTruncated; }
-      for (const backup of touchBackup) backup.surface.getContext('2d')!.putImageData(backup.pixels, 0, 0);
-      stopStroke(); redraw(); gesture = true; pendingTouch = false;
+      // A second finger converts the interaction into navigation.
+      if (!cancelTentativeStroke()) stopStroke();
+      redraw(); gesture = true; pendingTouch = false;
       const [a, b] = [...touches.values()];
       pinch = { distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), midpointX: (a.x + b.x) / 2, midpointY: (a.y + b.y) / 2, view: { ...view } };
       return;
@@ -182,10 +283,14 @@
       panStart = { x: event.clientX, y: event.clientY, view: { ...view } };
       return;
     }
+    // Not your turn: a plain drag does nothing (no surprise panning while you
+    // watch). Right-drag, Alt-drag, two fingers and Arrange & view still move the view.
+    if (!canDraw) return;
     if (!canPaint(selection) || !(event.target instanceof HTMLCanvasElement)) return;
     if (event.pointerType === 'touch') {
-      touchRecordingStart = recording.stamps.length; touchRecordingTruncated = recording.truncated;
-      touchBackup = layers.filter(layer => layer.owner === owner).map(layer => ({ surface: layer.surface, pixels: layer.surface.getContext('2d')!.getImageData(0, 0, documentWidth, documentHeight) }));
+      // Snapshot your layers so a pinch that starts as one finger leaves no mark.
+      layers.prepare(painterId, round);
+      touchBackup = layers.ownedSurfaces(painterId).map(surface => ({ surface, pixels: surface.getContext('2d')!.getImageData(0, 0, documentWidth, documentHeight) }));
       pendingTouch = true;
     } else begin(point(event));
   }
@@ -206,12 +311,12 @@
       view = panView(panStart.view, (panStart.x - event.clientX) / box.width, (panStart.y - event.clientY) / box.height);
       return;
     }
-    if (pendingTouch && canPaint(selection) && mode === 'paint') { pendingTouch = false; begin(point(event)); }
+    if (pendingTouch && canPaint(selection) && painting) { pendingTouch = false; begin(point(event), true); }
     if (stroke) lineTo(point(event));
   }
   function up(event: PointerEvent) {
     if (!touches.has(event.pointerId)) return;
-    if (event.type !== 'pointercancel' && pendingTouch && !gesture && event.pointerId === pointerId && mode === 'paint' && canPaint(selection)) begin(point(event));
+    if (event.type !== 'pointercancel' && pendingTouch && !gesture && event.pointerId === pointerId && painting && canPaint(selection)) begin(point(event), true);
     touches.delete(event.pointerId);
     if (event.pointerId === pointerId) { stopStroke(); panStart = null; pendingTouch = false; }
     if (touches.size === 0) { gesture = false; pinch = null; touchBackup = []; pointerId = null; }
@@ -229,7 +334,7 @@
     const direction = directions[event.key];
     if (!direction && event.key !== ' ') return;
     event.preventDefault();
-    if (mode !== 'paint' || event.altKey) {
+    if (!painting || event.altKey) {
       if (direction) view = panView(view, direction[0] * 0.1, direction[1] * 0.1);
       return;
     }
@@ -263,18 +368,21 @@
     const steps: Record<string, [number, number]> = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
     if (steps[event.key]) { event.preventDefault(); onresizewindow?.(frame.width + steps[event.key][0], frame.height + steps[event.key][1]); }
   }
+  // Short numbers keep network messages small; a tenth of a canvas pixel is invisible.
+  function round1(n: number) { return Math.round(n * 10) / 10; }
+  function round3(n: number) { return Math.round(n * 1000) / 1000; }
 </script>
 
 <div class="surface">
-  <div class="viewport" bind:this={viewport} role="application" aria-label="Painting and canvas navigation"
+  <div class="viewport" bind:this={viewport} role="application" aria-label="Shared canvas and view controls"
     onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onlostpointercapture={up}
     oncontextmenu={(event) => event.preventDefault()} onwheel={wheel}>
     <div class="paper" style:width={`${documentWidth * frame.scale * view.zoom}px`} style:height={`${documentHeight * frame.scale * view.zoom}px`} style:--edge={`${9 * view.zoom}px`} style:transform={`translate(-50%, -50%) translate(${view.x}px, ${view.y}px) rotate(${rotation * 90}deg)`}><div class="artwork">
       <canvas bind:this={element} width={documentWidth} height={documentHeight} tabindex="0" aria-roledescription="painting surface"
-        aria-label={`${mode === 'paint' ? 'Practice canvas' : 'Locked canvas'}. Painter ${painterId}. ${selection.tool ? TOOL_NAMES[selection.tool] : 'No tool'}.`}
-        aria-describedby="painting-keyboard-help" class:ready={mode === 'paint' && canPaint(selection)}
+        aria-label={`${label} ${painting ? (selection.tool ? TOOL_NAMES[selection.tool] : 'No tool') + ' in hand.' : mode === 'arrange' ? 'Canvas locked while arranging.' : 'View only.'}`}
+        aria-describedby="painting-keyboard-help" class:ready={painting && canPaint(selection)}
         onkeydown={keyboard} onfocus={() => focused = true} onblur={() => focused = false}></canvas>
-      {#if focused && mode === 'paint'}<span class="cursor" aria-hidden="true" style:left={`${cursor.x / documentWidth * 100}%`} style:top={`${cursor.y / documentHeight * 100}%`}></span>{/if}
+      {#if focused && painting}<span class="cursor" aria-hidden="true" style:left={`${cursor.x / documentWidth * 100}%`} style:top={`${cursor.y / documentHeight * 100}%`}></span>{/if}
     </div></div>
   </div>
   <div bind:this={toolbar} class="view-controls" aria-label="Canvas view">
@@ -282,7 +390,6 @@
     <select aria-label="Quick zoom" value={[0.25, 0.5, 1, 1.5, 2, 3, 4, 6].includes(view.zoom) ? view.zoom : ''} onchange={(event) => { if (event.currentTarget.value) view = zoomView(view, Number(event.currentTarget.value)); }}><option value="" disabled>Zoom to…</option>{#each [0.25, 0.5, 1, 1.5, 2, 3, 4, 6] as level}<option value={level}>{level * 100}%</option>{/each}</select>
     <button type="button" disabled={atFit} onclick={() => view = fitView()}>Fit</button>
     <button type="button" aria-label="Rotate canvas clockwise" title="Rotate canvas 90 degrees" onclick={() => { stopStroke(); rotation = (rotation + 1) % 4; }}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 8a8 8 0 1 0 0 8M20 3v5h-5" /></svg></button>
-    <button type="button" onclick={onnewcanvas}>Canvas size</button>
     <details class="window-options"><summary>Window size</summary><form onsubmit={(event) => { event.preventDefault(); const fields = new FormData(event.currentTarget); onresizewindow?.(Number(fields.get('width')), Number(fields.get('height'))); }}><label>Width<input type="number" aria-label="Canvas window width" name="width" min="260" value={Math.round(frame.width)} /></label><label>Height<input type="number" aria-label="Canvas window height" name="height" min="200" value={Math.round(frame.height)} /></label><button type="submit">Apply</button></form></details>
     <aside class="navigator" class:inactive={atFit} aria-hidden={atFit} aria-label="Canvas navigator">
       <span>Navigator</span>
@@ -295,7 +402,7 @@
   </div>
   <button type="button" class="resize-handle" aria-label="Resize canvas window. Drag or use arrow keys." onpointerdown={startResize} onpointermove={resize} onpointerup={() => resizeStart = null} onpointercancel={() => resizeStart = null} onkeydown={resizeKey}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 20 14-14M12 20l8-8M18 20l2-2" /></svg></button>
 </div>
-<p id="painting-keyboard-help" class="sr-only">In Paint, arrows move the cursor, Space stamps and Shift+arrows draws. In Arrange and view, arrows pan. Plus and minus zoom. Alt+arrows pan in either mode. Right-drag pans; two fingers pan and pinch to zoom. Tab leaves the canvas. Other painters' layers are protected.</p>
+<p id="painting-keyboard-help" class="sr-only">On your turn, arrows move the cursor, Space stamps and Shift+arrows draws. When it isn't your turn, or in Arrange and view, arrows pan. Plus and minus zoom. Alt+arrows pan in either mode. Right-drag pans; two fingers pan and pinch to zoom. Tab leaves the canvas. Earlier painters' turns are protected.</p>
 <span class="sr-only" role="status">{announcement}</span>
 
 <style lang="scss">

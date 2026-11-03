@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { screenToCanvas, zoomCamera, fitCamera } from './study-camera';
+import { screenToCanvas, zoomCamera, fitCamera } from './camera';
 const frame = { width: 832, height: 432, documentWidth: 1600, documentHeight: 800, scale: 0.5 };
 it('maps rotated and zoomed painting back into unchanged document coordinates', () => {
   const camera = { zoom: 2, x: 0, y: 0, rotation: 1 };

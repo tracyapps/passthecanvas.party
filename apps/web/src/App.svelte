@@ -1,6 +1,7 @@
 <!--
-  Top-level screen switch: spots editor (?spots=room) → art editor (?art=room)
-  → demo seating (?demo=seats) → join form → studio.
+  Top-level screen switch: public site → owner room tools (dev only:
+  ?spots=room, ?art=room, ?demo=seats) → shared gallery link → join form →
+  the party (painting table, room, reveal gallery).
   Party id comes from the URL (?party=maya-30th); one is made up if missing.
 -->
 <script lang="ts">
@@ -10,13 +11,13 @@
   const params = new URLSearchParams(location.search);
   const publicPath = location.pathname.replace(/\/$/, '') || '/';
   const developmentRoute = import.meta.env.DEV && ['demo', 'spots', 'art'].some(key => params.has(key));
+  // Painting, the gallery and host tools all live inside the party now
+  // (?party=…). The dev-only routes below are room-authoring tools only.
   const showPublicSite = !params.has('party') && !params.has('gallery') && !developmentRoute;
   const editRoom = import.meta.env.DEV ? params.get('spots') : null; // "?spots=cream-city" opens the spot editor
   const artRoom = import.meta.env.DEV ? params.get('art') : null; // "?art=cream-city" opens the wall art editor
   const demoSeats = import.meta.env.DEV && params.get('demo') === 'seats'; // "?demo=seats" fills the room with fake guests
-  const demoArt = import.meta.env.DEV && params.get('demo') === 'art'; // "?demo=art" previews the gallery
   const galleryRoom = params.get('gallery'); // "?gallery=cream-city#g=…" opens a shared gallery room
-  const paintingStudy = import.meta.env.DEV && params.get('demo') === 'painting';
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
 
   const party = new PartyConnection();
@@ -60,19 +61,12 @@
   {:then { default: DemoRoom }}
     <DemoRoom />
   {/await}
-{:else if demoArt || galleryRoom}
-  <!-- Gallery preview: placeholder party artwork hung + leaned in the room, export + share. -->
+{:else if galleryRoom}
+  <!-- A shared party gallery link. Parties open their own gallery from the reveal. -->
   {#await import('./lib/room/Gallery.svelte')}
     <main class="loading">Hanging the artwork…</main>
   {:then { default: Gallery }}
-    <Gallery room={galleryRoom ?? 'cream-city'} />
-  {/await}
-{:else if paintingStudy}
-  <!-- Local interaction study. Excluded from production until the painting design is approved. -->
-  {#await import('./lib/canvas/PaintingStudy.svelte')}
-    <main class="loading">Setting out the art supplies…</main>
-  {:then { default: PaintingStudy }}
-    <PaintingStudy />
+    <Gallery room={galleryRoom} />
   {/await}
 {:else if !joined}
   <main class="join">
@@ -90,7 +84,6 @@
       </fieldset>
       <button type="submit">Join the party</button>
       <p class="hint">Party: <code>{partyId}</code>. Share this page's link to invite friends.</p>
-      {#if import.meta.env.DEV}<a href="?demo=painting">Try the new painting table</a>{/if}
     </form>
   </main>
 {:else}

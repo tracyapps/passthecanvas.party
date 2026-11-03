@@ -1,76 +1,48 @@
 <!--
-  The studio screen: painting view (default) or the 360° room.
-  Phase 1 version: functional, plainly styled. The real-object skin from the
-  design canvas (brush jar, palette, polaroids) lands in phase 2.
+  The party screen. Three places, one party:
+  - the painting table (default): every guest sees the shared canvas; the
+    current painter paints, everyone else watches and gets their tools ready
+  - the 360° room
+  - the gallery, after the reveal: the finished piece hung in the room
+  Host tools (canvas shape, start, pass now) live in the table's top bar.
 -->
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
+  import { CANVAS_SHAPES, type CanvasShape } from '@ptc/shared';
   import type { PartyConnection } from './party/connection.svelte';
-  import type { BrushSettings } from './canvas/brushes';
-  import { TOOLS, TOOL_GROUPS } from './canvas/brushes';
-  import { PAINTS, mixPaint } from './canvas/paints';
   import { Call } from './call/call.svelte';
   import CallDock from './call/CallDock.svelte';
   import VideoTile from './call/VideoTile.svelte';
-  import PaintCanvas from './canvas/PaintCanvas.svelte';
+  import PaintingTable from './canvas/PaintingTable.svelte';
+  import StudioPanel from './canvas/StudioPanel.svelte';
   import TimerDial from './ui/TimerDial.svelte';
+  import type { GalleryPiece } from './room/leanLayout';
 
   let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
 
   // The room this party opens in. Per-party room choice arrives in phase 2.
-  const ROOM_PANORAMA = '/studio/cream-city/panorama.webp';
-  const ROOM_SPOTS = '/studio/cream-city/spots.json';
+  const ROOM = 'cream-city';
+  const ROOM_PANORAMA = `/studio/${ROOM}/panorama.webp`;
+  const ROOM_SPOTS = `/studio/${ROOM}/spots.json`;
 
-  let view = $state<'paint' | 'room'>('paint');
-  let brush = $state<BrushSettings>({ tool: 'round', color: '#2c3f9e', size: 18, flow: 0.9, viscosity: 0.6 });
-  let canvas: PaintCanvas | undefined = $state();
+  let view = $state<'paint' | 'room' | 'gallery'>('paint');
+  let table: PaintingTable | undefined = $state();
+  let guestsOpen = $state(innerWidth > 1100);
+  let revealOpen = $state(true);
   const call = new Call();
 
-  // ---- mixing paints on the palette ----
-  // Turn "Mix a color" on, tap two paints, tap the result to load your brush.
-  let mixing = $state(false);
-  let slotA = $state<{ name: string; hex: string } | null>(null);
-  let slotB = $state<{ name: string; hex: string } | null>(null);
-  let mixResult = $state<{ name: string; hex: string } | null>(null);
-
-  function toggleMixing() {
-    mixing = !mixing;
-    if (!mixing) resetMix();
-  }
-
-  function resetMix() {
-    slotA = null;
-    slotB = null;
-    mixResult = null;
-  }
-
-  function tapPaint(paint: { name: string; hex: string }) {
-    if (!mixing) {
-      brush.color = paint.hex;
-      return;
-    }
-    if (!slotA) {
-      slotA = paint;
-      return;
-    }
-    slotB = paint;
-    mixResult = { name: `${slotA.name} and ${slotB.name}`, hex: mixPaint(slotA.hex, slotB.hex) };
-    party.announcement = `Mixed ${mixResult.name}. Tap the mix to use it.`;
-  }
-
-  function useMix() {
-    if (!mixResult) return;
-    brush.color = mixResult.hex;
-    mixing = false;
-    resetMix();
-  }
-
-  // Wire the connection to the canvas.
+  // Hand the canvas everything that arrived before it existed (a late
+  // joiner's history), then every new stroke as it comes in.
   $effect(() => {
-    party.onRemoteStroke = (stroke) => canvas?.replay(stroke);
-    party.onSnapshotRequest = (round) => {
-      if (canvas) party.send({ type: 'snapshot', round, pngDataUrl: canvas.snapshot() });
-    };
+    const current = table;
+    if (!current) return;
+    // untrack: only a new table should rebuild the canvas, never a state update.
+    untrack(() => {
+      const waiting = party.attachCanvas((stroke) => current.applyRemote(stroke));
+      void current.loadHistory(waiting.history, waiting.complete, party.state?.snapshotUrl ?? null);
+    });
+    party.onSnapshotRequest = (round) => party.send({ type: 'snapshot', round, pngDataUrl: current.snapshot() });
+    return () => party.detachCanvas();
   });
 
   // Join the video call once the party tells us who we are. The member id
@@ -84,16 +56,6 @@
     void call.join(partyId, me.name, me.id, me.presence);
   });
 
-  // A new official snapshot (a saved round, or history for a late joiner)
-  // replaces the pixels on every screen, so nobody carries drift forward.
-  let loadedSnapshot = '';
-  $effect(() => {
-    const url = party.state?.snapshotUrl;
-    if (!url || url === loadedSnapshot) return;
-    loadedSnapshot = url;
-    void canvas?.loadImage(url);
-  });
-
   onDestroy(() => call.leave());
 
   function leave() {
@@ -104,134 +66,144 @@
 
   let game = $derived(party.state);
   let painterName = $derived(party.painter?.name ?? '');
+  let isHost = $derived(party.me?.isHost ?? false);
   let timerLabel = $derived(party.isMyTurn ? 'Your turn' : painterName ? `${painterName}'s turn` : 'Waiting');
   let canvasLabel = $derived(
-    game?.phase === 'painting' ? `Shared canvas, round ${game.round}. ${party.isMyTurn ? 'You are' : painterName + ' is'} painting.` : 'Shared canvas.'
+    game?.phase === 'painting' ? `Shared canvas, round ${game.round} of ${game.totalRounds}. ${party.isMyTurn ? 'Your turn.' : painterName + ' is painting.'}`
+      : game?.phase === 'reveal' ? 'The finished group painting.' : 'Shared canvas.'
   );
+  let waitingNote = $derived(
+    !game ? 'Connecting…'
+      : game.phase === 'lobby' ? (isHost ? 'Choose a canvas, then start the game when everyone is here.' : 'Waiting for the host to start.')
+      : game.phase === 'passing' ? 'Passing the canvas…'
+      : game.phase === 'reveal' ? 'All rounds done.'
+      : `Watching ${painterName || 'the painter'} paint.`
+  );
+
+  /** The finished piece first, then how it grew round by round. */
+  let artwork = $derived.by((): GalleryPiece[] => {
+    const rounds = game?.rounds ?? [];
+    if (!rounds.length || !game) return [];
+    const aspect = game.canvas.width / game.canvas.height;
+    const last = rounds[rounds.length - 1]!;
+    return [
+      { seed: `final-${last.round}`, aspect, url: last.url, caption: 'The finished piece — everyone' },
+      ...rounds.slice(0, -1).map((r) => ({ seed: `round-${r.round}`, aspect, url: r.url, caption: `After round ${r.round} — ${r.painterName}` }))
+    ];
+  });
+
+  function chooseCanvas(shape: CanvasShape) {
+    party.send({ type: 'setCanvas', shape });
+  }
+  function closeMenu() {
+    document.getElementById('table-actions')?.hidePopover();
+  }
 </script>
 
 <div class="studio">
-  <header>
-    <p class="tape">{game?.partyId ?? 'Connecting…'}</p>
-    {#if game && game.phase !== 'lobby'}
-      <p class="round">Round <strong>{game.round}</strong> of {game.totalRounds}</p>
-      <TimerDial secondsLeft={game.secondsLeft} totalSeconds={game.turnSeconds} label={timerLabel} />
-    {/if}
-    {#if game?.phase === 'lobby' && party.me?.isHost}
-      <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
-    {/if}
-    {#if game?.phase === 'painting' && (party.isMyTurn || party.me?.isHost)}
-      <button type="button" class="primary" onclick={() => party.send({ type: 'passNow' })}>Pass now</button>
-    {/if}
-  </header>
+  {#if view === 'gallery' && game}
+    <!-- Loaded only when opened: the gallery shares the 360° viewer. -->
+    {#await import('./room/Gallery.svelte')}
+      <p class="loading">Hanging the artwork…</p>
+    {:then { default: Gallery }}
+      <Gallery room={ROOM} {artwork} onback={() => { view = 'paint'; revealOpen = true; }} />
+    {/await}
+  {:else if view === 'room'}
+    <!-- Loaded only when opened: the 360° viewer (three.js) is the heaviest part of the app. -->
+    {#await import('./room/RoomView.svelte')}
+      <p class="loading">Opening the room…</p>
+    {:then { default: RoomView }}
+      <RoomView
+        panorama={ROOM_PANORAMA}
+        spotsUrl={ROOM_SPOTS}
+        members={game?.members ?? []}
+        youId={party.youId}
+        videos={call.videos}
+        onTakeSpot={(spotId) => party.send({ type: 'takeSpot', spotId })}
+      />
+    {/await}
+  {/if}
 
-  <main class:room-only={view === 'room'}>
-    {#if view === 'paint'}
-      <aside class="tools" aria-label="Art supplies">
-        {#each TOOL_GROUPS as group (group.label)}
-          <div role="group" aria-label={group.label}>
-            <p class="group-label">{group.label}</p>
-            {#each group.tools as id (id)}
-              {@const tool = TOOLS.find((t) => t.id === id)}
-              {#if tool}
-                <button
-                  type="button"
-                  title={tool.hint}
-                  aria-pressed={brush.tool === id}
-                  onclick={() => (brush.tool = id)}
-                >
-                  {tool.label}
-                </button>
+  <!-- The table stays mounted in the room and gallery too, so the canvas keeps
+       receiving strokes; it is just hidden. -->
+  {#if game && party.youId}
+    <div class="table" hidden={view !== 'paint'}>
+      <PaintingTable
+        bind:this={table}
+        canDraw={party.isMyTurn}
+        painterId={party.youId}
+        round={game.round}
+        canvasSize={game.canvas}
+        label={canvasLabel}
+        {waitingNote}
+        onstroke={(stroke) => party.send({ type: 'stroke', stroke })}
+      >
+        {#snippet partyBar()}
+          <div class="party-bar">
+            <p class="tape">{game.partyId}</p>
+            {#if game.phase === 'lobby' && isHost}
+              <label class="shape">Canvas
+                <select value={game.canvas.shape} onchange={(event) => chooseCanvas(event.currentTarget.value as CanvasShape)}>
+                  {#each Object.entries(CANVAS_SHAPES) as [id, shape] (id)}<option value={id}>{shape.name}</option>{/each}
+                </select>
+              </label>
+              <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
+            {:else if game.phase === 'lobby'}
+              <p class="note">{CANVAS_SHAPES[game.canvas.shape].name} canvas · waiting for the host</p>
+            {/if}
+            {#if game.phase === 'painting' || game.phase === 'passing'}
+              <p class="round">Round <strong>{game.round}</strong> of {game.totalRounds}</p>
+              <TimerDial secondsLeft={game.secondsLeft} totalSeconds={game.turnSeconds} label={timerLabel} />
+            {/if}
+            {#if game.phase === 'painting' && (party.isMyTurn || isHost)}
+              <button type="button" class="primary" onclick={() => party.send({ type: 'passNow' })}>{party.isMyTurn ? 'Pass now' : 'Pass for them'}</button>
+            {/if}
+            {#if game.phase === 'reveal'}
+              <button type="button" class="primary" onclick={() => (revealOpen = true)}>See the finished piece</button>
+            {/if}
+          </div>
+        {/snippet}
+        {#snippet menu()}
+          <button type="button" aria-pressed={guestsOpen} onclick={() => { guestsOpen = !guestsOpen; closeMenu(); }}>{guestsOpen ? 'Hide guests' : 'Show guests'}</button>
+          <button type="button" onclick={() => { view = 'room'; closeMenu(); }}>Go to the room</button>
+          {#if artwork.length}<button type="button" onclick={() => { view = 'gallery'; closeMenu(); }}>Open the gallery</button>{/if}
+          <button type="button" onclick={leave}>Leave the party</button>
+        {/snippet}
+      </PaintingTable>
+
+      {#if guestsOpen}
+        <StudioPanel title="Around the table" label="guests" dock="guests" flow={innerWidth <= 1100} onclose={() => (guestsOpen = false)}>
+          <ul class="guests">
+            {#each game.order as id (id)}
+              {@const member = game.members.find((m) => m.id === id)}
+              {#if member}
+                <li>
+                  <VideoTile
+                    name={member.name}
+                    you={member.id === party.youId}
+                    host={member.isHost}
+                    painting={member.id === game.painterId}
+                    track={member.id === party.youId
+                      ? call.camOn && call.status === 'in-call'
+                        ? call.localVideo
+                        : null
+                      : call.videos.find((v) => v.identity === member.id)?.track ?? null}
+                    speaking={member.id !== party.youId && call.videos.find((v) => v.identity === member.id)?.speaking}
+                  />
+                </li>
               {/if}
             {/each}
-          </div>
-        {/each}
+          </ul>
+        </StudioPanel>
+      {/if}
+    </div>
+  {:else}
+    <p class="loading">Pulling up a chair…</p>
+  {/if}
 
-        <div role="group" aria-label="Paint palette" class="palette">
-          {#each PAINTS as paint (paint.hex)}
-            <button
-              type="button"
-              class="paint"
-              style:--paint={paint.hex}
-              aria-label={mixing ? `Add ${paint.name} to the mix` : paint.name}
-              aria-pressed={mixing ? slotA?.hex === paint.hex || slotB?.hex === paint.hex : brush.color === paint.hex}
-              onclick={() => tapPaint(paint)}
-            ></button>
-          {/each}
-          <button type="button" class="mix-toggle" aria-pressed={mixing} onclick={toggleMixing}>
-            {mixing ? 'Stop mixing' : 'Mix a color'}
-          </button>
-          {#if mixing && slotA && mixResult}
-            <button
-              type="button"
-              class="paint"
-              style:--paint={mixResult.hex}
-              aria-label={`Use the mix of ${mixResult.name}`}
-              aria-pressed={brush.color === mixResult.hex}
-              onclick={useMix}
-            ></button>
-          {:else if mixing && slotA}
-            <p class="mix-hint">Now tap a second paint to mix with {slotA.name}</p>
-          {:else if mixing}
-            <p class="mix-hint">Tap two paints to mix them</p>
-          {/if}
-        </div>
-
-        <label>Brush size {brush.size}<input type="range" min="2" max="80" bind:value={brush.size} /></label>
-        {#if brush.tool === 'acrylic'}
-          <label>Paint viscosity {Math.round(brush.viscosity * 100)}%<input type="range" min="0" max="1" step="0.05" bind:value={brush.viscosity} /></label>
-        {/if}
-      </aside>
-
-      <div class="canvas-wrap">
-        <PaintCanvas bind:this={canvas} {brush} canDraw={party.isMyTurn} label={canvasLabel} onstroke={(stroke) => party.send({ type: 'stroke', stroke })} />
-        {#if game?.phase === 'painting' && !party.isMyTurn}
-          <p class="watching">Watching {painterName} paint</p>
-        {/if}
-      </div>
-
-      <aside class="guests" aria-label="Around the table">
-        <h2>Around the table</h2>
-        <ul>
-          {#each game?.order ?? [] as id (id)}
-            {@const member = game?.members.find((m) => m.id === id)}
-            {#if member}
-              <li>
-                <VideoTile
-                  name={member.name}
-                  you={member.id === party.youId}
-                  host={member.isHost}
-                  painting={member.id === game?.painterId}
-                  track={member.id === party.youId
-                    ? call.camOn && call.status === 'in-call'
-                      ? call.localVideo
-                      : null
-                    : call.videos.find((v) => v.identity === member.id)?.track ?? null}
-                  speaking={member.id !== party.youId && call.videos.find((v) => v.identity === member.id)?.speaking}
-                />
-              </li>
-            {/if}
-          {/each}
-        </ul>
-      </aside>
-    {:else}
-      <!-- Loaded only when opened: the 360° viewer (three.js) is the heaviest part of the app. -->
-      {#await import('./room/RoomView.svelte')}
-        <p>Opening the room…</p>
-      {:then { default: RoomView }}
-        <RoomView
-          panorama={ROOM_PANORAMA}
-          spotsUrl={ROOM_SPOTS}
-          members={game?.members ?? []}
-          youId={party.youId}
-          videos={call.videos}
-          onTakeSpot={(spotId) => party.send({ type: 'takeSpot', spotId })}
-        />
-      {/await}
-    {/if}
-  </main>
-
-  <CallDock {call} inRoom={view === 'room'} onToggleRoom={() => (view = view === 'paint' ? 'room' : 'paint')} onLeave={leave} />
+  {#if view !== 'gallery'}
+    <CallDock {call} inRoom={view === 'room'} onToggleRoom={() => (view = view === 'paint' ? 'room' : 'paint')} onLeave={leave} />
+  {/if}
 
   {#if game?.phase === 'passing'}
     <div class="pass" role="alertdialog" aria-labelledby="pass-title">
@@ -242,14 +214,20 @@
     </div>
   {/if}
 
-  {#if game?.phase === 'reveal'}
+  {#if game?.phase === 'reveal' && revealOpen && view === 'paint'}
     <div class="pass" role="dialog" aria-labelledby="reveal-title">
       <div class="card">
         <h2 id="reveal-title">You made this together.</h2>
         {#if game.snapshotUrl}
           <img src={game.snapshotUrl} alt="The finished group painting" />
-          <a href={game.snapshotUrl} download="pass-the-canvas.png">Download full size</a>
+        {:else}
+          <p>Saving the finished piece…</p>
         {/if}
+        <div class="reveal-actions">
+          {#if artwork.length}<button type="button" class="dark" onclick={() => (view = 'gallery')}>Hang it in the gallery</button>{/if}
+          {#if game.snapshotUrl}<a href={game.snapshotUrl} download="pass-the-canvas.png">Download full size</a>{/if}
+          <button type="button" class="plain" onclick={() => (revealOpen = false)}>Back to the table</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -264,148 +242,45 @@
   .studio {
     @include walnut-table;
     min-height: 100dvh;
-    display: flex;
-    flex-direction: column;
   }
 
-  header {
+  .table[hidden] {
+    display: none;
+  }
+
+  .loading {
+    margin: 0;
+    padding: 2rem;
+  }
+
+  .party-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 1rem;
-    padding: 0.625rem 1.25rem;
-    background: rgb(24 16 11 / 0.82);
+    gap: 0.75rem 1rem;
   }
 
   .tape {
     @include tape-label;
     margin: 0;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
   }
 
-  .round {
+  .round,
+  .note {
     margin: 0;
   }
 
-  main {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 15rem minmax(0, 1fr) 13rem;
-    gap: 1.25rem;
-    padding: 1.25rem 1.25rem 6rem;
-
-    // The room view is the only child when open; give it the whole table.
-    &.room-only {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    @media (max-width: 1000px) {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .note {
+    font-size: 0.875rem;
+    color: $cream-muted;
   }
 
-  .tools {
+  .shape {
     display: flex;
-    flex-direction: column;
-    gap: 1rem;
-
-    [role='group'] {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.375rem;
-    }
-
-    .group-label {
-      width: 100%;
-      margin: 0;
-      font-size: 0.75rem;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: $cream-muted;
-    }
-
-    button {
-      @include tap-target;
-      padding: 0 0.75rem;
-      border-radius: $radius-sm;
-      border: 1px solid rgb(255 230 200 / 0.25);
-      background: rgb(24 16 11 / 0.55);
-      color: $cream;
-    }
-
-    button[aria-pressed='true'] {
-      background: $cream;
-      color: $walnut-900;
-    }
-
-    .paint {
-      width: $tap-min;
-      padding: 0;
-      border-radius: 50%;
-      background: var(--paint);
-    }
-
-    .paint[aria-pressed='true'] {
-      background: var(--paint);
-      box-shadow:
-        0 0 0 3px $paper,
-        0 0 0 6px $walnut-900;
-    }
-
-    .mix-toggle {
-      width: 100%;
-    }
-
-    .mix-hint {
-      width: 100%;
-      margin: 0;
-      font-size: 0.875rem;
-      color: $cream-muted;
-    }
-
-    label {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-
-    input {
-      accent-color: $cadmium-orange;
-    }
-  }
-
-  .canvas-wrap {
-    position: relative;
-    align-self: start;
-    width: min(100%, calc((100dvh - 14rem) * 4 / 3));
-    justify-self: center;
-  }
-
-  .watching {
-    position: absolute;
-    left: 50%;
-    bottom: 1rem;
-    transform: translateX(-50%);
-    margin: 0;
-    padding: 0.625rem 1.125rem;
-    border-radius: $radius-pill;
-    background: rgb(24 16 11 / 0.88);
-    white-space: nowrap;
-  }
-
-  .guests {
-    h2 {
-      font-size: 1.125rem;
-      margin: 0 0 0.5rem;
-    }
-    ul {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
   }
 
   .primary {
@@ -418,9 +293,27 @@
     font-weight: 700;
   }
 
+  // A row of small tiles across the top-right, above the brush rail.
+  .guests {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 6.5rem;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+
+    li {
+      font-size: 0.8125rem;
+    }
+  }
+
   .pass {
     position: fixed;
     inset: 0;
+    z-index: 60;
     display: grid;
     place-items: center;
     padding: 1.25rem;
@@ -428,6 +321,8 @@
 
     .card {
       max-width: 32rem;
+      max-height: calc(100dvh - 2.5rem);
+      overflow: auto;
       padding: 1.75rem 2rem;
       background: $paper;
       color: $walnut-900;
@@ -452,6 +347,35 @@
     a {
       color: $walnut-900;
       font-weight: 700;
+    }
+  }
+
+  .reveal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+
+    button,
+    a {
+      min-height: $tap-min;
+      display: inline-flex;
+      align-items: center;
+    }
+    .dark {
+      padding: 0 1.125rem;
+      border: 0;
+      border-radius: $radius-pill;
+      background: $walnut-900;
+      color: $cream;
+      font-weight: 700;
+    }
+    .plain {
+      padding: 0 0.5rem;
+      border: 0;
+      background: transparent;
+      color: $walnut-900;
+      text-decoration: underline;
     }
   }
 </style>

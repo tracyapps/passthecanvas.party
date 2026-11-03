@@ -10,8 +10,11 @@ import type { HangMode } from './leanLayout';
 export interface GalleryData {
   v: 1;
   mode: HangMode;
-  pieces: { seed: string; aspect: number }[];
+  pieces: { seed: string; aspect: number; url?: string; caption?: string }[];
 }
+
+/** Real party art lives on the party server; links may only point at saved round images. */
+export const SNAPSHOT_PATH = /^\/snapshots\/[a-z0-9-]{3,40}\/round-\d{1,3}\.png$/;
 
 /** Serialize gallery data to the short URL-safe string that goes after #g=. */
 export function encodeGallery(data: GalleryData): string {
@@ -40,7 +43,10 @@ export function decodeGallery(encoded: string): GalleryData | null {
       const piece = p as Record<string, unknown>;
       const seed = typeof piece.seed === 'string' ? piece.seed.slice(0, 40) : '';
       const aspect = Number(piece.aspect);
-      return { seed, aspect: Number.isFinite(aspect) && aspect > 0 ? Math.min(aspect, 4) : 1 };
+      const out: GalleryData['pieces'][number] = { seed, aspect: Number.isFinite(aspect) && aspect > 0 ? Math.min(aspect, 4) : 1 };
+      if (typeof piece.url === 'string' && SNAPSHOT_PATH.test(piece.url)) out.url = piece.url;
+      if (typeof piece.caption === 'string' && piece.caption.trim()) out.caption = piece.caption.slice(0, 80);
+      return out;
     });
     if (pieces.some((p) => p.seed === '')) return null;
     return { v: 1, mode: parsed.mode as HangMode, pieces };

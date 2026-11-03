@@ -1,5 +1,7 @@
 # Painting workspace — first design round
 
+> **Nov 3, 2026:** the study described below now lives in the party itself (`?party=…`); `?demo=painting` is gone and file names lost their `study-` prefix (`StudyCanvas` → `PartyCanvas`, `PaintingStudy` → `PaintingTable`). See DECISIONS 2026-11-03. The sections below are kept as history.
+
 2026-10-29. Owner brief and five `_design/mockups` artboards reviewed against the current source. This is an implementation brief, not a shipped redesign. The owner's new mockups supersede the earlier jar/sidebar concept for the painting workspace. Button treatments, dimensions, physical paint behavior, and synchronization details remain proposals to test.
 
 Companion notes: [interaction research](PAINTING-INTERACTION-RESEARCH.md), [asset measurements and extraction](PAINTING-ASSETS.md).

@@ -39,10 +39,10 @@ flowchart LR
 All message types live in `packages/shared/src/protocol.ts`. Each message is JSON with a `type` field.
 
 1. Client connects to `ws://…/party/:partyId` and sends `join { name, presence: 'camera' | 'avatar' }`.
-2. Server replies with `welcome { you, state }`, the full party state including the latest canvas snapshot URL.
+2. Server replies with `welcome { you, state }` (canvas shape, round images, latest snapshot URL), then `history { strokes }` so a late joiner rebuilds every turn's layer.
 3. During a turn:
-   - The painter sends `stroke` messages (batched points: x, y, pressure, plus tool, color, size and flow).
-   - The server checks the sender is the current painter, then broadcasts the stroke to everyone else.
+   - The painter sends `stroke` messages: batched brush stamps (x, y, pressure, angle) plus what the painter holds (tool, paint load, wet, size, intensity). Rules for which tool takes which paint live in `packages/shared/src/paint.ts`.
+   - The server checks the sender is the current painter and the stroke is possible, stamps it with `painterId` + `round` (which layer it belongs to), keeps it in memory for late joiners, and broadcasts it to everyone else.
 4. The server ticks the timer and broadcasts `timer { secondsLeft }` once a second.
 5. At zero (or on `passNow` from the painter or host), the server asks the painter's client for a `snapshot` (PNG), stores it, advances the turn, and broadcasts `turn { painterId, round }`.
 6. After the last round: `reveal { finalImageUrl, credits }`.

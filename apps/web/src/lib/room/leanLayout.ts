@@ -13,6 +13,8 @@ export type HangMode = 'walls-then-lean' | 'walls' | 'lean';
 export interface GalleryPiece {
   seed: string; // which painting this is (also the placeholder generator's seed)
   aspect: number; // width ÷ height of the painted piece
+  url?: string; // a real party image; without one, a placeholder is painted from the seed
+  caption?: string; // spoken/visible label, e.g. "After round 2 — Jordan"
 }
 
 /** One piece placed in the room: which region, which slice of it, which piece. */

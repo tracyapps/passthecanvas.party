@@ -2,7 +2,7 @@
 // Svelte "runes" ($state) make these fields reactive: components that read
 // them update automatically when messages arrive.
 
-import type { ClientMessage, PartyState, Presence, ServerMessage, Stroke } from '@ptc/shared';
+import type { ClientMessage, PaintedStroke, PartyState, Presence, ServerMessage } from '@ptc/shared';
 
 export class PartyConnection {
   state = $state<PartyState | null>(null);
@@ -14,8 +14,27 @@ export class PartyConnection {
 
   private socket: WebSocket | null = null;
 
-  /** Set by the studio screen so remote strokes reach the canvas. */
-  onRemoteStroke: (stroke: Stroke) => void = () => {};
+  /**
+   * Strokes that arrive before the canvas is on screen wait here (a late
+   * joiner's history, plus anything painted while the table loads).
+   */
+  private waiting: { history: PaintedStroke[]; complete: boolean; strokes: PaintedStroke[] } = { history: [], complete: true, strokes: [] };
+  private strokeHandler: ((stroke: PaintedStroke) => void) | null = null;
+
+  /**
+   * The canvas is ready: hand it everything that arrived so far, then keep
+   * sending new strokes straight to it.
+   */
+  attachCanvas(handler: (stroke: PaintedStroke) => void) {
+    const waiting = this.waiting;
+    this.waiting = { history: [], complete: true, strokes: [] };
+    this.strokeHandler = handler;
+    return { history: [...waiting.history, ...waiting.strokes], complete: waiting.complete };
+  }
+
+  detachCanvas() {
+    this.strokeHandler = null;
+  }
   /** Set by the studio screen to answer the server's snapshot request. */
   onSnapshotRequest: (round: number) => void = () => {};
 
@@ -38,6 +57,8 @@ export class PartyConnection {
     this.state = null;
     this.youId = null;
     this.chat = [];
+    this.waiting = { history: [], complete: true, strokes: [] };
+    this.strokeHandler = null;
   }
 
   send(message: ClientMessage) {
@@ -73,8 +94,15 @@ export class PartyConnection {
         if (message.secondsLeft === 30) this.announcement = '30 seconds left';
         if (message.secondsLeft === 10) this.announcement = '10 seconds left';
         break;
+      case 'history':
+        // The socket keeps order, so history always comes before live strokes.
+        if (this.strokeHandler) { message.strokes.forEach((stroke) => this.strokeHandler?.(stroke)); break; }
+        this.waiting.history = message.strokes;
+        this.waiting.complete = message.complete;
+        break;
       case 'stroke':
-        this.onRemoteStroke(message.stroke);
+        if (this.strokeHandler) this.strokeHandler(message.stroke);
+        else this.waiting.strokes.push(message.stroke);
         break;
       case 'requestSnapshot':
         this.onSnapshotRequest(message.round);

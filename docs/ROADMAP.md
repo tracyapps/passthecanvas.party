@@ -13,6 +13,7 @@ Test the three risky pieces before investing in polish.
 **Gate: two people on different computers paint one canvas together while on a video call, with the room visible.**
 
 ### Setup
+- Setup and gate checklist: [PHASE-1-TEST.md](PHASE-1-TEST.md).
 - [x] Repo structure, agent instructions, docs
 - [x] `git init`, `git lfs install`, first commit
 - [x] `npm install` and `npm run dev` work on Tapps's Mac
@@ -71,6 +72,7 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] Owner testing round five: angled bottom burnishing pad, deliberate long-handle overflow and shared protected-working-end placement rules for defaults/drag/keyboard/reflow. Containers remain fully contained; local study only.
 - [x] Owner testing round six: Arrange controls replace painting readouts in the top bar, removing the supply-covering overlay; Paint restores selection/settings. Local study only.
 - [x] Owner testing round seven: local named views, visual-row movement, side columns, separate resizable canvas window, outside zoom/rotation controls, canvas-size preparation and emitted-stamp JSON export. Clerk + Railway Postgres account workspace boundary wired; hosted credentials/login/save evidence remains open.
+- [x] **Moved into the party (Nov 3, 2026):** the painting table replaces the Phase 1 painting screen; stamp-based strokes, per-turn owned layers, late-joiner history, host canvas shape, reveal → gallery with real pieces. `?demo=painting` and `?demo=art` removed; all future work happens in the party (AGENTS.md §8.5). See DECISIONS 2026-11-03.
 - [ ] Configure approved Clerk email + optional Discord and Railway Postgres; prove real account save/reload, account switching and cross-device behavior.
 - [ ] Implement approved one-canvas-per-guest passing ring with stable contributor ownership and durable accepted art events; shared types and both apps must change together.
 - [ ] **Redesign "Mix a color"** — owner brief received; prototype multi-color recipes, streaked loads and reusable trays in the delivery order above; existing toggle unchanged so far
@@ -119,7 +121,8 @@ Replace placeholders with the real Blender studio.
   - [x] Owner decision (Oct 2026): **both layers** — pieces hang on wall quads first, overflow leans in freeform areas; lean areas are `role: "lean"` quads drawn in the same `?art=` editor (same warp, dashed-teal, per-group show/hide)
   - [x] Gallery preview with host controls (`?demo=art`): hang mode + piece count; lean areas pack by dimensions (two tall canvases where one landscape fits)
   - [x] Export preview (PNG of the current view, art composited) + shareable 3D room link in the URL hash (`?gallery=cream-city#g=…`, no server storage)
-  - [ ] Hang real party artwork (snapshots per round) + nicknames under pieces
+  - [x] Hang real party artwork (snapshots per round) + nicknames under pieces *(reveal → "Hang it in the gallery"; names in an "On display" list, not yet painted under each piece)*
+  - [ ] Sync the host's hang mode to every guest's gallery
   - [ ] Later, if parties use it: drag artwork between spots before saving; server-saved rooms; social-photo layout design
 
 ---

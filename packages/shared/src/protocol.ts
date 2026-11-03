@@ -2,50 +2,10 @@
 // Every message is JSON with a `type` field. Change shapes HERE first,
 // then update apps/web and apps/server in the same change.
 
-/** The canvas is always 1600×1200 "canvas units", whatever the screen size. */
-export const CANVAS_WIDTH = 1600;
-export const CANVAS_HEIGHT = 1200;
+import type { CanvasShape, CanvasSize, PaintedStroke, Stroke } from './paint';
 
-/**
- * The tools in the studio. Grouped the way they sit on the table:
- * wet brushes, dry media, and the blenders/tools that work the paint
- * already on the canvas.
- */
-export type ToolId =
-  | 'round' // round brush
-  | 'flat' // flat brush, chisel edge
-  | 'watercolor' // transparent glazes that build to opaque
-  | 'acrylic' // opaque paint; `viscosity` sets how it behaves
-  | 'airbrush' // fine transparent spray
-  | 'pencil'
-  | 'charcoal' // grainy, chalky build
-  | 'pastel' // colored chalk build
-  | 'water' // wet brush: dilutes and smears what's there
-  | 'finger' // blends and smears like a fingertip
-  | 'sponge' // textured dabs
-  | 'knife' // palette knife: hard opaque scrape of paint
-  | 'eraser';
-
-/** One point of a stroke, in canvas units. pressure is 0–1 (0.5 for a mouse). */
-export interface StrokePoint {
-  x: number;
-  y: number;
-  pressure: number;
-}
-
-/** A batch of points from one continuous drag, plus the brush settings used. */
-export interface Stroke {
-  id: string;
-  tool: ToolId;
-  color: string; // hex, e.g. "#2c3f9e"
-  size: number; // 2–80
-  flow: number; // 0.1–1
-  /** How thick acrylic paint is, 0 (runny) to 1 (buttery). Other tools ignore it. */
-  viscosity?: number;
-  points: StrokePoint[];
-  /** true on the last batch of a drag (pointer lifted) */
-  done: boolean;
-}
+// Strokes, tools and canvas shapes live in ./paint.ts (shared rules for the
+// painting table). This file is only the messages.
 
 export type Presence = 'camera' | 'avatar';
 
@@ -68,8 +28,12 @@ export interface PartyState {
   painterId: string | null;
   secondsLeft: number;
   turnSeconds: number;
-  /** URL of the latest saved canvas image, for late joiners */
+  /** The canvas shape for this party. The host picks it in the lobby. */
+  canvas: CanvasSize & { shape: CanvasShape };
+  /** URL of the latest saved canvas image (reveal, gallery, history fallback) */
   snapshotUrl: string | null;
+  /** One saved image per finished turn, oldest first, for the reveal gallery. */
+  rounds: { round: number; painterId: string; painterName: string; url: string }[];
   radio: { stationName: string; streamUrl: string; playing: boolean } | null;
 }
 
@@ -78,6 +42,7 @@ export interface PartyState {
 export type ClientMessage =
   | { type: 'join'; name: string; presence: Presence }
   | { type: 'start' } // host only
+  | { type: 'setCanvas'; shape: CanvasShape } // host only, lobby only
   | { type: 'stroke'; stroke: Stroke } // current painter only
   | { type: 'passNow' } // painter or host
   | { type: 'snapshot'; round: number; pngDataUrl: string } // painter, when asked
@@ -90,7 +55,13 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'welcome'; youId: string; state: PartyState }
   | { type: 'state'; state: PartyState }
-  | { type: 'stroke'; stroke: Stroke; painterId: string }
+  | { type: 'stroke'; stroke: PaintedStroke }
+  /**
+   * Sent once after `welcome`: every accepted stroke so far, so a late joiner
+   * rebuilds each turn's own layer. `complete: false` means the party grew
+   * past the history limit; draw `snapshotUrl` as a protected base instead.
+   */
+  | { type: 'history'; strokes: PaintedStroke[]; complete: boolean }
   | { type: 'timer'; secondsLeft: number }
   | { type: 'requestSnapshot'; round: number }
   | { type: 'chat'; fromId: string; name: string; text: string; at: number }

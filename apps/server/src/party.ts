@@ -6,17 +6,23 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { WebSocket } from 'ws';
 import {
+  CANVAS_SHAPES,
+  DEFAULT_CANVAS_SHAPE,
   painterForRound,
+  sanitizeStroke,
   type ClientMessage,
   type Member,
+  type PaintedStroke,
   type PartyState,
-  type ServerMessage,
-  type Stroke
+  type ServerMessage
 } from '@ptc/shared';
 
 export const SNAPSHOT_DIR = join(process.cwd(), 'data', 'snapshots');
 const TURN_SECONDS = Number(process.env.TURN_SECONDS ?? 90);
-const MAX_POINTS_PER_BATCH = 2000;
+// Late joiners rebuild the painting from every accepted stroke. Past this many
+// stamps the party stops keeping history and late joiners get the latest
+// snapshot instead (a stamp is four numbers, so this is a few tens of MB).
+const MAX_HISTORY_STAMPS = 400_000;
 const MAX_SNAPSHOT_CHARS = 3_500_000; // about 2.5 MB of PNG
 
 const parties = new Map<string, Party>();
@@ -34,6 +40,10 @@ class Party {
   private sockets = new Map<string, WebSocket>(); // memberId → socket
   private ticker: ReturnType<typeof setInterval> | null = null;
   private state: PartyState;
+  /** Every accepted stroke, in order, for late joiners. Never video or audio. */
+  private history: PaintedStroke[] = [];
+  private historyStamps = 0;
+  private historyComplete = true;
 
   constructor(id: string) {
     this.state = {
@@ -46,7 +56,9 @@ class Party {
       painterId: null,
       secondsLeft: TURN_SECONDS,
       turnSeconds: TURN_SECONDS,
+      canvas: { shape: DEFAULT_CANVAS_SHAPE, width: CANVAS_SHAPES[DEFAULT_CANVAS_SHAPE].width, height: CANVAS_SHAPES[DEFAULT_CANVAS_SHAPE].height },
       snapshotUrl: null,
+      rounds: [],
       radio: null
     };
   }
@@ -88,6 +100,9 @@ class Party {
     this.sockets.set(id, ws);
 
     this.send(ws, { type: 'welcome', youId: id, state: this.state });
+    if (this.history.length || !this.historyComplete) {
+      this.send(ws, { type: 'history', strokes: this.historyComplete ? this.history : [], complete: this.historyComplete });
+    }
     this.broadcastState();
     return id;
   }
@@ -130,12 +145,24 @@ class Party {
         return;
       }
 
+      case 'setCanvas': {
+        if (!from.isHost || this.state.phase !== 'lobby') return;
+        const shape = CANVAS_SHAPES[msg.shape];
+        if (!shape) return;
+        this.state.canvas = { shape: msg.shape, width: shape.width, height: shape.height };
+        this.broadcastState();
+        return;
+      }
+
       case 'stroke': {
         // Only the current painter may paint. Everyone else's strokes are dropped.
         if (this.state.phase !== 'painting' || fromId !== this.state.painterId) return;
-        const stroke = sanitizeStroke(msg.stroke);
-        if (!stroke) return;
-        this.broadcast({ type: 'stroke', stroke, painterId: fromId }, fromId);
+        const clean = sanitizeStroke(msg.stroke, this.state.canvas);
+        if (!clean) return;
+        // The server, not the browser, says whose turn (and so whose layer) it is.
+        const stroke: PaintedStroke = { ...clean, painterId: fromId, round: this.state.round };
+        this.remember(stroke);
+        this.broadcast({ type: 'stroke', stroke }, fromId);
         return;
       }
 
@@ -149,7 +176,7 @@ class Party {
       case 'snapshot': {
         // Only the painter of this round sends its snapshot.
         if (fromId !== this.state.painterId || msg.round !== this.state.round) return;
-        void this.saveSnapshot(msg.round, msg.pngDataUrl);
+        void this.saveSnapshot(msg.round, msg.pngDataUrl, fromId);
         return;
       }
 
@@ -180,6 +207,18 @@ class Party {
         return;
       }
     }
+  }
+
+  private remember(stroke: PaintedStroke) {
+    if (!this.historyComplete) return;
+    this.historyStamps += stroke.stamps.length;
+    if (this.historyStamps > MAX_HISTORY_STAMPS) {
+      // Too big to replay: free it, and late joiners fall back to the snapshot.
+      this.history = [];
+      this.historyComplete = false;
+      return;
+    }
+    this.history.push(stroke);
   }
 
   // ---------- turns + timer ----------
@@ -230,7 +269,7 @@ class Party {
     this.startTurn();
   }
 
-  private async saveSnapshot(round: number, dataUrl: string) {
+  private async saveSnapshot(round: number, dataUrl: string, painterId: string) {
     if (typeof dataUrl !== 'string' || dataUrl.length > MAX_SNAPSHOT_CHARS) return;
     const prefix = 'data:image/png;base64,';
     if (!dataUrl.startsWith(prefix) || !Number.isInteger(round) || round < 1 || round > 999) return;
@@ -238,7 +277,10 @@ class Party {
     const dir = join(SNAPSHOT_DIR, this.state.partyId);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, `round-${round}.png`), Buffer.from(dataUrl.slice(prefix.length), 'base64'));
-    this.state.snapshotUrl = `/snapshots/${this.state.partyId}/round-${round}.png`;
+    const url = `/snapshots/${this.state.partyId}/round-${round}.png`;
+    const painterName = this.member(painterId)?.name ?? 'A guest';
+    this.state.snapshotUrl = url;
+    this.state.rounds = [...this.state.rounds.filter((r) => r.round !== round), { round, painterId, painterName, url }].sort((a, b) => a.round - b.round);
     this.broadcastState();
   }
 
@@ -258,41 +300,4 @@ class Party {
   private broadcastState() {
     this.broadcast({ type: 'state', state: this.state });
   }
-}
-
-/** Clamp a stroke from the network to sane values; return null if it's junk. */
-function sanitizeStroke(input: Stroke): Stroke | null {
-  if (!input || !Array.isArray(input.points) || input.points.length > MAX_POINTS_PER_BATCH) return null;
-  const tools = [
-    'round',
-    'flat',
-    'watercolor',
-    'acrylic',
-    'airbrush',
-    'pencil',
-    'charcoal',
-    'pastel',
-    'water',
-    'finger',
-    'sponge',
-    'knife',
-    'eraser'
-  ];
-  if (!tools.includes(input.tool)) return null;
-  if (!/^#[0-9a-f]{6}$/i.test(input.color)) return null;
-  const clamp = (n: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Number(n) || 0));
-  return {
-    id: String(input.id).slice(0, 64),
-    tool: input.tool,
-    color: input.color,
-    size: clamp(input.size, 1, 120),
-    flow: clamp(input.flow, 0.05, 1),
-    viscosity: clamp(input.viscosity ?? 0.6, 0, 1),
-    done: Boolean(input.done),
-    points: input.points.map((p) => ({
-      x: clamp(p.x, -50, 1650),
-      y: clamp(p.y, -50, 1250),
-      pressure: clamp(p.pressure, 0, 1)
-    }))
-  };
 }

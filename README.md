@@ -26,6 +26,9 @@ cp apps/server/.env.example apps/server/.env   # add LiveKit keys when you have 
 npm run dev        # web on :5173, party server on :8787
 ```
 
+Next: [set up LiveKit and run the Phase 1 test](docs/PHASE-1-TEST.md).
+`npm run check:livekit` verifies local project credentials without displaying them.
+
 ## Layout
 
 ```

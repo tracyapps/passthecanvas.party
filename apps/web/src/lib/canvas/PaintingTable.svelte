@@ -1,17 +1,48 @@
+<!--
+  The party's painting table: photographic supplies around the shared canvas,
+  movable tool/palette panels, Paint / Arrange & view, saved layouts.
+  Everyone sees the same canvas; only the current painter can mark it. While
+  you wait, you can still pick up tools, load paint and arrange your table.
+  The parent (Studio) wires it to the party: strokes out via `onstroke`,
+  everyone else's strokes in via `applyRemote`.
+-->
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, type Snippet } from 'svelte';
+  import type { PaintedStroke, Stroke } from '@ptc/shared';
   import AccountControls from '../account/AccountControls.svelte';
   import { accountState, loadAccountWorkspaces, saveAccountWorkspaces } from '../account/account.svelte';
   import PhotoSupply from './PhotoSupply.svelte';
   import StudioPanel from './StudioPanel.svelte';
-  import StudyCanvas from './StudyCanvas.svelte';
-  import { STUDY_PALETTES } from './study-palettes';
-  import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './study-workspaces';
+  import PartyCanvas from './PartyCanvas.svelte';
+  import { PALETTES } from './palettes';
+  import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './workspaces';
   import burnishingPad from './burnishing-pad.svg?url';
-  import { constrainSupply, type SupplyRect } from './study-placement';
+  import { constrainSupply, type SupplyRect } from './placement';
   import { emptySelection, selectTool, loadPaint, dipInWater, isBrush, unavailability,
     TOOL_NAMES, MEDIUM_NAMES, type PaintingTool, type PaintingMedium, type PaintLoad } from './painting-selection';
   const images = import.meta.glob('../../../../../_design/mockups/asset-review/study-*.{svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+  interface Props {
+    canDraw: boolean;
+    /** Your party member id; with `round` it names your turn's layer. */
+    painterId: string;
+    round: number;
+    canvasSize: { width: number; height: number };
+    /** Spoken canvas summary, e.g. "Round 2 of 4. Jordan is painting." */
+    label: string;
+    /** Shown while it isn't your turn, e.g. "Watching Jordan paint." */
+    waitingNote: string;
+    onstroke: (stroke: Stroke) => void;
+    /** Party controls for the top bar: round, timer, start, pass. */
+    partyBar?: Snippet;
+    /** Extra items for the table menu (host tools, guests, room). */
+    menu?: Snippet;
+  }
+  let { canDraw, painterId, round, canvasSize, label, waitingNote, onstroke, partyBar, menu }: Props = $props();
+  let canvas = $state<PartyCanvas>();
+  export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
+  export async function loadHistory(strokes: PaintedStroke[], complete: boolean, snapshotUrl: string | null) { await canvas?.loadHistory(strokes, complete, snapshotUrl); }
+  export function snapshot(): string { return canvas?.snapshot() ?? ''; }
+
   function asset(name: string, extension = 'svg'): string { return images[`../../../../../_design/mockups/asset-review/study-${name}.${extension}`] ?? ''; }
   const supplies: { id: string; name: string; box: number[]; hit?: number[]; tip?: number[]; tool?: PaintingTool; medium?: PaintingMedium }[] = [
     { id: 'acrylic', name: 'Acrylic paints', box: [0, 0, 320, 230], hit: [160, 12, 150, 140], medium: 'acrylic' },
@@ -37,16 +68,13 @@
   let canvasFrame: HTMLElement;
   let statusStrip: HTMLElement;
   let headerHeight = $state(88);
-  let canvasDialog: HTMLDialogElement;
-  let exportReplay = $state<(() => void)>();
   let dock = $state<ToolDock>('surround');
   let rotation = $state(0);
   let viewReset = $state(0);
   let toolbarHeight = $state(110);
   let frameOverride = $state<{ width: number; height: number } | null>(null);
   let frameActual = $state({ width: 800, height: 425 });
-  let documentSize = $state({ width: 1600, height: 850 });
-  let nextSize = $state('landscape');
+  let documentSize = $derived(canvasSize);
   let savedViews = $state<SavedWorkspace[]>([]);
   let selectedView = $state('');
   let viewName = $state('');
@@ -62,12 +90,6 @@
   let cloudLoaded = $state(false);
   let accountMessage = $state('');
   let cloudQueue = Promise.resolve();
-  const canvasSizes: Record<string, { name: string; width: number; height: number }> = {
-    landscape: { name: 'Wide landscape', width: 1600, height: 850 },
-    portrait: { name: 'Tall portrait', width: 850, height: 1600 },
-    square: { name: 'Square', width: 1200, height: 1200 },
-    classic: { name: 'Classic landscape', width: 1600, height: 1200 }
-  };
   let board = $state({ width: 1440, height: 1024 });
   let windowWidth = $state(innerWidth);
   let windowHeight = $state(innerHeight);
@@ -78,8 +100,6 @@
   let intensities = $state({ airbrush: 50, burnisher: 50 });
   let hasIntensity = $derived(selection.tool === 'airbrush' || selection.tool === 'burnisher');
   let intensity = $derived(selection.tool === 'airbrush' || selection.tool === 'burnisher' ? intensities[selection.tool] : 50);
-  let resetVersion = $state(0);
-  let painterId = $state('1');
   let wheelZoom = $state(false);
   let settingsOpen = $state(true);
   let paletteOpen = $state(false);
@@ -89,19 +109,20 @@
   let trayMode = $state<'solid' | 'multicolor'>('multicolor');
   let trayMedium = $state<'acrylic' | 'watercolor'>('acrylic');
   let announcement = $state('');
-  let confirmationDialog: HTMLDialogElement;
   let target = $state('acrylic');
   let positions = $state<Record<string, { x: number; y: number }>>({});
   let dragging: { id: string; x: number; y: number; left: number; top: number; pointer: number } | null = null;
   let toolName = $derived(selection.tool ? TOOL_NAMES[selection.tool] : 'None');
-  let status = $derived(mode === 'arrange' ? 'Canvas locked. Arrange supplies or explore the artwork.' : !selection.tool ? 'Choose a tool to begin.'
-    : selection.tool === 'burnisher' ? 'Smudge & intensify. Only your own layers will change.'
-    : selection.tool === 'eraser' || selection.tool === 'sponge' ? 'Ready. Only your own layers will change.'
+  let status = $derived(mode === 'arrange' ? 'Canvas locked. Arrange supplies or explore the artwork.'
+    : !canDraw ? `${waitingNote} Get your tools ready while you wait.`
+    : !selection.tool ? 'Your turn. Choose a tool to begin.'
+    : selection.tool === 'burnisher' ? 'Smudge & intensify. Only your own turn will change.'
+    : selection.tool === 'eraser' || selection.tool === 'sponge' ? 'Ready. Only your own turn will change.'
     : selection.load ? `${selection.load.name}${selection.wet ? ', with water' : ''}. Ready to paint.`
-    : selection.wet ? 'Water only. Only your own layers will change.' : 'Choose a compatible paint to load your tool.');
+    : selection.wet ? 'Water only. Only your own turn will change.' : 'Choose a compatible paint to load your tool.');
   let trayReason = $derived(unavailability(selection.tool, trayMedium));
   let solidColor = $derived(averageColor(dabs.map(dab => dab.hex)));
-  let availableColors = $derived(STUDY_PALETTES[trayOpen ? trayMedium : paletteMedium]);
+  let availableColors = $derived(PALETTES[trayOpen ? trayMedium : paletteMedium]);
   let canvasBox = $derived.by(() => {
     const top = headerHeight + toolbarHeight + 32;
     const left = dock === 'right' ? 24 : dock === 'left' || dock === 'both' ? Math.min(360, board.width * .3) : paletteOpen ? 456 : board.width * 0.18;
@@ -212,11 +233,6 @@
     const maxHeight = compact ? windowHeight * 1.3 : Math.max(200, board.height - canvasBox.y - 64);
     frameOverride = { width: Math.max(260, Math.min(maxWidth, width)), height: Math.max(200, Math.min(maxHeight, height)) };
   }
-  function changeCanvas() {
-    const chosen = canvasSizes[nextSize];
-    documentSize = { width: chosen.width, height: chosen.height }; rotation = 0; frameOverride = null; resetVersion += 1; viewReset += 1; canvasDialog.close();
-    announcement = `${chosen.name}, ${chosen.width} by ${chosen.height}. New practice canvas.`;
-  }
   function averageColor(colors: string[]): string {
     if (!colors.length) return '#f6f3ea';
     let result = '#';
@@ -234,7 +250,6 @@
   }
   function globalKey(event: KeyboardEvent) {
     if (event.key !== 'Escape') return;
-    if (confirmationDialog?.open || canvasDialog?.open) return;
     putDown();
   }
   function emptySpace(event: MouseEvent) { if (event.target === bench && !dragging) putDown(); }
@@ -350,7 +365,7 @@
 
 <!-- The main element only deselects on its own empty tabletop, never a child's click. -->
 <main bind:this={bench} class="workbench" class:compact class:docked={dock !== 'surround'} class:dock-left={dock === 'left'} class:dock-right={dock === 'right'} class:dock-both={dock === 'both'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
-  <a class="skip" href="#practice-canvas">Skip to canvas</a>
+  <a class="skip" href="#shared-canvas">Skip to canvas</a>
   <header bind:this={statusStrip} class="status-strip">
     <div class="mode" role="group" aria-label="Workspace mode">
       <button type="button" aria-pressed={mode === 'paint'} onclick={() => mode = 'paint'}>Paint</button>
@@ -368,12 +383,13 @@
     <div class="selected-tool"><span>Tool selected</span><strong>{toolName}</strong></div>
     <div class="selected-color"><span>Current color</span><div class="load-line"><span class="load-swatch" class:empty={!selection.load} aria-hidden="true">{#each selection.load?.colors ?? [] as color}<i style:background={color}></i>{/each}</span><strong>{selection.load ? MEDIUM_NAMES[selection.load.medium] : selection.wet ? 'Water only' : selection.tool === 'eraser' || selection.tool === 'sponge' || selection.tool === 'burnisher' ? 'Not needed' : 'Unloaded'}</strong></div></div>
     {/if}
+    {@render partyBar?.()}
     <button type="button" class="secondary" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
   </header>
 
-  <section bind:this={canvasFrame} class="canvas-frame" id="practice-canvas" aria-label="Practice painting"
+  <section bind:this={canvasFrame} class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
     style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface')}')`} style:--canvas-x={`${canvasBox.x}px`} style:--canvas-y={`${canvasBox.y}px`} style:--canvas-width={`${canvasBox.width}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height} style:width={frameOverride ? `${Math.min(frameOverride.width, compact ? windowWidth - 24 : board.width - canvasBox.x - (dock === 'right' || dock === 'both' ? Math.min(360, board.width * .3) : 16))}px` : undefined} style:height={frameOverride ? `${Math.min(frameOverride.height, compact ? windowHeight * 1.3 : Math.max(200, board.height - canvasBox.y - 64))}px` : undefined}>
-    <StudyCanvas {selection} {size} intensity={intensity / 100} {resetVersion} {mode} {painterId} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => toolbarHeight = height} onresizewindow={resizeWindow} onnewcanvas={() => canvasDialog.showModal()} onexportready={(download) => exportReplay = download} />
+    <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {mode} {canDraw} {painterId} {round} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => toolbarHeight = height} onresizewindow={resizeWindow} {onstroke} />
     <p class="canvas-hint">{status}</p>
   </section>
 
@@ -423,20 +439,16 @@
       </div>
     {/each}
   </section>
-  <footer><span>Local practice · Painter {painterId} · other painters protected</span><a href="/">Back to party</a></footer>
   <div class="sr-only" role="status">{announcement}</div>
 </main>
 
 <div id="table-actions" popover><h2>Painting table</h2><AccountControls />
   <button type="button" disabled={!selection.tool} onclick={() => { document.getElementById('table-actions')?.hidePopover(); void showSettings(); }}>Tool settings</button>
   <button type="button" onclick={() => { putDown(); document.getElementById('table-actions')?.hidePopover(); }}>Put tool down</button>
-  <button type="button" disabled={!exportReplay} onclick={() => { exportReplay?.(); document.getElementById('table-actions')?.hidePopover(); }}>Export stroke recording</button>
+  <button type="button" onclick={() => { canvas?.downloadStrokes(); document.getElementById('table-actions')?.hidePopover(); }}>Export painting data</button>
   <label class="wheel-option"><input type="checkbox" bind:checked={wheelZoom} /> Scroll wheel zooms canvas</label>
-  <button type="button" onclick={() => { painterId = painterId === '1' ? '2' : '1'; putDown(); document.getElementById('table-actions')?.hidePopover(); announcement = `Practice painter ${painterId}. Other painters' marks are protected.`; }}>Switch practice painter</button>
-  <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); confirmationDialog.showModal(); }}>Clear practice canvas…</button><p>Changes stay here until you reload.</p>
+  {@render menu?.()}
 </div>
-<dialog bind:this={canvasDialog} aria-labelledby="canvas-choice-title"><h2 id="canvas-choice-title">Choose a canvas</h2><p>This starts a new local painting and clears the current practice marks. View rotation never changes the artwork's dimensions.</p><label>Canvas dimensions<select aria-label="Canvas dimensions" bind:value={nextSize}>{#each Object.entries(canvasSizes) as [id, canvas]}<option value={id}>{canvas.name} · {canvas.width} × {canvas.height}</option>{/each}</select></label><div class="tray-actions"><button type="button" onclick={() => canvasDialog.close()}>Keep current canvas</button><button type="button" onclick={changeCanvas}>Start new canvas</button></div></dialog>
-<dialog bind:this={confirmationDialog} aria-labelledby="clear-title"><h2 id="clear-title">Clear the practice canvas?</h2><p>This clears all local practice painters.</p><div class="tray-actions"><button type="button" class="secondary" onclick={() => confirmationDialog.close()}>Keep painting</button><button type="button" class="primary" onclick={() => { resetVersion += 1; confirmationDialog.close(); }}>Clear canvas</button></div></dialog>
 
 <style lang="scss">
   @use '../../styles/tokens' as *;
@@ -507,17 +519,12 @@
   .dock-both:not(.compact) .supply { grid-column: var(--dock-column); grid-row: var(--dock-row); }
   .docked:not(.compact) .supply { position: relative; inset: auto !important; width: 100% !important; height: 128px !important; }
   .arrange-controls small { flex-basis: 100%; font-size: 12px; }
-  footer { position: absolute; bottom: 2px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 11px; pointer-events: none; color: #fff5df; z-index: 10; }
-  footer a { min-height: 44px; display: inline-flex; align-items: center; pointer-events: auto; color: #fff5df; }
   .skip { position: absolute; left: 16px; top: -100px; z-index: 50; padding: 12px; background: #fff5e4; color: #21160d; }
   .skip:focus { top: 100px; }
   #table-actions { position: fixed; inset: 96px 16px auto auto; width: 270px; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; padding: 16px; }
   #table-actions h2 { font-size: 20px; margin: 0 0 12px; }
   #table-actions button { display: block; width: 100%; text-align: left; margin: 4px 0; }
-  #table-actions p { font-size: 12px; }
   .wheel-option { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; }
-  dialog { padding: 24px; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; max-width: calc(100vw - 24px); }
-  dialog::backdrop { background: #0009; }
   .compact { height: auto; min-height: 100svh; overflow: visible; padding: 0 12px 16px; }
   .compact .status-strip { position: relative; margin: 0 -12px; min-height: 88px; gap: 12px; flex-wrap: wrap; padding: 12px; }
   .compact .workspace-menu > div { position: fixed; top: calc(var(--header-height) + 8px); left: 12px; right: 12px; width: auto; max-height: 65svh; overflow: auto; }
@@ -529,7 +536,6 @@
   .compact .panels:empty { display: none; }
   .compact .supplies { display: grid; grid-template-columns: repeat(auto-fit, minmax(clamp(100px, 13vw, 168px), 1fr)); gap: 12px 8px; }
   .compact .supply { position: relative; inset: auto !important; width: 100% !important; height: clamp(122px, 12vw, 170px) !important; }
-  .compact footer { position: relative; inset: auto; margin-top: 12px; pointer-events: auto; }
   .compact .arrange-controls { flex-basis: 100%; order: 1; }
   @media (max-width: 600px) { .paint-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } .status-strip { font-size: 12px; } .selected-tool strong { font-size: 18px; } .load-swatch { width: 60px; } }
 </style>

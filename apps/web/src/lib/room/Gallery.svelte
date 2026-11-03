@@ -1,11 +1,12 @@
 <!--
-  Gallery preview (?demo=art or ?gallery=<room>#g=…): the room with the
-  party's finished artwork in place. The host panel sets how pieces hang —
+  The party gallery: the room with the party's finished artwork in place.
+  Opened from the reveal at the end of a party (real round images), or from a
+  shared link (?gallery=<room>#g=…). The host panel sets how pieces hang —
   walls first with lean overflow, walls only, or lean spaces only — and how
   many pieces the party finished. "Preview export" composes the current view
   into a PNG (first draft of the social photo); the share link packs the
   whole arrangement into the URL, no server storage. Placeholder paintings
-  stand in until real party artwork exists.
+  stand in only when a link carries no real art.
 -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
@@ -18,7 +19,14 @@
   import { decodeGallery, galleryUrl, type GalleryData } from './galleryLink';
   import '@photo-sphere-viewer/core/index.css';
 
-  let { room = 'cream-city' }: { room?: string } = $props();
+  interface Props {
+    room?: string;
+    /** The party's real pieces (finished piece first). Without them, placeholders. */
+    artwork?: GalleryPiece[];
+    /** Back to the party's reveal, when opened from a party. */
+    onback?: () => void;
+  }
+  let { room = 'cream-city', artwork, onback }: Props = $props();
 
   // svelte-ignore state_referenced_locally — fixed for this page's lifetime
   const PANORAMA = `/studio/${room}/panorama.webp`;
@@ -42,7 +50,20 @@
   let pieceCount = $state(6);
   let shuffle = $state(0); // reshuffle paints fresh placeholders
   /** Pieces loaded from a shared link, reproduced exactly. */
-  let linkPieces = $state<GalleryPiece[] | null>(null);
+  // svelte-ignore state_referenced_locally — the party's art is fixed once the party is over
+  let linkPieces = $state<GalleryPiece[] | null>(artwork?.length ? artwork : null);
+  /** Real party images, loaded once; hangs repaint when each one arrives. */
+  let images = $state<Record<string, HTMLImageElement>>({});
+  let realArt = $derived(!!linkPieces?.some((piece) => piece.url));
+  $effect(() => {
+    for (const piece of linkPieces ?? []) {
+      if (!piece.url || images[piece.url]) continue;
+      const url = piece.url;
+      const image = new Image();
+      image.src = url;
+      image.decode().then(() => (images = { ...images, [url]: image })).catch(() => {});
+    }
+  });
 
   // --- Export + share ----------------------------------------------------------
   let dialog: HTMLDialogElement | null = null;
@@ -54,7 +75,7 @@
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /** The party's pieces: from the link when shared, else generated from the controls. */
-  let pieces = $derived(
+  let pieces = $derived<GalleryPiece[]>(
     linkPieces ??
       Array.from({ length: pieceCount }, (_, i) => ({
         seed: `piece-${shuffle}-${i + 1}`,
@@ -78,7 +99,24 @@
       const painting = document.createElement('canvas');
       painting.width = w;
       painting.height = h;
-      paintPlaceholder(painting, pieces[p.pieceIndex]!.seed);
+      const piece = pieces[p.pieceIndex]!;
+      const image = piece.url ? images[piece.url] : undefined;
+      if (image) {
+        // Fit the whole piece on a primed canvas, never stretched to the wall's shape.
+        const ctx = painting.getContext('2d')!;
+        ctx.fillStyle = '#e1dfda';
+        ctx.fillRect(0, 0, w, h);
+        const fit = Math.min(w / image.naturalWidth, h / image.naturalHeight);
+        const dw = image.naturalWidth * fit;
+        const dh = image.naturalHeight * fit;
+        ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      }
+      else if (piece.url) {
+        // Still loading: plain primed canvas for a moment.
+        const ctx = painting.getContext('2d')!;
+        ctx.fillStyle = '#e1dfda';
+        ctx.fillRect(0, 0, w, h);
+      } else paintPlaceholder(painting, piece.seed);
       return { id: `${p.regionId}#${p.pieceIndex}`, corners: p.quad, painting } satisfies Hang;
     })
   );
@@ -91,7 +129,7 @@
     return parts.join(', ').replace(/,([^,]*)$/, ' and$1');
   });
 
-  const shareUrl = $derived(galleryUrl(room, { v: 1, mode, pieces: pieces.map(({ seed, aspect }) => ({ seed, aspect })) }));
+  const shareUrl = $derived(galleryUrl(room, { v: 1, mode, pieces: pieces.map(({ seed, aspect, url, caption }) => (url ? { seed, aspect, url, caption } : { seed, aspect })) }));
 
   onMount(async () => {
     // A shared arrangement arrives in the hash (#g=…).
@@ -177,16 +215,20 @@
 </script>
 
 <main class="gallery">
-  <p class="tape">{linkPieces ? 'Shared gallery' : 'Gallery preview'} — {room}</p>
+  <div class="top">
+    <p class="tape">{artwork?.length ? 'The party gallery' : linkPieces ? 'Shared gallery' : 'Gallery preview'} — {room}</p>
+    {#if onback}<button type="button" onclick={onback}>Back to the reveal</button>{/if}
+  </div>
 
   <form class="host" onsubmit={(e) => e.preventDefault()}>
     <fieldset>
       <legend>Hang the party's art</legend>
-      <label><input type="radio" bind:group={mode} value="walls-then-lean" oninput={() => (linkPieces = null)} /> Walls first, lean overflow</label>
-      <label><input type="radio" bind:group={mode} value="walls" oninput={() => (linkPieces = null)} /> Walls only</label>
-      <label><input type="radio" bind:group={mode} value="lean" oninput={() => (linkPieces = null)} /> Lean spaces only</label>
+      <label><input type="radio" bind:group={mode} value="walls-then-lean" oninput={() => { if (!realArt) linkPieces = null; }} /> Walls first, lean overflow</label>
+      <label><input type="radio" bind:group={mode} value="walls" oninput={() => { if (!realArt) linkPieces = null; }} /> Walls only</label>
+      <label><input type="radio" bind:group={mode} value="lean" oninput={() => { if (!realArt) linkPieces = null; }} /> Lean spaces only</label>
     </fieldset>
 
+{#if !realArt}
     <label class="count">
       <span>Pieces finished: <output>{pieces.length}</output></span>
       <input
@@ -203,6 +245,8 @@
 
     <button type="button" class="ghost" onclick={() => { linkPieces = null; shuffle++; }}>Reshuffle placeholders</button>
 
+{/if}
+
     <div class="actions">
       <button type="button" class="primary" onclick={previewExport} disabled={exporting || !viewerReady}>
         {exporting ? 'Rendering…' : 'Preview export'}
@@ -217,7 +261,7 @@
     <p class="status" role="status">{linkStatus}</p>
   </form>
 
-  <p class="status">{countsText()}, look around — the pieces stay in place. Placeholder paintings until the real feature lands.</p>
+  <p class="status">{countsText()}, look around — the pieces stay in place.{realArt ? '' : ' Placeholder paintings.'}</p>
 
   <div class="stage">
     <!-- svelte-ignore a11y_no_noninteractive_tabindex — the panorama is a custom interactive widget (drag or arrow keys), so it must be a tab stop -->
@@ -232,6 +276,16 @@
       <ArtLayer bind:this={layer} {viewer} {hangs} />
     {/if}
   </div>
+
+  {#if realArt}
+    <!-- The pieces in words: who made what, for everyone (and screen readers). -->
+    <section class="captions" aria-label="On display">
+      <h2>On display</h2>
+      <ol>
+        {#each pieces as piece (piece.seed)}<li>{piece.caption ?? piece.seed}{#if piece.url}{' · '}<a href={piece.url} download>Download</a>{/if}</li>{/each}
+      </ol>
+    </section>
+  {/if}
 
   <dialog bind:this={dialog} aria-label="Export preview">
     <h2>Export preview</h2>
@@ -256,6 +310,31 @@
     gap: 1rem;
     padding: 1rem;
     color: $cream;
+  }
+
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .captions {
+    h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.125rem;
+    }
+    ol {
+      margin: 0;
+      padding-left: 1.5rem;
+      display: grid;
+      gap: 0.25rem;
+    }
+    a {
+      color: $cream;
+      font-weight: 700;
+    }
   }
 
   .tape {

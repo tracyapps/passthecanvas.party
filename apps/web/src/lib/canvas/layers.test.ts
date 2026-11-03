@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { editOwnedLayers } from './study-layers';
+import { editOwnedLayers } from './layers';
 it('only supplies the artist’s own surfaces to modifying tools, including their earlier layers', () => {
   const layers = [
     { owner: 'first', surface: { pigment: 80 } },

@@ -422,3 +422,58 @@ use the Vite publishable-key name on the live frontend and keep server secrets
 on Railway. The existing Clerk development instance is for internal testing.
 Unsigned visitors see sign-in first and can expand a native, keyboard-accessible
 avatar preview. Profile/sharing/notification forms appear after sign-in.
+
+### 2026-11-01 — Verify LiveKit setup before the Phase 1 browser gate
+
+Add an explicit, read-only `check:livekit` command using the existing LiveKit
+server SDK. It reads the server environment, checks the secure project URL and
+verifies credentials with the room-list API without displaying its results.
+Failure messages omit provider exceptions, tokens and credentials. No rooms,
+media, dependencies or hosted resources are created. Keep the actual two-computer
+call/painting gate separate; documented HTTPS routing and real-device checks
+remain necessary. Do not advance Phase 2 based on a successful credential check.
+
+
+### 2026-11-03 — The painting table moves into the party; no more separate study
+
+Owner direction: from now on every improvement happens in the party itself
+(art creation, after-party display, host tools), not in a side study.
+
+- **Painting.** The `?demo=painting` study's table (photo supplies, tool/paint
+  loading, trays, water, burnisher, intensity, Arrange & view, saved views,
+  zoom/rotate/navigator, resizable canvas window) replaces the Phase 1
+  painting screen. Files lost their `study-` prefix (`brushes.ts`,
+  `layers.ts`, `camera.ts`…); the old `brushes.ts`/`PaintCanvas`/`paints.ts`
+  renderer and the replay-recording study file are gone.
+- **Protocol (breaking).** A stroke is now what the painter holds — `tool`,
+  `load` (medium + 1–9 colors), `wet`, `size`, `intensity` — plus the
+  *stamps* themselves (`x, y, pressure, angle`, and `first` for the grain
+  seed). Sending stamps instead of raw pointer points is what keeps a held
+  airbrush and spacing carry-over identical on every screen. The tool/paint
+  rules moved to `packages/shared/src/paint.ts`, so the server refuses strokes
+  no real table could make.
+- **Ownership kept (owner confirmed).** Each turn paints its own layer. Water,
+  sponge, burnisher and eraser only touch the current painter's own turns;
+  only the current turn gets new pigment. The server stamps every stroke with
+  `painterId` + `round`, so all screens build the same layers.
+- **Late joiners replay history** (`history` message) instead of loading a
+  flattened snapshot — a snapshot can't carry ownership. Past 400k stamps the
+  server drops history and late joiners get the latest snapshot as a protected
+  base. Snapshots are still saved per round, for the reveal and gallery.
+- **Watching.** Everyone sees the table and can pick up tools and load paint
+  while waiting; only the painter marks. Off-turn plain drags do nothing (no
+  surprise panning); right/Alt-drag, pinch and Arrange still move the view.
+- **Host tools in the top bar:** canvas shape (lobby only; replaces the study's
+  "Canvas size"), Start, Pass now / Pass for them. Practice-only controls
+  (switch painter, clear canvas) are gone.
+- **Reveal → gallery.** "Hang it in the gallery" opens the room with the real
+  pieces: the finished piece plus each earlier round, with names. Pieces are
+  fitted (not stretched) onto the wall canvases. Share links may carry real
+  art, but only `/snapshots/<party>/round-N.png` paths. `?demo=art` is gone;
+  `?gallery=` shared links still work. Hang-mode choice is per screen for now
+  (not synced to guests).
+- **Open:** the one-canvas-per-guest passing ring (ACCOUNTS-AND-REPLAY.md)
+  still needs its own protocol change; turn layers already fit it. Gentle
+  timer handoff is unchanged: a stroke in progress at time-up is dropped by
+  the server.
+

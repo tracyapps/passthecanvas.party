@@ -3,3 +3,4 @@ export * from './turns';
 export * from './spots';
 export * from './art';
 export * from './community';
+export * from './paint';

@@ -22,7 +22,7 @@ The owner is **Tapps**, a UX designer who has hand-coded HTML and CSS/SCSS since
 ## 3. Non-negotiables
 
 1. **Accessibility is a requirement, not a polish step.** WCAG 2.2 AA minimum. See [`docs/ACCESSIBILITY.md`](docs/ACCESSIBILITY.md). Every feature that needs looking or dragging has a keyboard and screen-reader path. Use real `<button>`, `<a href>`, `<input>` + `<label>`, never clickable `<div>`s. Respect `prefers-reduced-motion`. Text contrast is at least 4.5:1. Touch targets are at least 44×44px.
-2. **Ethics and privacy.** Video and audio are never recorded or stored. Only canvas snapshots are saved, and only for that party. No analytics or trackers without an explicit decision in `docs/DECISIONS.md`. Avatars are a first-class alternative to camera, never a downgrade.
+2. **Ethics and privacy.** Video and audio are never recorded or stored. Only canvas snapshots are saved, and only for that party. The party's strokes stay in server memory while the party is open (so late joiners can rebuild the canvas) and are dropped when everyone leaves. No analytics or trackers without an explicit decision in `docs/DECISIONS.md`. Avatars are a first-class alternative to camera, never a downgrade.
 3. **No emoji in UI.** Icons are inline stroke SVGs.
 4. **The look is real objects** (wood, paper, glass, masking tape), not glossy app chrome. Follow [`docs/DESIGN.md`](docs/DESIGN.md) and the tokens in `apps/web/src/styles/_tokens.scss`.
 5. **Only CC0 or properly licensed assets.** Poly Haven assets are CC0. Anything else needs its license noted in `studio/ASSET-CREDITS.md` before it's committed.
@@ -59,7 +59,7 @@ npm test               # unit tests (vitest)
 
 ```
 apps/web/            Svelte front end
-  src/lib/canvas/    painting engine (brushes, strokes, undo)
+  src/lib/canvas/    the party painting table: supplies, panels, canvas window, brushes, turn layers
   src/lib/room/      360° room viewer + overlays (spots, cats, props)
   src/lib/call/      LiveKit video/audio
   src/lib/radio/     party radio
@@ -77,7 +77,7 @@ docs/                plan, roadmap, architecture, decisions
 
 - The **party server** is the source of truth for turn order, the timer, who sits where, and chat. Clients never decide whose turn it is.
 - **Only the current painter's strokes are accepted.** The server drops strokes from anyone else.
-- Strokes travel as small messages (see `packages/shared/src/protocol.ts`), never as video. Late joiners get the latest snapshot, then the live strokes.
+- Strokes travel as small messages of brush *stamps* (see `packages/shared/src/paint.ts`), never as video. Each turn paints its own layer; blenders and the eraser only touch the painter's own turns. Late joiners replay the party's stroke `history`, then the live strokes.
 - **Video and audio go through LiveKit only.** The party server just mints LiveKit access tokens.
 - **The room is static images.** The 360° panoramas and `spots.json` come from Blender (see `studio/README.md`). Never hand-place overlay coordinates in code. They come from `spots.json`.
 
@@ -89,6 +89,7 @@ Changing a message shape means updating `packages/shared` first, then both apps,
 2. Keep each change small and focused on one task.
 3. When it's done, tick the box, and add a line to `docs/DECISIONS.md` if you made a choice someone might later ask "why?" about.
 4. Don't start the next phase's work until the current phase's gate passes.
+5. **Build it in the party, not beside it.** Every improvement — painting tools, brushes, media behavior, the painting interface, the after-party gallery, host tools — goes straight into the real party (`?party=…`). No separate studies, demo routes or practice pages. To try something, start a local party (`npm run dev`, open two browser windows). The only dev-only routes left are room-authoring tools (`?spots=`, `?art=`, `?demo=seats`), which edit the Blender room data, not the party.
 
 ## 9. Definition of done
 

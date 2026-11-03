@@ -1,6 +1,6 @@
 # Local painting-study photo palettes
 
-The local study uses separate swatches from the owner's actual `_design/artist-tools` photographs. Production `PAINTS` and the shared party protocol are unchanged. Descriptive names describe the visible color; they do not assert a pigment, manufacturer, or chemical composition.
+The painting table uses swatches from the owner's actual `_design/artist-tools` photographs. (The old Phase 1 `PAINTS` list was retired on Nov 3, 2026.) Descriptive names describe the visible color; they do not assert a pigment, manufacturer, or chemical composition.
 
 | Medium | Original PNG | Samples |
 | --- | --- | ---: |
@@ -24,7 +24,7 @@ These remain photo appearance samples affected by lighting, shadows, surface tex
 
 The source samples above remain unchanged as `PHOTO_PALETTES`. The current
 chooser also adds 27 pencil colors and ten charcoal shades, authored in
-`apps/web/src/lib/canvas/study-palette-extras.ts`: totals 36 and 18 respectively.
+`apps/web/src/lib/canvas/palette-extras.ts`: totals 36 and 18 respectively.
 Both include deep black; charcoal gains a broader neutral ramp and earth tones.
 These are additional digital studio colors, not new claims about visible
 photographic samples or calibrated pigments. The sampler imports and retains

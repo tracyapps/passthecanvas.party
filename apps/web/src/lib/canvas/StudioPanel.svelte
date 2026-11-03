@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
-  let { title, label, dock = 'bottom', flow = false, onclose, children }: { title: string; label: string; dock?: 'bottom' | 'palette'; flow?: boolean; onclose: () => void; children: Snippet } = $props();
+  let { title, label, dock = 'bottom', flow = false, onclose, children }: { title: string; label: string; dock?: 'bottom' | 'palette' | 'guests'; flow?: boolean; onclose: () => void; children: Snippet } = $props();
   let panel: HTMLElement;
   let position = $state<{ x: number; y: number } | null>(null);
   let start: { x: number; y: number; left: number; top: number; pointer: number } | null = null;
@@ -35,7 +35,7 @@
     if (step) { event.preventDefault(); nudge(...step); }
   }
 </script>
-<section bind:this={panel} class="studio-panel" class:palette={dock === 'palette'} class:flow aria-label={label}
+<section bind:this={panel} class="studio-panel" class:palette={dock === 'palette'} class:guests={dock === 'guests'} class:flow aria-label={label}
   style={position ? `position:fixed;left:${position.x}px;top:${position.y}px;right:auto;bottom:auto;z-index:30;width:min(400px, calc(100vw - 16px));max-height:calc(100svh - 16px);` : ''}>
   <header>
     <button type="button" class="handle" aria-label={`Move ${label}. Drag or use arrow keys.`}
@@ -54,6 +54,8 @@
 <style lang="scss">
   .studio-panel { position: fixed; right: 16px; bottom: 32px; width: min(400px, calc(100vw - 24px)); max-width: calc(100vw - 16px); max-height: calc(100svh - 116px); overflow: auto; padding: 8px 12px 12px; background: #17130fef; color: #fff5e6; border: 1px solid #e6df54; border-radius: 8px; box-shadow: 0 8px 25px #0008; z-index: 12; }
   .palette { left: 12px; top: 108px; bottom: auto; right: auto; width: min(420px, calc(100vw - 24px)); }
+  .guests { right: 12px; top: 96px; bottom: auto; width: auto; max-width: min(560px, calc(100vw - 24px)); max-height: calc(100svh - 220px); padding: 2px 10px 8px; }
+  .guests .handle { font-size: 15px; }
   header { display: flex; align-items: center; gap: 4px; }
   button, summary { min-height: 44px; border: 0; background: transparent; color: #fff5e6; font: inherit; padding: 8px; }
   .handle { flex: 1; text-align: left; font-weight: 800; font-size: 19px; cursor: grab; touch-action: none; padding-left: 0; }

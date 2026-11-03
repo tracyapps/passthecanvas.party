@@ -1,5 +1,8 @@
 # Video and audio (LiveKit)
 
+Setup and real-browser gate: [Phase 1 checklist](../../../../../docs/PHASE-1-TEST.md).
+Run `npm run check:livekit` at the repository root to verify local credentials.
+
 Phase 1 task. Status: **1–4 built** (`call.svelte.ts`, `CallDock.svelte`, `VideoTile.svelte`); step 5 shows your own camera at the table spot until spot picking lands in phase 3. Plan:
 
 1. `GET /api/token?party=<id>&name=<name>&identity=<memberId>` on the party server returns `{ token, url }`.

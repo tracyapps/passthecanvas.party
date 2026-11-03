@@ -36,7 +36,7 @@ These are source observations, not claims that the hosted system has been tested
 | `apps/server/src/party.ts` | Writes round PNG snapshots to local `data/snapshots` | A snapshot cannot reconstruct the sequence or editable owned contributions; deployed disk needs an explicit persistence strategy |
 | `apps/server/src/index.ts` | LiveKit token endpoint accepts caller-supplied party/name/identity; snapshot route serves matching filenames | Account work must also authorize party membership and snapshot access; login UI alone is insufficient |
 | `apps/web/src/lib/party/connection.svelte.ts` | Hands remote strokes to the canvas without preserving the message's `painterId` in the callback | Ownership metadata must reach the layered renderer |
-| `apps/web/src/lib/canvas/StudyCanvas.svelte` | Separate local study; freezes settings per stroke, uses owned transparent layers, distance-spaced stamps and timed stationary airbrush emission | The richer behavior is not represented by the old party protocol; simply saving existing messages would lose it |
+| `apps/web/src/lib/canvas/PartyCanvas.svelte` | The party canvas (was the local study, moved in Nov 3, 2026); freezes settings per stroke, uses owned transparent layers, distance-spaced stamps and timed stationary airbrush emission | The richer behavior is not represented by the old party protocol; simply saving existing messages would lose it |
 
 The party server currently ends the turn when the timer reaches zero. That is separate from the owner's preferred gentle timer behavior and needs its own party-loop change; a replay journal must record the actual accepted pass boundary rather than infer it from a countdown.
 

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { constrainSupply } from './study-placement';
+import { constrainSupply } from './placement';
 
 const bounds = { x: 8, y: 96, width: 1424, height: 904 };
 const canvas = { x: 300, y: 180, width: 900, height: 550 };

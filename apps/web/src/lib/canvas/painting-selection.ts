@@ -1,12 +1,12 @@
-// This local study separates the object in your hand from what it carries.
-// It deliberately does not change the party's shared stroke protocol.
-export type PaintingTool = 'round' | 'flat' | 'detail' | 'fan' | 'foam' | 'knife' | 'airbrush' | 'pencil' | 'charcoal' | 'pastel' | 'sponge' | 'burnisher' | 'eraser';
-export type PaintingMedium = 'acrylic' | 'watercolor' | 'pencil' | 'charcoal' | 'pastel';
-export interface PaintLoad {
-  medium: PaintingMedium;
-  name: string;
-  colors: string[];
-}
+// What the painter is holding: the object in your hand (tool), what it carries
+// (load) and whether it is wet. The tool/paint rules themselves are shared with
+// the party server in @ptc/shared, so the server refuses impossible strokes.
+import { isBrush, unavailability as sharedUnavailability, worksDry, type MediumId, type PaintLoad, type ToolId } from '@ptc/shared';
+
+export type PaintingTool = ToolId;
+export type PaintingMedium = MediumId;
+export type { PaintLoad };
+export { isBrush };
 export interface PaintingSelection {
   tool: PaintingTool | null;
   load: PaintLoad | null;
@@ -24,15 +24,8 @@ export const MEDIUM_NAMES: Record<PaintingMedium, string> = {
 export function emptySelection(): PaintingSelection {
   return { tool: null, load: null, remembered: null, wet: false };
 }
-export function isBrush(tool: PaintingTool | null): boolean {
-  return tool !== null && ['round', 'flat', 'detail', 'fan', 'foam'].includes(tool);
-}
 export function unavailability(tool: PaintingTool | null, medium: PaintingMedium): string {
-  if (!tool) return 'Choose a tool first.';
-  if (tool === 'sponge' || tool === 'burnisher' || tool === 'eraser') return 'This tool works without added paint.';
-  if (tool === 'knife' || tool === 'airbrush') return medium === 'acrylic' ? '' : `${TOOL_NAMES[tool]} uses acrylic.`;
-  if (isBrush(tool)) return ['acrylic', 'watercolor'].includes(medium) ? '' : 'Choose this material directly from its tray.';
-  return tool === medium ? '' : `${TOOL_NAMES[tool]} uses its own material.`;
+  return sharedUnavailability(tool, medium, tool ? TOOL_NAMES[tool] : undefined);
 }
 export function selectTool(selection: PaintingSelection, tool: PaintingTool): PaintingSelection {
   const remembered = selection.remembered;
@@ -49,5 +42,5 @@ export function dipInWater(selection: PaintingSelection): PaintingSelection {
 }
 export function canPaint(selection: PaintingSelection): boolean {
   if (!selection.tool) return false;
-  return !!selection.load || selection.wet || selection.tool === 'eraser' || selection.tool === 'sponge' || selection.tool === 'burnisher';
+  return !!selection.load || selection.wet || worksDry(selection.tool);
 }

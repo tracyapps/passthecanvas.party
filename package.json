@@ -12,6 +12,7 @@
     "dev:web": "npm run dev --workspace=@ptc/web",
     "dev:server": "npm run dev --workspace=@ptc/server",
     "check": "npm run check --workspaces --if-present",
+    "check:livekit": "npm run check:livekit --workspace=@ptc/server",
     "build": "npm run build --workspace=@ptc/web",
     "test": "vitest run"
   },

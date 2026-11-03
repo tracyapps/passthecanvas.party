@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { drawStudyMark, studySpacing } from '../canvas/study-brushes';
+  import { drawMark, stampSpacing } from '../canvas/brushes';
   import type { PaintingSelection, PaintingTool } from '../canvas/painting-selection';
-  import type { StrokePoint } from '@ptc/shared';
+  import type { StrokePoint } from '../canvas/brushes';
 
   let { compact = false }: { compact?: boolean } = $props();
   const helpId = $props.id();
@@ -41,10 +41,10 @@
     if (!context || !strokeSelection) return;
     const start = previous ?? next;
     const distance = Math.hypot(next.x - start.x, next.y - start.y);
-    const steps = Math.max(1, Math.ceil(distance / studySpacing(strokeSelection, strokeSize)));
+    const steps = Math.max(1, Math.ceil(distance / stampSpacing(strokeSelection, strokeSize)));
     const angle = Math.atan2(next.y - start.y, next.x - start.x);
     for (let step = 1; step <= steps; step++) {
-      drawStudyMark(context, strokeSelection, strokeSize, {
+      drawMark(context, strokeSelection, strokeSize, {
         x: start.x + (next.x - start.x) * step / steps,
         y: start.y + (next.y - start.y) * step / steps,
         pressure: next.pressure,
