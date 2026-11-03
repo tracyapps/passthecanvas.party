@@ -274,3 +274,40 @@ write. These checks do not establish authenticated profile persistence.
 Production Git deployment `dpl_7maYn8NfLMauFNP5QUfBGGZRJGBa` is READY for
 `24a8622`; `/account` returns 200 and the unknown frontend API route returns 404.
 The unsigned page and real Clerk development sign-in form were visually checked.
+
+## November 3 status: Clerk + LiveKit go-live checklist
+
+Checked in the dashboards (values not copied anywhere):
+
+- Vercel project is **`passthecanvas-party`** (not `web`). It has
+  `VITE_ACCOUNT_API_URL` = `https://ptcserver-production.up.railway.app`
+  (correct), `VITE_PUBLIC_SITE_URL` = `https://passthecanvas.party` (correct)
+  and `VITE_CLERK_PUBLISHABLE_KEY` = a **`pk_test_…` development key**. The live
+  site loads Clerk's development instance, which is why an account made on
+  the live site doesn't exist in production (Clerk instances never share users).
+- Clerk production instance: `passthecanvas.party` verified, email code
+  sign-in on, production keys exist (`pk_live_…`, secret "default") but both
+  say *Never used*. Its one open setup task is "create your first user in
+  production".
+- Railway `@ptc/server`: `ACCOUNT_ALLOWED_ORIGINS` = `https://passthecanvas.party`
+  (correct; parties use it too). `LIVEKIT_URL` =
+  `wss://pass-the-canvas-party-kwqmkybd.livekit.cloud` added **as a staged
+  change** (not deployed yet).
+- LiveKit project `p_5svu7fipw40`, key `ptc-party`. The same key and secret
+  are already in the local `apps/server/.env`.
+
+Owner steps (they involve secret values, so they're done by hand):
+
+1. Railway → `@ptc/server` → Variables: add `LIVEKIT_API_KEY` and
+   `LIVEKIT_API_SECRET` (copy from `apps/server/.env`). Replace
+   `CLERK_SECRET_KEY` with Clerk **Production** → API keys → secret
+   "default" (`sk_live_…`). Then press **Deploy** on the staged changes.
+2. Vercel → `passthecanvas-party` → Environment Variables: change
+   `VITE_CLERK_PUBLISHABLE_KEY` to the Production publishable key
+   (`pk_live_…`), then redeploy (Vite bakes it in at build time).
+3. Commit and push today's code so Railway and Vercel build it.
+4. Sign up once at https://passthecanvas.party/account. That's your
+   production account; the development one only works on localhost.
+5. Check: `/api/token` stops returning 503, video appears in a two-browser
+   party, and the account page signs in.
+
