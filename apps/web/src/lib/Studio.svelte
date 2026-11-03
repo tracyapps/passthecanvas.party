@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { CANVAS_SHAPES, TURN_LENGTHS, creditLine, moveInOrder, roundsFor, turnLengthText, type CanvasShape, type OrderMode, type Piece } from '@ptc/shared';
+  import { CANVAS_SHAPES, INITIALS_COLORS, durationText, creditLine, moveInOrder, roundsFor, turnLengthText, type CanvasShape, type OrderMode, type Piece } from '@ptc/shared';
   import type { PartyConnection } from './party/connection.svelte';
   import { Call } from './call/call.svelte';
   import CallDock from './call/CallDock.svelte';
@@ -22,6 +22,9 @@
   import TimeLapse from './canvas/TimeLapse.svelte';
   import PartyRadio from './radio/PartyRadio.svelte';
   import type { GalleryPiece } from './room/leanLayout';
+  import TimingControls from './party/TimingControls.svelte';
+  import { accountRequest, accountState } from './account/account.svelte';
+  import { studio } from './account/studio/studio.svelte';
   import { partyUrl } from './party/origin';
 
   let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
@@ -31,6 +34,7 @@
   let guestsOpen = $state(innerWidth > 1100);
   let revealOpen = $state(true);
   let setupOpen = $state(true);
+  let timingOpen = $state(false);
   let notesOpen = $state(false);
   let radioOpen = $state(false);
   /** Late joiners (and the reveal) pick a canvas to look at. */
@@ -207,6 +211,36 @@
     party.announcement = inviteStatus;
   }
 
+  // A planned party's room (/?party=p-…): the host's saved timing and order apply once.
+  let appliedPlan = false;
+  $effect(() => {
+    if (appliedPlan || !game || game.phase !== 'lobby' || !isHost || !accountState.userId) return;
+    const planned = studio.home?.parties.find((p) => p.roomId === game.partyId && p.hosting);
+    if (!planned) return;
+    appliedPlan = true;
+    party.send({ type: 'setTiming', timing: $state.snapshot(planned.settings.timing) });
+    party.send({ type: 'setOrderMode', mode: planned.settings.orderMode });
+  });
+
+  // A saved gallery goes into every signed-in artist's own History & art.
+  let recordedArchive: string | null = null;
+  $effect(() => {
+    const id = game?.archive.id;
+    if (!id || id === recordedArchive || !accountState.userId || !studio.home?.profile) return;
+    recordedArchive = id;
+    const planned = studio.home.parties.find((p) => p.roomId === game!.partyId);
+    const title = planned?.title ?? `Party on ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    void accountRequest('community/galleries', 'POST', { archiveId: id, title: title.slice(0, 80) }).catch(() => {});
+  });
+
+  /** Camera ↔ avatar, any time: tell the party, then the call. */
+  function swapPresence() {
+    const next = me?.presence === 'camera' ? 'avatar' : 'camera';
+    party.send({ type: 'setPresence', presence: next });
+    void call.setPresence(next);
+    party.announcement = next === 'camera' ? 'Camera on.' : 'Camera off. Your avatar is showing.';
+  }
+
   function nameOf(id: string) {
     return names[id] ?? 'Guest';
   }
@@ -261,6 +295,7 @@
           members={game?.members ?? []}
           youId={party.youId}
           videos={call.videos}
+          looks={party.looks}
           onTakeSpot={(spotId) => party.send({ type: 'takeSpot', spotId })}
         />
       {/key}
@@ -295,12 +330,14 @@
                 <button type="button" aria-pressed={setupOpen} onclick={() => (setupOpen = !setupOpen)}>Party setup</button>
                 <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
               {:else}
-                <p class="note">{turnLengthText(game.turnSeconds)} turns · waiting for the host</p>
+                <p class="note">Turns: {turnLengthText(game.turnSeconds)} · {roundsFor(game.order.length)} rounds{game.timing.mode === 'party' ? ` · a ${durationText(game.timing.partyMinutes * 60)} party` : ''} · waiting for the host</p>
               {/if}
             {/if}
             {#if game.phase === 'painting' || game.phase === 'passing'}
               <p class="round">Round <strong>{game.round}</strong> of {game.totalRounds}<span class="whose">{whose(viewPiece)}</span></p>
               <TimerDial secondsLeft={game.secondsLeft} totalSeconds={game.turnSeconds} label={timerLabel} />
+              {#if game.plannedEndAt}<p class="note">Wraps up around {new Date(game.plannedEndAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>{/if}
+              {#if isHost}<button type="button" aria-pressed={timingOpen} onclick={() => (timingOpen = !timingOpen)}>Timing</button>{/if}
               {#if me?.watching && game.pieces.length}
                 <label class="inline">Watching
                   <select value={viewId} onchange={(event) => (watchedId = event.currentTarget.value)}>
@@ -320,6 +357,7 @@
             {#if game.phase === 'reveal'}
               <button type="button" class="primary" onclick={() => (revealOpen = true)}>See the finished pieces</button>
             {/if}
+            <button type="button" onclick={swapPresence}>{me?.presence === 'camera' ? 'Switch to avatar' : 'Switch to camera'}</button>
             <button type="button" aria-pressed={radioOpen} onclick={() => (radioOpen = !radioOpen)}>
               Radio{#if game.radio?.playing}<span class="badge" aria-hidden="true">on</span><span class="sr-only">, playing</span>{/if}
             </button>
@@ -337,18 +375,19 @@
         {/snippet}
       </PaintingTable>
 
+      {#if isHost && timingOpen && (game.phase === 'painting' || game.phase === 'passing')}
+        <StudioPanel title="Timing" label="party timing" dock="palette" flow={innerWidth <= 1100} onclose={() => (timingOpen = false)}>
+          <TimingControls {party} {game} />
+        </StudioPanel>
+      {/if}
+
       {#if game.phase === 'lobby' && isHost && setupOpen}
         <!-- Host tools: everything that has to be settled before the first round. -->
         <StudioPanel title="Party setup" label="party setup" dock="palette" flow={innerWidth <= 1100} onclose={() => (setupOpen = false)}>
           <div class="setup">
-            <label>Turn length
-              <select value={game.turnSeconds} onchange={(event) => party.send({ type: 'setTurnSeconds', seconds: Number(event.currentTarget.value) })}>
-                {#if !(TURN_LENGTHS as readonly number[]).includes(game.turnSeconds)}<option value={game.turnSeconds}>{turnLengthText(game.turnSeconds)}</option>{/if}
-                {#each TURN_LENGTHS as seconds (seconds)}<option value={seconds}>{turnLengthText(seconds)}</option>{/each}
-              </select>
-            </label>
+            <TimingControls {party} {game} />
             <p class="hint">
-              {game.order.length} {game.order.length === 1 ? 'artist' : 'artists'} → {roundsFor(game.order.length)} rounds. Everyone paints every canvas; each owner paints the first and last layer.
+              Everyone paints every canvas; each owner paints the first and last layer.
               When the timer reaches zero, painters finish their stroke and pass. Nothing is cut off.
             </p>
             <fieldset class="modes">
@@ -408,6 +447,8 @@
                         : null
                       : call.videos.find((v) => v.identity === member.id)?.track ?? null}
                     speaking={member.id !== party.youId && call.videos.find((v) => v.identity === member.id)?.speaking}
+                    look={member.presence === 'avatar' ? party.looks[member.id] ?? null : null}
+                    color={INITIALS_COLORS[member.initialsColor]?.fill}
                   />
                 </li>
               {/if}

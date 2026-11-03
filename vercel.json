@@ -8,6 +8,10 @@
     {
       "source": "/:page(how-it-works|gallery|roadmap|support|account|privacy|terms|try)",
       "destination": "/:page/index.html"
+    },
+    {
+      "source": "/account/:path*",
+      "destination": "/account/index.html"
     }
   ],
   "headers": [

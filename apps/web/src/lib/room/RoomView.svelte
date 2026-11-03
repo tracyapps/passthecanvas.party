@@ -10,7 +10,7 @@
   import { MarkersPlugin, events as markerEvents } from '@photo-sphere-viewer/markers-plugin';
   import type { MarkerConfig } from '@photo-sphere-viewer/markers-plugin';
   import { attachTrack, type GuestVideo } from '../call/call.svelte';
-  import type { Member, Spot } from '@ptc/shared';
+  import { INITIALS_COLORS, initialsOf, type Member, type Spot } from '@ptc/shared';
   import '@photo-sphere-viewer/core/index.css';
   import '@photo-sphere-viewer/markers-plugin/index.css';
 
@@ -30,10 +30,12 @@
     selectedId?: string | null;
     /** Extra layers inside the panorama (artwork), given the live viewer. */
     overlay?: Snippet<[Viewer]>;
+    /** Avatar pictures by member id (cutouts or photos), shown when someone is in avatar mode. */
+    looks?: Record<string, string>;
     /** Room tool: hide the jump list (the tool has its own seat list). */
     showJump?: boolean;
   }
-  let { panorama, spotsUrl, members = [], youId = null, videos = [], onTakeSpot, spots: givenSpots, onPanoramaClick, selectedId = null, overlay, showJump = true }: Props = $props();
+  let { panorama, spotsUrl, members = [], youId = null, videos = [], onTakeSpot, spots: givenSpots, onPanoramaClick, selectedId = null, overlay, showJump = true, looks = {} }: Props = $props();
 
   let container: HTMLDivElement;
   // $state.raw: the overlay snippet needs the viewer reactively, but PSV breaks behind a deep proxy.
@@ -112,7 +114,7 @@
   let lastKey = '';
   $effect(() => {
     if (!viewerReady || !markersPlugin) return;
-    const key = seats.map((s) => `${s.spot.id}:${s.spot.yaw},${s.spot.pitch}:${s.member?.id ?? ''}:${s.track ? 'cam' : 'av'}:${s.spot.id === selectedId ? 'sel' : ''}`).join('|');
+    const key = seats.map((s) => `${s.spot.id}:${s.spot.yaw},${s.spot.pitch}:${s.member?.id ?? ''}:${s.track ? 'cam' : 'av'}:${s.member?.initialsColor ?? ''}:${s.member ? (looks[s.member.id] ?? '').length : 0}:${s.spot.id === selectedId ? 'sel' : ''}`).join('|');
     if (key === lastKey) return;
     lastKey = key;
     markersPlugin.setMarkers(seats.map((seat) => markerFor(seat)));
@@ -139,8 +141,16 @@
         tooltip: `Sit at ${spot.label}`
       };
     }
-    const initials = escapeHtml(member.name.trim().split(/\s+/).map((w) => w[0] ?? '').slice(0, 2).join('').toUpperCase() || '?');
-    const media = track ? '<video muted autoplay playsinline></video>' : `<span class="seat-avatar">${initials}</span>`;
+    const initials = escapeHtml(initialsOf(member.name));
+    const look = looks[member.id];
+    // Camera on: their video. Off: their cutout avatar or photo, else initials on their color.
+    // Look images were checked by the server (a png/jpeg/webp data URL), and are escaped here too.
+    const fill = INITIALS_COLORS[member.initialsColor]?.fill ?? INITIALS_COLORS.teal.fill;
+    const media = track
+      ? '<video muted autoplay playsinline></video>'
+      : look && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(look)
+        ? `<img class="seat-look" src="${escapeHtml(look)}" alt="" />`
+        : `<span class="seat-avatar" style="background:${fill}">${initials}</span>`;
     return {
       id: `seat_${spot.id}`,
       position: { yaw: `${spot.yaw}deg`, pitch: `${spot.pitch}deg` },
@@ -329,7 +339,7 @@
     border-radius: $radius-sm;
     border: 4px solid $paper;
     background: $paper;
-    color: $walnut-900;
+    color: #fff; // on their chosen color (inline), each 4.5:1 or better
     font-family: $font-display;
     font-weight: 800;
     font-size: 3rem;
@@ -341,6 +351,15 @@
   :global(.seat.is-selected .seat-avatar) {
     outline: 4px solid $focus;
     outline-offset: 3px;
+  }
+  /* A cutout or photo: no paper frame (cutouts have their own edge), just a soft shadow. */
+  :global(.seat-look) {
+    display: block;
+    width: 101px;
+    height: 135px;
+    margin-inline: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 10px rgb(0 0 0 / 0.45));
   }
   :global(.seat figcaption) {
     @include tape-label;

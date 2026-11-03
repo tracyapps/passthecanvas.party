@@ -20,7 +20,7 @@
 -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { anglesFrom, placeFromView, sanitizeArt, sanitizeGeometry, sanitizeSpots, spotsForView, type ArtRegion, type Member, type SeatGeometry, type Spot, type SpotsFile } from '@ptc/shared';
+  import { INITIALS_COLOR_KEYS, anglesFrom, placeFromView, sanitizeArt, sanitizeGeometry, sanitizeSpots, spotsForView, type ArtRegion, type Member, type SeatGeometry, type Spot, type SpotsFile } from '@ptc/shared';
   import type { GuestVideo } from '../call/call.svelte';
   import { makeFakeVideoTrack } from './demoVideo';
   import RoomView from './RoomView.svelte';
@@ -98,7 +98,7 @@
       const name = NAMES[(i + shuffle * 7) % NAMES.length]!;
       const id = `demo-${i + 1}`;
       const onCamera = Math.random() * 100 < cameraShare;
-      nextMembers.push({ id, name, presence: onCamera ? 'camera' : 'avatar', isHost: false, spotId: spot.id, canvasShape: 'classic', watching: false });
+      nextMembers.push({ id, name, presence: onCamera ? 'camera' : 'avatar', isHost: false, spotId: spot.id, canvasShape: 'classic', watching: false, initialsColor: INITIALS_COLOR_KEYS[i % INITIALS_COLOR_KEYS.length]!, hasLook: false });
       if (onCamera) {
         const track = makeFakeVideoTrack(name[0]!, i + shuffle);
         liveTracks.push(track);

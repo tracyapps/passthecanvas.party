@@ -9,6 +9,7 @@
 
 import type { CanvasShape, PaintedStroke, Stroke } from './paint';
 import type { OrderMode } from './ring';
+import type { InitialsColor, PartyTiming } from './community';
 
 // Strokes, tools and canvas shapes live in ./paint.ts; ring math in ./ring.ts.
 
@@ -28,6 +29,22 @@ export interface Member {
   canvasShape: CanvasShape;
   /** Joined after the game started: watches, but has no canvas this party. */
   watching: boolean;
+  /** The color behind their initials (when there's no picture to show). */
+  initialsColor: InitialsColor;
+  /** They shared a picture for avatar mode (a cutout or photo); see the `looks` messages. */
+  hasLook: boolean;
+}
+
+/**
+ * A guest's avatar picture: a small PNG/JPEG/WebP data URL, made in their
+ * browser from their cutout avatar or profile photo. Sent once and kept out
+ * of the party state so state updates stay small.
+ */
+export const LOOK_IMAGE = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+export const MAX_LOOK_CHARS = 90_000;
+export interface Look {
+  initialsColor: InitialsColor;
+  image: string | null;
 }
 
 /** One artist's canvas and its story, round by round. */
@@ -59,7 +76,13 @@ export interface PartyState {
   passed: string[];
   pieces: Piece[];
   secondsLeft: number;
+  /** This round's turn length (worked out from `timing`). */
   turnSeconds: number;
+  /** The host's timing: a set party length, or a set turn length. Changeable mid-party. */
+  timing: PartyTiming;
+  /** When the first round started, and when the painting is planned to finish (ms since epoch). */
+  startedAt: number | null;
+  plannedEndAt: number | null;
   /**
    * The timer reached zero. Zero is a gentle cue, not a lock: painters keep
    * their canvas until they pass (or the host passes everyone on).
@@ -78,7 +101,7 @@ export interface PartyState {
 // ---------- browser → server ----------
 
 export type ClientMessage =
-  | { type: 'join'; name: string; presence: Presence }
+  | { type: 'join'; name: string; presence: Presence; look?: Look }
   | { type: 'start' } // host only
   | { type: 'setMyCanvas'; shape: CanvasShape } // anyone, lobby only: the shape of your own canvas
   | { type: 'setTurnSeconds'; seconds: number } // host only, lobby only
@@ -93,7 +116,10 @@ export type ClientMessage =
   | { type: 'takeSpot'; spotId: string }
   | { type: 'chat'; text: string }
   | { type: 'setRadio'; stationName: string; streamUrl: string; playing: boolean } // host only
-  | { type: 'saveArchive' }; // host only, at the reveal
+  | { type: 'saveArchive' } // host only, at the reveal
+  | { type: 'setTiming'; timing: PartyTiming } // host only; any time before the reveal
+  | { type: 'setPresence'; presence: Presence } // swap camera ↔ avatar, any time
+  | { type: 'setLook'; look: Look };
 
 // ---------- server → browser ----------
 
@@ -113,4 +139,6 @@ export type ServerMessage =
   | { type: 'requestSnapshot'; round: number; canvasId: string }
   | { type: 'chat'; fromId: string; name: string; text: string; at: number }
   | { type: 'archiveSaved'; id: string; deleteKey: string } // to the host only: the private delete link
+  | { type: 'looks'; looks: Record<string, string> } // on joining: everyone's avatar pictures
+  | { type: 'look'; memberId: string; image: string | null }
   | { type: 'error'; message: string };

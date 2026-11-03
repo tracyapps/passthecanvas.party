@@ -1,8 +1,11 @@
 // One Clerk client for this browser. Local saved views are never imported automatically.
 import type { Clerk } from '@clerk/clerk-js';
 
-const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '';
-export const accountState = $state({ userId: null as string | null, ready: !publishableKey, configured: Boolean(publishableKey), error: '' });
+// Development only: VITE_ACCOUNT_DEV_USER=dev-<name> signs in as a pretend person (needs the
+// server's ACCOUNT_DEV_FAKE_AUTH=1). Never part of a production build.
+const devUser = import.meta.env.DEV && /^dev-[a-z0-9]{1,20}$/.test(import.meta.env.VITE_ACCOUNT_DEV_USER ?? '') ? (import.meta.env.VITE_ACCOUNT_DEV_USER as string) : '';
+const publishableKey = devUser ? '' : import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '';
+export const accountState = $state({ userId: (devUser || null) as string | null, ready: !publishableKey, configured: Boolean(publishableKey || devUser), error: '' });
 let clerk: Clerk | null = null;
 let initialization: Promise<void> | null = null;
 type ClerkOptions = NonNullable<Parameters<Clerk['load']>[0]>;
@@ -60,6 +63,7 @@ export async function openAccountSignIn(): Promise<void> {
   }
 }
 export async function signOutAccount(): Promise<void> {
+  if (devUser) return void (accountState.userId = null);
   try {
     await clerk?.signOut();
     accountState.userId = null;
@@ -70,7 +74,7 @@ export async function signOutAccount(): Promise<void> {
 export async function accountRequest<T>(path: string, method: 'GET' | 'PUT' | 'POST' = 'GET', value?: unknown): Promise<T> {
   await initializeAccount();
   const userId = accountState.userId;
-  const token = await clerk?.session?.getToken();
+  const token = devUser || (await clerk?.session?.getToken());
   if (!token || !userId) throw new Error('Sign in to access account views.');
   const base = (import.meta.env.VITE_ACCOUNT_API_URL ?? '').replace(/\/$/, '');
   const response = await fetch(`${base}/api/account/${path}`, {
@@ -86,6 +90,13 @@ export async function accountRequest<T>(path: string, method: 'GET' | 'PUT' | 'P
   const result = response.status === 204 ? null : await response.json();
   if (userId !== accountState.userId) throw new Error('The signed-in account changed. Try again.');
   return result as T;
+}
+/** The current session token, for requests that aren't JSON (photos). */
+export async function accountToken(): Promise<string> {
+  await initializeAccount();
+  const token = devUser || (await clerk?.session?.getToken());
+  if (!token) throw new Error('Sign in first.');
+  return token;
 }
 export function loadAccountWorkspaces(): Promise<unknown | null> { return accountRequest('workspaces'); }
 export async function saveAccountWorkspaces(value: unknown): Promise<void> { await accountRequest('workspaces', 'PUT', value); }

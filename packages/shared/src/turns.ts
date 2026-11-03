@@ -1,3 +1,5 @@
+import type { PartyTiming } from './community';
+
 // Pure turn logic, no networking. Easy to test and shared by server + web.
 
 /** Who paints in a given round? Rounds are 1-based and wrap around the order. */
@@ -67,4 +69,66 @@ export function moveInOrder(order: string[], id: string, step: -1 | 1): string[]
   next.splice(from, 1);
   next.splice(to, 0, id);
   return next;
+}
+
+// ---------- party timing: a set party length, or a set turn length ----------
+
+
+/** The short "pass the canvas" card between rounds, in seconds (server PASS_CARD_MS). */
+export const PASS_SECONDS = 4;
+
+export interface TimingPlan {
+  rounds: number;
+  turnSeconds: number;
+  /** Rounds × turn + the passes between them. */
+  paintingSeconds: number;
+  /** Intro + painting + wrap-up. */
+  totalSeconds: number;
+  /** In 'party' mode: the turns couldn't fit, so they're at the shortest allowed. */
+  tooShort: boolean;
+}
+
+const turnStep = (seconds: number) => Math.min(MAX_TURN_SECONDS, Math.max(MIN_TURN_SECONDS, Math.floor(seconds / 5) * 5));
+
+/**
+ * How a party's time works out for this many artists (N + 1 rounds: everyone
+ * paints every canvas, and the owner paints first and last).
+ * - 'turn': each turn is fixed; the party is as long as it takes.
+ * - 'party': the party length is fixed; turns share what's left after the
+ *   intro, the wrap-up and the passing cards.
+ */
+export function planTiming(timing: PartyTiming, artists: number): TimingPlan {
+  const rounds = Math.max(1, artists) + 1;
+  const passes = (rounds - 1) * PASS_SECONDS;
+  const extras = (timing.introMinutes + timing.wrapMinutes) * 60;
+  let turnSeconds = timing.turnSeconds;
+  let tooShort = false;
+  if (timing.mode === 'party') {
+    const available = timing.partyMinutes * 60 - extras - passes;
+    const fair = available / rounds;
+    tooShort = fair < MIN_TURN_SECONDS;
+    turnSeconds = turnStep(fair);
+  }
+  const paintingSeconds = rounds * turnSeconds + passes;
+  return { rounds, turnSeconds, paintingSeconds, totalSeconds: paintingSeconds + extras, tooShort };
+}
+
+/**
+ * Mid-party, in 'party' mode: a fair turn length for the rounds still to
+ * paint (including the one underway), given the time left until the party
+ * is meant to end. The wrap-up is kept.
+ */
+export function turnSecondsForRest(timing: PartyTiming, roundsLeft: number, secondsUntilEnd: number): number {
+  const left = Math.max(1, roundsLeft);
+  const available = secondsUntilEnd - timing.wrapMinutes * 60 - (left - 1) * PASS_SECONDS;
+  return turnStep(available / left);
+}
+
+/** "1 hr 5 min", "45 min": party lengths in words. */
+export function durationText(totalSeconds: number): string {
+  const minutes = Math.round(totalSeconds / 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!h) return `${m} min`;
+  return m ? `${h} hr ${m} min` : h === 1 ? '1 hour' : `${h} hours`;
 }

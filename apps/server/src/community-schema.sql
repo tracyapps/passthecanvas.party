@@ -62,3 +62,37 @@ CREATE TABLE IF NOT EXISTS studio_mail_outbox (
   UNIQUE(party_id,user_id,kind)
 );
 CREATE INDEX IF NOT EXISTS studio_mail_due ON studio_mail_outbox(state,due_at);
+-- November 2026: profile photos, social links, cutout avatars, party
+-- settings, calendar feeds and saved party galleries.
+ALTER TABLE studio_profiles ADD COLUMN IF NOT EXISTS links jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE studio_profiles ADD COLUMN IF NOT EXISTS photo_version text;
+ALTER TABLE studio_profiles ADD COLUMN IF NOT EXISTS default_avatar uuid;
+-- Re-encoded in the browser before upload (which also drops camera metadata).
+CREATE TABLE IF NOT EXISTS studio_profile_photos (
+  user_id text PRIMARY KEY REFERENCES studio_profiles(user_id) ON DELETE CASCADE,
+  content_type text NOT NULL CHECK (content_type IN ('image/webp','image/jpeg','image/png')),
+  bytes bytea NOT NULL CHECK (octet_length(bytes) <= 400000),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS studio_avatars (
+  id uuid PRIMARY KEY,
+  user_id text NOT NULL REFERENCES studio_profiles(user_id) ON DELETE CASCADE,
+  name text NOT NULL,
+  design jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS studio_avatars_user ON studio_avatars(user_id, created_at);
+ALTER TABLE studio_scheduled_parties ADD COLUMN IF NOT EXISTS settings jsonb;
+CREATE TABLE IF NOT EXISTS studio_calendar_feeds (
+  user_id text PRIMARY KEY REFERENCES studio_profiles(user_id) ON DELETE CASCADE,
+  token text NOT NULL UNIQUE, -- a read-only feed link, shown again on request
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS studio_saved_galleries (
+  user_id text NOT NULL REFERENCES studio_profiles(user_id) ON DELETE CASCADE,
+  archive_id text NOT NULL,
+  title text NOT NULL,
+  saved_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, archive_id)
+);

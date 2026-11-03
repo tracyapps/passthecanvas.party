@@ -6,3 +6,5 @@ export * from './community';
 export * from './paint';
 export * from './ring';
 export * from './views';
+export * from './cutouts';
+export * from './calendar';

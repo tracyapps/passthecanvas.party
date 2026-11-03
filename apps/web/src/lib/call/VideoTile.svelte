@@ -13,8 +13,12 @@
     painting?: boolean; // it's this guest's turn
     you?: boolean;
     host?: boolean;
+    /** Their avatar picture (cutout or photo), shown when the camera is off. */
+    look?: string | null;
+    /** The color behind their initials. */
+    color?: string;
   }
-  let { name, track = null, speaking = false, painting = false, you = false, host = false }: Props = $props();
+  let { name, track = null, speaking = false, painting = false, you = false, host = false, look = null, color }: Props = $props();
 
   let videoEl = $state<HTMLVideoElement>();
 
@@ -44,7 +48,7 @@
       <!-- muted: LiveKit plays everyone's audio separately, this element is picture only -->
       <video bind:this={videoEl} muted autoplay playsinline></video>
     {:else}
-      <span class="avatar" aria-hidden="true">{initials}</span>
+      {#if look}<img class="look" src={look} alt="" />{:else}<span class="avatar" aria-hidden="true" style:background={color} class:colored={!!color}>{initials}</span>{/if}
     {/if}
   </div>
   <figcaption>
@@ -99,6 +103,16 @@
     border-radius: 50%;
     background: $paper;
     box-shadow: inset 0 0 0 3px rgb(122 83 56 / 0.25);
+  }
+
+  .look {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .avatar.colored {
+    color: #fff;
+    box-shadow: none;
   }
 
   figcaption {

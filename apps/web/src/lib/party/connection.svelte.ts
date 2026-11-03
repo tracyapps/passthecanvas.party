@@ -3,7 +3,7 @@
 // them update automatically when messages arrive.
 
 import { partySocketUrl } from './origin';
-import type { ClientMessage, PaintedStroke, PartyState, Piece, Presence, ServerMessage } from '@ptc/shared';
+import type { ClientMessage, Look, PaintedStroke, PartyState, Piece, Presence, ServerMessage } from '@ptc/shared';
 
 /** Everything painted on one canvas so far, as the server sent it. */
 export interface CanvasHistory {
@@ -29,6 +29,8 @@ export class PartyConnection {
    * arrays that are replaced whole, never edited, so no deep tracking.
    */
   histories = $state.raw<Record<string, CanvasHistory>>({});
+  /** Everyone's avatar pictures, by member id (sent apart from the state to keep it small). */
+  looks = $state.raw<Record<string, string>>({});
   /** The host's private delete key for the saved gallery (never sent to anyone else). */
   archiveDeleteKey = $state<string | null>(null);
 
@@ -39,11 +41,11 @@ export class PartyConnection {
   /** Set by the studio to answer the server's snapshot request. */
   onSnapshotRequest: (round: number, canvasId: string) => void = () => {};
 
-  join(partyId: string, name: string, presence: Presence) {
+  join(partyId: string, name: string, presence: Presence, look?: Look) {
     this.socket = new WebSocket(partySocketUrl(partyId));
     this.socket.addEventListener('open', () => {
       this.connected = true;
-      this.send({ type: 'join', name, presence });
+      this.send({ type: 'join', name, presence, look });
     });
     this.socket.addEventListener('close', () => (this.connected = false));
     this.socket.addEventListener('message', (event) => this.receive(JSON.parse(event.data)));
@@ -58,6 +60,7 @@ export class PartyConnection {
     this.youId = null;
     this.chat = [];
     this.histories = {};
+    this.looks = {};
   }
 
   send(message: ClientMessage) {
@@ -132,6 +135,16 @@ export class PartyConnection {
           this.announcement = `New note from ${message.name}.`;
         }
         break;
+      case 'looks':
+        this.looks = message.looks;
+        break;
+      case 'look': {
+        const next = { ...this.looks };
+        if (message.image) next[message.memberId] = message.image;
+        else delete next[message.memberId];
+        this.looks = next;
+        break;
+      }
       case 'archiveSaved':
         this.archiveDeleteKey = message.deleteKey;
         break;

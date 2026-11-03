@@ -11,6 +11,7 @@ import {
 } from 'livekit-client';
 import type { Presence } from '@ptc/shared';
 import { partyUrl } from '../party/origin';
+import { savedDevices } from './devices';
 
 /** Where the call is at, in plain words for the UI. */
 export type CallStatus = 'off' | 'connecting' | 'in-call' | 'unavailable' | 'error';
@@ -72,7 +73,15 @@ export class Call {
 
     // 2. Connect, then publish mic + camera (avatar guests join quietly).
     try {
-      this.room = new Room({ adaptiveStream: true, dynacast: true });
+      // The camera, mic and speakers chosen in the device check, if any.
+      const devices = savedDevices();
+      this.room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        ...(devices.cameraId ? { videoCaptureDefaults: { deviceId: devices.cameraId } } : {}),
+        ...(devices.micId ? { audioCaptureDefaults: { deviceId: devices.micId } } : {}),
+        ...(devices.speakerId ? { audioOutput: { deviceId: devices.speakerId } } : {})
+      });
       this.listenToRoom();
       await this.room.connect(url, token);
 
@@ -93,6 +102,18 @@ export class Call {
       this.room?.disconnect();
       this.room = null;
     }
+  }
+
+  /** Swap camera ↔ avatar mid-party. Coming on camera turns the mic on too; going to avatar leaves the mic as it was. */
+  async setPresence(presence: Presence) {
+    if (!this.room) return;
+    this.camOn = presence === 'camera';
+    if (this.camOn && !this.micOn) {
+      this.micOn = true;
+      await this.room.localParticipant.setMicrophoneEnabled(true);
+    }
+    await this.room.localParticipant.setCameraEnabled(this.camOn);
+    this.refreshLocalVideo();
   }
 
   async toggleMic() {

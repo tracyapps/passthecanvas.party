@@ -2,11 +2,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import pg from 'pg';
 import { queueAccountMail, deliverAccountMail, type MailProvider } from './account-mail';
-import { createCommunityHandler, initializeCommunitySchema, validProfile, validSchedule } from './community';
+import { createCalendarFeedHandler, createCommunityHandler, decodePhoto, initializeCommunitySchema, validProfile, validSchedule } from './community';
+import { blankDesign, DEFAULT_PARTY_SETTINGS } from '@ptc/shared';
 import { postgresCommunityStore, type CommunityStore } from './community-store';
 
-const profile = { name: 'Painter', bio: 'Making things', avatar: { color: 'teal', mark: 'cat' }, share: true, allowRequests: true, emailInvites: false, emailReminders: false } as const;
-const schedule = { title: 'A little paint', startsAt: new Date(Date.now() + 86400000).toISOString(), timeZone: 'America/Chicago', durationMinutes: 60 };
+const profile = { name: 'Painter', bio: 'Making things', avatar: { color: 'teal' }, links: [] as { kind: 'website'; value: string }[], share: true, allowRequests: true, emailInvites: false, emailReminders: false } as const;
+const schedule = { title: 'A little paint', startsAt: new Date(Date.now() + 86400000).toISOString(), timeZone: 'America/Chicago', durationMinutes: 60, settings: DEFAULT_PARTY_SETTINGS };
 describe('community validation', () => {
   it('rejects forged identifiers, unsupported avatars, unknown fields and bad dates', () => {
     expect(validProfile(profile)).toBe(true);
@@ -18,6 +19,15 @@ describe('community validation', () => {
     expect(validSchedule({ ...schedule, startsAt: new Date(Date.now()-1).toISOString() })).toBe(false);
     expect(validSchedule({ ...schedule, timeZone: 'Fake/Zone' })).toBe(false);
     expect(validSchedule({ ...schedule, durationMinutes: 10000 })).toBe(false);
+    expect(validSchedule({ ...schedule, settings: { ...DEFAULT_PARTY_SETTINGS, maxGuests: 500 } })).toBe(false);
+    expect(validProfile({ ...profile, links: [{ kind: 'website', value: 'https://tapps.design' }] })).toBe(true);
+    expect(validProfile({ ...profile, links: [{ kind: 'website', value: 'javascript:alert(1)' }] })).toBe(false);
+  });
+  it('accepts real images only, by their bytes', () => {
+    const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001', 'hex').toString('base64');
+    expect(decodePhoto(`data:image/png;base64,${png}`)?.contentType).toBe('image/png');
+    expect(decodePhoto(`data:image/jpeg;base64,${png}`)).toBeNull(); // label says JPEG, bytes say PNG
+    expect(decodePhoto(`data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}`)).toBeNull();
   });
 });
 
@@ -39,7 +49,7 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     origin = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/account/community`;
   });
   beforeEach(async () => {
-    await db.query('TRUNCATE studio_profiles,studio_friendships,studio_scheduled_parties,studio_party_invites,studio_party_history CASCADE');
+    await db.query('TRUNCATE studio_profiles,studio_friendships,studio_scheduled_parties,studio_party_invites,studio_party_history,studio_avatars,studio_profile_photos,studio_calendar_feeds,studio_saved_galleries CASCADE');
     for (const user of ['alice','bob','eve']) await store.saveProfile(`user_${user}`, { ...profile, name: user });
   });
   afterAll(async () => {
@@ -109,7 +119,8 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     const party = await store.schedule('user_alice',schedule);
     const saved = (await db.query('SELECT share_digest FROM studio_scheduled_parties')).rows[0].share_digest;
     expect(saved).not.toBe(party.token);
-    expect(await store.sharedParty(party.token)).toEqual({ ...schedule, startsAt:expect.any(Date),hostName:'alice' });
+    const { settings: _settings, ...plain } = schedule;
+    expect(await store.sharedParty(party.token)).toEqual({ ...plain, startsAt:expect.any(Date),hostName:'alice', description:'' });
     await store.joinShared('user_bob',party.token);
     expect((await store.home('user_bob')).parties[0]!.response).toBe('yes');
     await expect(store.rotateLink('user_eve',party.id)).rejects.toThrow();
@@ -161,6 +172,58 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     await deliverAccountMail(db,provider,'https://canvas.example');
     expect(sent).toBe(0);
     expect((await store.home('user_bob')).mail[0]!.state).toBe('skipped');
+  });
+  it('keeps photos to people who may see the profile, and replaces them cleanly', async () => {
+    const png = Buffer.from('89504e470d0a1a0a00000000', 'hex');
+    const { photo } = await store.setPhoto('user_bob', 'image/png', png);
+    expect((await store.home('user_bob')).profile!.photo).toBe(photo);
+    await store.saveProfile('user_bob', { ...profile, name: 'bob', share: false });
+    await expect(store.photo('user_eve', await id('bob'))).rejects.toThrow();
+    expect((await store.photo('user_bob', await id('bob'))).bytes.equals(png)).toBe(true);
+    await store.clearPhoto('user_bob');
+    expect((await store.home('user_bob')).profile!.photo).toBeNull();
+  });
+  it('lets people keep their own avatars only, with a default', async () => {
+    const first = await store.saveAvatar('user_alice', { id: null, name: 'Blob', design: blankDesign() });
+    expect((await store.home('user_alice')).profile!.defaultAvatarId).toBe(first.id); // the first becomes the default
+    const second = await store.saveAvatar('user_alice', { id: null, name: 'Cat', design: blankDesign('cat') });
+    await store.setDefaultAvatar('user_alice', second.id);
+    await expect(store.saveAvatar('user_eve', { id: first.id, name: 'Mine now', design: blankDesign() })).rejects.toThrow();
+    await expect(store.setDefaultAvatar('user_eve', first.id)).rejects.toThrow();
+    await expect(store.deleteAvatar('user_eve', first.id)).rejects.toThrow();
+    await expect(store.saveAvatar('user_alice', { id: null, name: 'Bad', design: { ...blankDesign(), shape: 'nope' } })).rejects.toThrow();
+    expect((await store.avatars('user_alice')).map((a) => a.name)).toEqual(['Blob', 'Cat']);
+    await store.deleteAvatar('user_alice', second.id);
+    expect((await store.home('user_alice')).profile!.defaultAvatarId).toBeNull();
+    const response = await fetch(origin + '/avatars', { method: 'POST', headers, body: JSON.stringify({ id: null, name: 'Via API', design: blankDesign('cat') }) });
+    expect(response.status).toBe(200);
+    expect((await (await fetch(origin + '/avatars', { headers })).json()).length).toBe(2);
+  });
+  it('saves party settings, lets only the host change them, and feeds a private calendar', async () => {
+    await connect();
+    const party = await store.schedule('user_alice', { ...schedule, settings: { ...DEFAULT_PARTY_SETTINGS, description: 'Bring snacks' } });
+    await store.invite('user_alice', party.id, await id('bob'));
+    const home = await store.home('user_bob');
+    expect(home.parties[0]!.settings.description).toBe('Bring snacks');
+    expect(home.parties[0]!.roomId).toMatch(/^p-[0-9a-f]{20}$/);
+    await expect(store.updateParty('user_bob', party.id, { ...schedule, title: 'Hijacked' })).rejects.toThrow();
+    await store.updateParty('user_alice', party.id, { ...schedule, title: 'Renamed', settings: { ...DEFAULT_PARTY_SETTINGS, timing: { ...DEFAULT_PARTY_SETTINGS.timing, mode: 'party', partyMinutes: 90 } } });
+    expect((await store.home('user_bob')).parties[0]!.title).toBe('Renamed');
+    const { token } = await store.calendarToken('user_bob', false);
+    expect((await store.calendarToken('user_bob', false)).token).toBe(token);
+    const feed = createCalendarFeedHandler({ configured: true, async store() { return store; } });
+    const calendar = createServer((req, res) => void feed(req, res));
+    await new Promise<void>((resolve) => calendar.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${(calendar.address() as { port: number }).port}/api/calendar/`;
+    const ics = await (await fetch(`${base}${token}.ics`)).text();
+    expect(ics).toContain('SUMMARY:Renamed');
+    expect((await fetch(`${base}${'x'.repeat(32)}.ics`)).status).toBe(404);
+    await store.calendarToken('user_bob', true);
+    expect((await fetch(`${base}${token}.ics`)).status).toBe(404); // replaced links stop working
+    calendar.closeAllConnections(); await new Promise<void>((resolve) => calendar.close(() => resolve()));
+  });
+  it('only records galleries that exist', async () => {
+    await expect(store.saveGallery('user_alice', 'A'.repeat(22), 'Nope')).rejects.toThrow();
   });
   it('retries with a stable delivery key and stops before the idempotency window expires', async () => {
     await connect(); const party=await store.schedule('user_alice',schedule);

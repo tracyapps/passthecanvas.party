@@ -83,7 +83,11 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] Per-seat viewpoints: textures/props moved into Blender, script renders a panorama per seat plus each viewpoint's seat positions *(final 4096 renders; artwork in the middle view only — see studio/SEAT-VIEWS.md)*
 - [x] Room tool `?seats=<room>`: every viewpoint, every seat filled with placeholder guests, sample artwork, click/nudge to place seats, saves one 3D seat map that updates all views *(Nov 3)*
 - [x] Studio grime pass in Blender: darker, worn ceiling wood; chips, paint drips and wear on the table and chairs *(first pass; tune after review)*
-- [ ] Avatar builder: paper-cutout character builder (human, monster, anime families), building on papr.world's drawing/picking tools; saved in the profile
+- [x] Cutout avatars from papr.world (58 shapes, paper colors/patterns, pencil/pastel/crayon), many per person with a default *(Nov 3)*
+- [ ] Avatar extras: papr.world stamps (eyes, mouths, arms, legs, hair) and character families
+- [x] Account area rebuilt: dashboard, profile view/edit (photo or initials + color, social links), settings, friends, party planner, calendar (month/week/list, add-to-calendar, subscribe feed), history & art, camera & mic check *(Nov 3)*
+- [x] Party timing: set party length or set turn length, changeable by the host mid-party; camera ↔ avatar swap any time *(Nov 3)*
+- [ ] Background blur / replace for cameras (LiveKit track processors, on-device)
 - [ ] **Redesign "Mix a color"** — owner brief received. *Done: recipe tray with parts, even vs streaked loads weighted by parts, saved mixes. Open: streak blend amount, finite paint/reload, named trays, pigment-model mixing.*
 - [x] Gentle timer handoff: zero cues finishing rather than forcing a pass; explicit server-authorized handoff, final-stroke flush *(optional chime not added)*
 - [ ] Configurable photo-tool widgets, named layouts and local popouts; paired devices and private account albums need separate identity/protocol/persistence design (brief above; not implemented)

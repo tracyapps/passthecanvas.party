@@ -714,3 +714,48 @@ Full how-to: `studio/SEAT-VIEWS.md`.
   portrait at the old height (101 × 135), center-cropped; guest-panel tiles
   match. Cut-out avatars will fit the same frame.
 
+### 2026-11-03 — Your studio, round 1: pages, avatars, photos, calendar, timing
+
+- **Account area is now its own small app** at `/account/…` (Vercel rewrite
+  `/account/:path*`): Dashboard, My profile (view) and Edit profile,
+  Avatars, Friends, Calendar, Plan a party / edit party, History & art,
+  Camera & mic check, Settings. Side navigation (a "Studio menu" toggle on
+  phones), focus moves to each page's heading. Cards stack in two columns, so
+  there are no grid gaps. Old links still work (`/account#invite=`, `#profile=`).
+- **Profile**: photo upload (center-cropped, 400 px, re-encoded in the
+  browser so EXIF/location is dropped; server checks the image bytes, 400 KB
+  cap; visible only to people who can see the profile) or initials on one of
+  8 colors (white text, each ≥ 4.5:1). Social links: https only, host-checked
+  per service; Discord also takes a plain username.
+- **Cutout avatars** from papr.world: the 58 original shapes
+  (`packages/shared/src/cutouts.ts`, regenerate from papr.world), the paper
+  colors and patterns, and three media (pencil, soft pastel, crayon) clipped
+  to the cutout. No stamps/arms/hair this round. Up to 24 per person,
+  rename/duplicate/delete, one default. Designs are validated data rendered by
+  `cutoutSvg`; no user SVG is ever stored or shown.
+- **In the party**: the join form picks camera/avatar and a look (any saved
+  cutout, the profile photo, or initials + color). The look is a small
+  PNG/WebP made in the browser and sent apart from the party state
+  (`looks`/`look` messages). Anyone can switch camera ↔ avatar any time
+  (`setPresence`). Seats show the cutout without a frame.
+- **Timing**: `PartyTiming` with two modes, a set party length (turns share
+  what's left after intro, wrap-up and passing cards; `planTiming`) or a set
+  turn length (the party runs as long as it takes). Hosts set it when planning
+  and again any time before the reveal (`setTiming`); everyone's view
+  follows, and the round underway gains or loses the difference. In party
+  mode each new round re-shares the time left, so slow rounds even out.
+- **Calendar**: month, week and list views; hosting, going and invited each
+  get a different edge style plus a written tag. Per party: Google, Outlook.com,
+  Outlook work/school, Yahoo, and an .ics file (Apple and everything else).
+  A private subscription feed `GET /api/calendar/<token>.ics` (stored as a
+  plain token so it can be shown again; replaceable). Subscribe buttons for
+  Apple (webcal), Google, Outlook.com and Outlook work/school.
+- **Camera & mic check**: preview in the 3:4 seat frame, mic level meter,
+  test chime, camera/mic/speaker choice saved in this browser and used by the
+  call (LiveKit capture defaults).
+- **History & art**: saved party galleries (recorded for every signed-in
+  artist when a host saves one) with thumbnails, plus past parties.
+- **Local testing without Clerk**: server `ACCOUNT_DEV_FAKE_AUTH=1` +
+  web `VITE_ACCOUNT_DEV_USER=dev-<name>` sign in as a pretend person against
+  a local database. Refused in production and for non-localhost origins.
+

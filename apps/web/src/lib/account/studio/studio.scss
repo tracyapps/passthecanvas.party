@@ -1,0 +1,149 @@
+// Shared look for the account pages (everything is scoped to .studio-app).
+// Cards are paper; buttons are ink; every control is at least 44px tall.
+
+.studio-app {
+  .card {
+    position: relative;
+    padding: 28px;
+    color: #2a261e;
+    background: var(--paper-light, #f8f1e0) url('/site/paper.svg');
+    box-shadow: 2px 12px 18px #27180e35, 0 1px 2px #2b1d1829;
+    min-width: 0;
+    > :first-child { margin-top: 0; }
+    > :last-child { margin-bottom: 0; }
+    :is(a, button, input, select, textarea, summary):focus-visible { outline: 3px solid #276777; outline-offset: 3px; }
+  }
+  .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: 12px 24px;
+    h1 { margin: 0; font-size: clamp(34px, 4.2vw, 54px); line-height: 1.05; }
+    h1:focus { outline: none; }
+    p { margin: 8px 0 0; max-width: 40rem; }
+  }
+  h2 { font-size: clamp(24px, 2.6vw, 32px); margin-bottom: 12px; }
+  h3 { font-size: 20px; letter-spacing: -0.02em; margin-bottom: 6px; }
+  .eyebrow { margin-bottom: 6px; }
+  .muted { color: #5b5141; font-size: 15px; }
+
+  // Columns that never leave holes: each column stacks its own cards.
+  .columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    > div { display: grid; gap: 24px; min-width: 0; }
+    @media (max-width: 1100px) { grid-template-columns: minmax(0, 1fr); }
+  }
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+    gap: 16px;
+  }
+
+  form.stack, .stack { display: grid; gap: 18px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 18px; }
+  label.field, .field { display: grid; gap: 6px; font-weight: 700; font-size: 15px; }
+  .field .hint, .hint { font-weight: 400; font-size: 14px; color: #5b5141; margin: 0; }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    font: inherit;
+    font-weight: 400;
+    color: #2a261e;
+    background: #fff9ed;
+    border: 1px solid #8d7858;
+    padding: 9px 10px;
+    border-radius: 2px;
+  }
+  textarea { resize: vertical; }
+  fieldset { margin: 0; padding: 14px 16px 16px; min-width: 0; border: 1px solid #8d7858; }
+  legend { font-weight: 700; font-size: 15px; padding: 0 6px; }
+  .check {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-weight: 400;
+    min-height: 44px;
+    padding: 10px 0;
+    input { flex: 0 0 22px; width: 22px; height: 22px; margin: 1px 0 0; accent-color: #ad175b; }
+  }
+  .choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    label {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 0 14px;
+      border: 1px solid #8d7858;
+      background: #fff9ed;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      &:has(input:checked) { background: #2a261e; color: #fff6e5; border-color: #2a261e; }
+      &:has(input:focus-visible) { outline: 3px solid #276777; outline-offset: 3px; }
+      input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+    }
+  }
+
+  .btn, a.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 16px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff6e5;
+    background: #2a261e;
+    border: 2px solid #2a261e;
+    text-decoration: none;
+    cursor: pointer;
+    &:disabled { opacity: 0.55; cursor: default; }
+    &.quiet { color: #2a261e; background: transparent; }
+    &.danger { color: #8f1238; background: transparent; border-color: #8f1238; }
+    &.small { min-height: 36px; padding: 0 12px; }
+  }
+  .link-button {
+    min-height: 44px;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    color: inherit;
+    background: none;
+    border: 0;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list > li { padding: 14px 0; border-top: 1px solid #c8b695; }
+  .list > li:first-child { border-top: 0; padding-top: 0; }
+  .person { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .person .grow { flex: 1 1 10rem; min-width: 0; overflow-wrap: anywhere; }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid currentColor;
+  }
+  // Party states: hosting, going, and invitations waiting for you (never color alone).
+  .tag.hosting { background: #ad175b; color: #fff; border-color: #ad175b; }
+  .tag.going { background: #07616a; color: #fff; border-color: #07616a; }
+  .tag.invited { background: #ffda57; color: #2a261e; border-color: #8a5a00; }
+  .tag.declined, .tag.cancelled { color: #5b5141; text-decoration: line-through; }
+  .empty { padding: 16px; border: 1px dashed #8d7858; color: #5b5141; }
+}

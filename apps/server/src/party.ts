@@ -17,6 +17,17 @@ import {
   CANVAS_SHAPES,
   canvasOwnerFor,
   clampTurnSeconds,
+  cleanTiming,
+  DEFAULT_TIMING,
+  INITIALS_COLOR_KEYS,
+  LOOK_IMAGE,
+  MAX_LOOK_CHARS,
+  PASS_SECONDS,
+  planTiming,
+  turnSecondsForRest,
+  type InitialsColor,
+  type Look,
+  type PartyTiming,
   contributionsFor,
   DEFAULT_CANVAS_SHAPE,
   GALLERY_MODES,
@@ -37,6 +48,14 @@ import {
 
 import { archiveConfigured, buildArchive, saveArchive } from './archive.ts';
 
+/** A look from a browser: a known initials color and, maybe, a small image data URL. */
+function cleanLook(look: unknown): Look {
+  const raw = (look && typeof look === 'object' ? look : {}) as Record<string, unknown>;
+  const initialsColor = INITIALS_COLOR_KEYS.includes(raw.initialsColor as InitialsColor) ? (raw.initialsColor as InitialsColor) : 'teal';
+  const image = typeof raw.image === 'string' && raw.image.length <= MAX_LOOK_CHARS && LOOK_IMAGE.test(raw.image) ? raw.image : null;
+  return { initialsColor, image };
+}
+
 export const SNAPSHOT_DIR = join(process.cwd(), 'data', 'snapshots');
 const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.url));
 const TURN_SECONDS = Number(process.env.TURN_SECONDS ?? 90);
@@ -46,7 +65,7 @@ const DEFAULT_ROOM = 'cream-city';
 // keeping history, and its latest saved image becomes a protected base.
 const MAX_CANVAS_STAMPS = 300_000;
 const MAX_SNAPSHOT_CHARS = 3_500_000; // about 2.5 MB of PNG
-const PASS_CARD_MS = 4000;
+const PASS_CARD_MS = PASS_SECONDS * 1000; // the 'pass the canvas' card; timing plans count it
 
 const parties = new Map<string, Party>();
 
@@ -74,6 +93,8 @@ class Party {
   private histories = new Map<string, CanvasHistory>();
   /** Who is following which canvas live (besides its painter). */
   private watchers = new Map<string, string>();
+  /** Avatar pictures by member id (kept out of the state; see Look). */
+  private looks = new Map<string, string>();
   /** Seat angles from the room's spots.json, for the clockwise ring. */
   private yawOf: Record<string, number> = {};
 
@@ -92,6 +113,9 @@ class Party {
       pieces: [],
       secondsLeft: TURN_SECONDS,
       turnSeconds: TURN_SECONDS,
+      timing: { ...DEFAULT_TIMING, turnSeconds: TURN_SECONDS },
+      startedAt: null,
+      plannedEndAt: null,
       overtime: false,
       galleryMode: 'walls-then-lean',
       radio: null,
@@ -126,7 +150,7 @@ class Party {
 
       if (msg.type === 'join') {
         if (memberId) return; // already joined
-        memberId = this.addMember(ws, msg.name, msg.presence);
+        memberId = this.addMember(ws, msg.name, msg.presence, msg.look);
         return;
       }
       if (!memberId) return this.send(ws, { type: 'error', message: 'Join first' });
@@ -140,17 +164,21 @@ class Party {
 
   // ---------- members ----------
 
-  private addMember(ws: WebSocket, rawName: string, presence: Member['presence']): string {
+  private addMember(ws: WebSocket, rawName: string, presence: Member['presence'], look?: Look): string {
     const id = randomUUID();
     const name = String(rawName ?? '').trim().slice(0, 40) || 'Guest';
     const isHost = this.state.members.length === 0; // first one in hosts
     // Arriving after the start means watching this party: the ring is fixed.
     const watching = this.state.phase !== 'lobby';
-    this.state.members.push({ id, name, presence: presence === 'avatar' ? 'avatar' : 'camera', isHost, spotId: null, canvasShape: DEFAULT_CANVAS_SHAPE, watching });
+    const clean = cleanLook(look);
+    this.state.members.push({ id, name, presence: presence === 'avatar' ? 'avatar' : 'camera', isHost, spotId: null, canvasShape: DEFAULT_CANVAS_SHAPE, watching, initialsColor: clean.initialsColor, hasLook: !!clean.image });
+    if (clean.image) this.looks.set(id, clean.image);
     this.sockets.set(id, ws);
     this.refreshLobbyOrder();
 
     this.send(ws, { type: 'welcome', youId: id, state: this.state });
+    this.send(ws, { type: 'looks', looks: Object.fromEntries(this.looks) });
+    if (clean.image) this.broadcast({ type: 'look', memberId: id, image: clean.image }, id);
     this.broadcastState();
     return id;
   }
@@ -158,6 +186,7 @@ class Party {
   private removeMember(id: string) {
     this.sockets.delete(id);
     this.watchers.delete(id);
+    this.looks.delete(id);
     this.state.members = this.state.members.filter((m) => m.id !== id);
 
     // Hand the host role on if the host left.
@@ -194,11 +223,36 @@ class Party {
     const artists = this.state.members.filter((m) => !m.watching).map((m) => m.id);
     if (this.state.orderMode === 'seats') {
       this.state.order = seatRing(artists, (id) => this.member(id)?.spotId ?? null, this.yawOf);
-      return;
+    } else {
+      // Random and custom rings keep their order; newcomers join the end, leavers drop out.
+      const kept = this.state.order.filter((id) => artists.includes(id));
+      this.state.order = [...kept, ...artists.filter((id) => !kept.includes(id))];
     }
-    // Random and custom rings keep their order; newcomers join the end, leavers drop out.
-    const kept = this.state.order.filter((id) => artists.includes(id));
-    this.state.order = [...kept, ...artists.filter((id) => !kept.includes(id))];
+    this.applyLobbyTiming();
+  }
+
+  /** Lobby: the turn length follows the timing and the number of artists. */
+  private applyLobbyTiming() {
+    const plan = planTiming(this.state.timing, this.state.order.length);
+    this.state.turnSeconds = plan.turnSeconds;
+    this.state.secondsLeft = plan.turnSeconds;
+  }
+
+  /**
+   * Mid-party, a set party length re-shares the time left among the rounds
+   * still to paint, so a slow round (or a late change) evens out. A set turn
+   * length just moves the planned end.
+   */
+  private applyPartyTiming(roundsLeft: number) {
+    const timing = this.state.timing;
+    const now = Date.now();
+    if (timing.mode === 'party' && this.state.startedAt) {
+      this.state.plannedEndAt = this.state.startedAt + (timing.partyMinutes - timing.introMinutes) * 60_000;
+      this.state.turnSeconds = turnSecondsForRest(timing, roundsLeft, (this.state.plannedEndAt - now) / 1000);
+    } else {
+      this.state.turnSeconds = timing.turnSeconds;
+      this.state.plannedEndAt = now + (roundsLeft * (timing.turnSeconds + PASS_SECONDS) + timing.wrapMinutes * 60) * 1000;
+    }
   }
 
   // ---------- messages ----------
@@ -223,11 +277,35 @@ class Party {
       }
 
       case 'setTurnSeconds': {
+        // The older lobby control: a set turn length.
         if (!lobbyHost) return;
         const seconds = clampTurnSeconds(msg.seconds);
         if (seconds === null) return;
-        this.state.turnSeconds = seconds;
-        this.state.secondsLeft = seconds;
+        this.setTiming({ ...this.state.timing, mode: 'turn', turnSeconds: seconds });
+        return;
+      }
+
+      case 'setTiming': {
+        if (!from.isHost || this.state.phase === 'reveal') return;
+        const timing = cleanTiming(msg.timing);
+        if (timing) this.setTiming(timing);
+        return;
+      }
+
+      case 'setPresence': {
+        if (msg.presence !== 'camera' && msg.presence !== 'avatar') return;
+        from.presence = msg.presence;
+        this.broadcastState();
+        return;
+      }
+
+      case 'setLook': {
+        const clean = cleanLook(msg.look);
+        from.initialsColor = clean.initialsColor;
+        from.hasLook = !!clean.image;
+        if (clean.image) this.looks.set(fromId, clean.image);
+        else this.looks.delete(fromId);
+        this.broadcast({ type: 'look', memberId: fromId, image: clean.image });
         this.broadcastState();
         return;
       }
@@ -376,6 +454,7 @@ class Party {
     });
     for (const piece of this.state.pieces) this.histories.set(piece.id, { strokes: [], stamps: 0, complete: true });
     this.state.round = 1;
+    this.state.startedAt = Date.now();
     this.startRound();
   }
 
@@ -390,6 +469,7 @@ class Party {
       if (piece) this.state.assignments[painterId] = piece.id;
     }
     this.state.passed = [];
+    this.applyPartyTiming(this.state.totalRounds - this.state.round + 1);
     this.state.secondsLeft = this.state.turnSeconds;
     this.state.overtime = false;
     this.broadcastState();
@@ -490,6 +570,23 @@ class Party {
     const file = `${canvasId}-r${round}.png`;
     await writeFile(join(dir, file), Buffer.from(dataUrl.slice(prefix.length), 'base64'));
     turn.url = `/snapshots/${this.state.partyId}/${file}`;
+    this.broadcastState();
+  }
+
+  /** The host changed the timing: everyone's display follows at once. */
+  private setTiming(timing: PartyTiming) {
+    const before = this.state.turnSeconds;
+    this.state.timing = timing;
+    if (this.state.phase === 'lobby') this.applyLobbyTiming();
+    else {
+      const left = this.state.totalRounds - this.state.round + (this.state.phase === 'painting' ? 1 : 0);
+      this.applyPartyTiming(Math.max(1, left));
+      // The round underway gains or loses the difference (never below 10 s, unless already over).
+      if (this.state.phase === 'painting' && !this.state.overtime) {
+        this.state.secondsLeft = Math.max(10, this.state.secondsLeft + this.state.turnSeconds - before);
+        this.broadcast({ type: 'timer', secondsLeft: this.state.secondsLeft });
+      }
+    }
     this.broadcastState();
   }
 

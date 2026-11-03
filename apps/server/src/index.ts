@@ -14,7 +14,7 @@ import { getParty, SNAPSHOT_DIR } from './party.ts';
 import { archiveHandler } from './archive.ts';
 import { makeLiveKitToken } from './livekit.ts';
 import { configuredAccountHandler } from './accounts.ts';
-import { configuredCommunityHandler } from './community.ts';
+import { calendarFeedHandler, configuredCommunityHandler } from './community.ts';
 import { configuredAccountMail } from './account-mail.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -38,6 +38,11 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/account/community' || url.pathname.startsWith('/api/account/community/')) {
     await communityHandler(req, res);
+    return;
+  }
+
+  if (url.pathname.startsWith('/api/calendar/')) {
+    await calendarFeedHandler(req, res);
     return;
   }
 
