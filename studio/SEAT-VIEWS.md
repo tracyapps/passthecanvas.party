@@ -77,3 +77,32 @@ and re-run with `--only <spot>`.
 `apps/web/public/studio/cream-city/panorama.webp`. Since the Photoshop fixes
 now live in the .blend, this replaces the Photoshop-edited version (kept at
 `studio/renders/cream-city/panorama-photoshop-edit-2026-10-30.webp`).
+
+## The 3D seat map and the room tool
+
+- `seats/geometry.json` (written by every run): the middle camera, each seat
+  view's camera (`eye`, `forward`, `right`, `up` in Blender meters), each
+  seat's marker position in 3D, and per view the seats that are `hidden`
+  behind something.
+- Each `seats/<spot>/spots.json` is computed from it, so you never edit those
+  by hand.
+- **Check or fix placement**: run the dev servers and open
+  `/?seats=cream-city`.
+  1. Pick a viewpoint (middle of the room or any seat).
+  2. "Fill every seat" puts a placeholder guest everywhere; Reshuffle mixes
+     cameras and initials cards. "Sample artwork" (middle view) hangs
+     placeholder paintings where a party's would go.
+  3. Choose a seat in the list, then click where its head should be, or use
+     the Up / Left / Right / Down nudges (0.5° each).
+  4. "Hidden from here" drops a seat from that one view.
+  5. Save. The server rewrites `spots.json`, `geometry.json` and every seat
+     view's `spots.json`.
+- **New room**: render `panorama.webp`, plot seats with `?spots=<room>`, then
+  run `seat_views.py --room <room>` for seat views. Before that, the room
+  tool works on the middle view alone.
+- Re-running `seat_views.py` recomputes markers from the Blender scene and
+  overwrites hand-placed ones. Re-place them in the tool afterwards, or run
+  with `--only` for just the seats you changed.
+- Artwork is in the middle view only (`art.json` beside `panorama.webp`,
+  edited with `?art=<room>`); seat views have no art.
+

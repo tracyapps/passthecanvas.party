@@ -14,8 +14,7 @@
         -2.928,
         1.45
       ],
-      "spots": 22,
-      "art": 10
+      "spots": 22
     },
     {
       "id": "spot_cat_tree",
@@ -25,8 +24,7 @@
         2.2,
         1.2
       ],
-      "spots": 23,
-      "art": 14
+      "spots": 23
     },
     {
       "id": "spot_couch_2",
@@ -36,8 +34,7 @@
         -2.309,
         1.2
       ],
-      "spots": 21,
-      "art": 11
+      "spots": 21
     },
     {
       "id": "spot_couch_3",
@@ -47,8 +44,7 @@
         -1.768,
         1.2
       ],
-      "spots": 21,
-      "art": 13
+      "spots": 21
     },
     {
       "id": "spot_couch_left",
@@ -58,8 +54,7 @@
         -2.55,
         1.2
       ],
-      "spots": 21,
-      "art": 14
+      "spots": 21
     },
     {
       "id": "spot_easel",
@@ -69,8 +64,7 @@
         2.55,
         1.6
       ],
-      "spots": 21,
-      "art": 13
+      "spots": 21
     },
     {
       "id": "spot_floor_cats",
@@ -80,8 +74,7 @@
         3.4,
         0.9
       ],
-      "spots": 17,
-      "art": 11
+      "spots": 17
     },
     {
       "id": "spot_floor_snacks",
@@ -91,8 +84,7 @@
         -1.299,
         0.994
       ],
-      "spots": 23,
-      "art": 15
+      "spots": 23
     },
     {
       "id": "spot_giant_bean_bag_2",
@@ -102,8 +94,7 @@
         -1.992,
         1.45
       ],
-      "spots": 22,
-      "art": 11
+      "spots": 22
     },
     {
       "id": "spot_leather_chair",
@@ -113,8 +104,7 @@
         -0.534,
         1.2
       ],
-      "spots": 22,
-      "art": 15
+      "spots": 22
     },
     {
       "id": "spot_leather_chair_2",
@@ -124,8 +114,7 @@
         1.481,
         1.2
       ],
-      "spots": 22,
-      "art": 13
+      "spots": 22
     },
     {
       "id": "spot_music",
@@ -135,8 +124,7 @@
         3.0,
         1.1
       ],
-      "spots": 21,
-      "art": 13
+      "spots": 21
     },
     {
       "id": "spot_ottoman",
@@ -146,8 +134,7 @@
         -1.25,
         1.05
       ],
-      "spots": 23,
-      "art": 14
+      "spots": 23
     },
     {
       "id": "spot_painting_table_blue_chair",
@@ -157,8 +144,7 @@
         1.164,
         1.2
       ],
-      "spots": 21,
-      "art": 14
+      "spots": 21
     },
     {
       "id": "spot_painting_table_dark_chair",
@@ -168,8 +154,7 @@
         0.292,
         1.2
       ],
-      "spots": 22,
-      "art": 14
+      "spots": 22
     },
     {
       "id": "spot_painting_table_green_chair",
@@ -179,8 +164,7 @@
         2.5,
         1.2
       ],
-      "spots": 22,
-      "art": 14
+      "spots": 22
     },
     {
       "id": "spot_painting_table_stool",
@@ -190,8 +174,7 @@
         0.722,
         1.2
       ],
-      "spots": 22,
-      "art": 15
+      "spots": 22
     },
     {
       "id": "spot_painting_table_white_chair",
@@ -201,8 +184,7 @@
         -0.605,
         1.2
       ],
-      "spots": 22,
-      "art": 12
+      "spots": 22
     },
     {
       "id": "spot_rocker",
@@ -212,8 +194,7 @@
         3.038,
         1.2
       ],
-      "spots": 21,
-      "art": 12
+      "spots": 21
     },
     {
       "id": "spot_snacks",
@@ -223,8 +204,7 @@
         -2.177,
         1.2
       ],
-      "spots": 22,
-      "art": 12
+      "spots": 22
     },
     {
       "id": "spot_table_1",
@@ -234,8 +214,7 @@
         0.62,
         1.2
       ],
-      "spots": 22,
-      "art": 15
+      "spots": 22
     },
     {
       "id": "spot_vintage_chair",
@@ -245,8 +224,7 @@
         -3.019,
         1.2
       ],
-      "spots": 21,
-      "art": 13
+      "spots": 21
     },
     {
       "id": "spot_window_sill",
@@ -256,8 +234,7 @@
         -1.0,
         1.35
       ],
-      "spots": 22,
-      "art": 14
+      "spots": 22
     },
     {
       "id": "spot_window_sill_2",
@@ -267,8 +244,7 @@
         1.0,
         1.35
       ],
-      "spots": 22,
-      "art": 12
+      "spots": 22
     }
   ]
 }

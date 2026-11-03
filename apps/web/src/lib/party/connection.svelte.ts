@@ -2,6 +2,7 @@
 // Svelte "runes" ($state) make these fields reactive: components that read
 // them update automatically when messages arrive.
 
+import { partySocketUrl } from './origin';
 import type { ClientMessage, PaintedStroke, PartyState, Piece, Presence, ServerMessage } from '@ptc/shared';
 
 /** Everything painted on one canvas so far, as the server sent it. */
@@ -28,6 +29,8 @@ export class PartyConnection {
    * arrays that are replaced whole, never edited, so no deep tracking.
    */
   histories = $state.raw<Record<string, CanvasHistory>>({});
+  /** The host's private delete key for the saved gallery (never sent to anyone else). */
+  archiveDeleteKey = $state<string | null>(null);
 
   private socket: WebSocket | null = null;
 
@@ -37,8 +40,7 @@ export class PartyConnection {
   onSnapshotRequest: (round: number, canvasId: string) => void = () => {};
 
   join(partyId: string, name: string, presence: Presence) {
-    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    this.socket = new WebSocket(`${protocol}://${location.host}/party/${partyId}`);
+    this.socket = new WebSocket(partySocketUrl(partyId));
     this.socket.addEventListener('open', () => {
       this.connected = true;
       this.send({ type: 'join', name, presence });
@@ -130,6 +132,9 @@ export class PartyConnection {
           this.announcement = `New note from ${message.name}.`;
         }
         break;
+      case 'archiveSaved':
+        this.archiveDeleteKey = message.deleteKey;
+        break;
       case 'error':
         console.warn('[party]', message.message);
         break;
@@ -151,6 +156,8 @@ export class PartyConnection {
       this.announcement = 'Passing the canvases.';
     } else if ((before?.phase !== 'painting' || before.round !== after.round) && after.phase === 'painting') {
       this.announcement = `Round ${after.round} of ${after.totalRounds}. ${whose ? `You have ${whose}.` : 'You are watching.'}`;
+    } else if (!before?.archive?.id && after.archive?.id) {
+      this.announcement = 'The host saved a shareable gallery of these pieces. Anyone with its link can see them and your name.';
     } else if (before?.phase !== after.phase && after.phase === 'reveal') {
       this.announcement = 'All rounds done. Time for the reveal.';
     }

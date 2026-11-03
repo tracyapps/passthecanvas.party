@@ -10,6 +10,7 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack, tick } from 'svelte';
   import type { PaintedStroke, Stamp, Stroke } from '@ptc/shared';
+  import { partyUrl } from '../party/origin';
   import { canPaint, TOOL_NAMES, type PaintingSelection } from './painting-selection';
   import { stampSpacing, type StrokePoint } from './brushes';
   import { TurnLayers } from './layers';
@@ -167,7 +168,8 @@
     if (!complete && snapshotUrl) {
       // Too much history to replay: show the latest saved picture, protected.
       const image = new Image();
-      image.src = snapshotUrl;
+      image.crossOrigin = 'anonymous'; // the party server may be another origin; keeps the canvas exportable
+      image.src = partyUrl(snapshotUrl);
       try { await image.decode(); layers.setBase(image); } catch { /* keep painting on a blank base */ }
     }
     for (const remote of strokes) { layers.apply(remote); log.push(remote); }

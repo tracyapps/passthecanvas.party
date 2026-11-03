@@ -667,3 +667,50 @@ Full how-to: `studio/SEAT-VIEWS.md`.
   all 24 seat views are final 4096 × 2048 renders (`seats/index.json`
   `"draft": false`).
 
+### 2026-11-03 — One 3D seat map; room tool for checking every viewpoint
+
+- **The global seat map** stays `spots.json` (directions from the middle of
+  the room). `seat_views.py` now also writes `seats/geometry.json`: every
+  view's camera, each seat's marker in 3D, and which seats each view can't
+  see. Each seat view's `spots.json` is pure math on that file
+  (`spotsForView` in `@ptc/shared/views`, checked against Blender's own
+  numbers to within 0.3°), so a seat moved once moves in every view.
+- **Room tool at `?seats=<room>`** (dev only; replaces `?demo=seats`, which
+  now opens it): pick a viewpoint, fill every seat with placeholder guests
+  (random cameras and initials cards), hang sample artwork in the middle
+  view, choose a seat and click where its head should be (or nudge with
+  buttons). From a seat view, the click sets the marker on that ray nearest
+  the seat's middle-of-room ray, so both views stay right. "Hidden from here"
+  per view. Save writes `spots.json` + `geometry.json`; the server
+  (`PUT /api/seats/<room>`, same `SPOTS_EDITOR` gate) rewrites every seat
+  view's `spots.json`. No re-render needed. A new room works with just
+  `panorama.webp` + `spots.json` (middle view only) until it has seat views.
+- **Artwork hangs in the middle-of-the-room view only** (owner's call): seat
+  views no longer get an `art.json`.
+- `hangsFor()` (room/hangs.ts) is shared by the gallery and the tool, so the
+  tool previews art exactly as a finished party hangs it.
+
+### 2026-11-03 — Party archive, portrait seats, party server origin
+
+- **Archive (opt-in, host only)**: at the reveal the host can "Save a
+  shareable gallery". Stored in Railway Postgres (`DATABASE_URL`, no new
+  service): `party_archives` + `party_archive_files` (bytea). Each canvas
+  keeps its finished PNG and gzipped strokes (the time-lapse rebuilds every
+  turn); if a canvas's history was too big to keep, each turn's image is kept
+  instead. Never video, audio or notes. Every guest is told when it's saved.
+- Link `?archive=<id>` (128-bit random id) shows the pieces, credits, the
+  time-lapse with artist chapters and "See them in the room". The host alone
+  gets a private delete link (`#delete=<key>`, only a SHA-256 hash is
+  stored); deleting removes everything. 150 MB cap per party.
+- Not yet: artists' own profile archive (needs Clerk sign-in wired to party
+  membership) and Railway object storage (only if Postgres size becomes a
+  problem).
+- **Party server origin**: the site (Vercel) reaches the Railway server via
+  `VITE_PARTY_URL`, falling back to `VITE_ACCOUNT_API_URL` (same server).
+  WebSockets, video tokens and archive deletes check `PARTY_ALLOWED_ORIGINS`
+  (falls back to `ACCOUNT_ALLOWED_ORIGINS`). Snapshot and archive images send
+  CORS headers and load with `crossOrigin`, so canvases stay exportable.
+- **Portrait seat frames**: cameras and initials cards in the room are 3:4
+  portrait at the old height (101 × 135), center-cropped; guest-panel tiles
+  match. Cut-out avatars will fit the same frame.
+

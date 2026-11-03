@@ -22,6 +22,7 @@
   import TimeLapse from './canvas/TimeLapse.svelte';
   import PartyRadio from './radio/PartyRadio.svelte';
   import type { GalleryPiece } from './room/leanLayout';
+  import { partyUrl } from './party/origin';
 
   let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
 
@@ -208,6 +209,19 @@
 
   function nameOf(id: string) {
     return names[id] ?? 'Guest';
+  }
+
+  // The saved gallery (archive): a link anyone can open, made by the host.
+  let archiveLink = $derived(game?.archive.id ? `${location.origin}/?archive=${game.archive.id}` : '');
+  let deleteLink = $derived(archiveLink && party.archiveDeleteKey ? `${archiveLink}#delete=${party.archiveDeleteKey}` : '');
+  let archiveStatus = $state('');
+  async function copyText(text: string, done: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      archiveStatus = done;
+    } catch {
+      archiveStatus = 'Copying was blocked. Select the link and copy it yourself.';
+    }
   }
   function seatOf(id: string) {
     return game?.members.find((m) => m.id === id)?.spotId ? '' : ' · no seat yet';
@@ -433,12 +447,12 @@
               <TimeLapse strokes={history.strokes} width={detail.width} height={detail.height} {names} turns={detail.turns} />
             {/key}
           {:else if finalUrl(detail)}
-            <img src={finalUrl(detail)} alt={`Finished piece: ${credit(detail)}`} />
+            <img src={partyUrl(finalUrl(detail) ?? '')} alt={`Finished piece: ${credit(detail)}`} />
           {:else}
             <p>Loading the piece…</p>
           {/if}
           <div class="reveal-actions">
-            {#if finalUrl(detail)}<a href={finalUrl(detail)} download={`pass-the-canvas-${detail.ownerName}.png`}>Download full size</a>{/if}
+            {#if finalUrl(detail)}<a href={partyUrl(finalUrl(detail)!)} download={`pass-the-canvas-${detail.ownerName}.png`}>Download full size</a>{/if}
           </div>
         {:else}
           <h2 id="reveal-title">You made {revealPieces.length === 1 ? 'this' : 'these'} together.</h2>
@@ -446,13 +460,43 @@
             {#each revealPieces as piece (piece.id)}
               <li>
                 <button type="button" class="piece" onclick={() => openDetail(piece)} aria-label={`Open ${piece.ownerName}'s piece: ${credit(piece)}`}>
-                  {#if finalUrl(piece)}<img src={finalUrl(piece)} alt="" />{:else}<span class="saving">Saving…</span>{/if}
+                  {#if finalUrl(piece)}<img src={partyUrl(finalUrl(piece)!)} alt="" />{:else}<span class="saving">Saving…</span>{/if}
                   <span class="owner">{piece.ownerId === party.youId ? 'Yours' : piece.ownerName}</span>
                 </button>
                 <p class="credit">{credit(piece)}</p>
               </li>
             {/each}
           </ul>
+          {#if game}
+            <section class="keep" aria-labelledby="keep-title">
+              <h3 id="keep-title">Keep tonight's gallery</h3>
+              {#if game.archive.id}
+                <p>Saved. Anyone with this link can see the pieces, everyone's names and the time-lapses.</p>
+                <div class="link-row">
+                  <input type="text" readonly value={archiveLink} aria-label="Gallery link" onfocus={(e) => e.currentTarget.select()} />
+                  <button type="button" class="dark" onclick={() => copyText(archiveLink, 'Gallery link copied.')}>Copy link</button>
+                </div>
+                {#if deleteLink}
+                  <p class="hint">Your private delete link. Keep it to yourself; it's shown only to you, only now.</p>
+                  <div class="link-row">
+                    <input type="text" readonly value={deleteLink} aria-label="Private delete link" onfocus={(e) => e.currentTarget.select()} />
+                    <button type="button" class="plain" onclick={() => copyText(deleteLink, 'Delete link copied. Keep it somewhere safe.')}>Copy</button>
+                  </div>
+                {/if}
+                {#if archiveStatus}<p class="hint" role="status">{archiveStatus}</p>{/if}
+              {:else if !game.archive.available}
+                <p class="hint">Saving galleries isn't switched on for this party server yet.</p>
+              {:else if me?.isHost}
+                <p class="hint">Saves the finished pieces, the artists' names and the time-lapses behind a link you can share. Never video, audio or notes. You'll get a private link to delete it any time.</p>
+                <button type="button" class="dark" disabled={game.archive.saving} onclick={() => party.send({ type: 'saveArchive' })}>
+                  {game.archive.saving ? 'Saving…' : 'Save a shareable gallery'}
+                </button>
+                {#if game.archive.error}<p class="hint" role="alert">{game.archive.error}</p>{/if}
+              {:else}
+                <p class="hint">{game.archive.saving ? 'The host is saving a shareable gallery…' : 'The host can save a shareable gallery of these pieces.'}</p>
+              {/if}
+            </section>
+          {/if}
         {/if}
         <div class="reveal-actions">
           {#if artwork.length}<button type="button" class="dark" onclick={() => (view = 'gallery')}>Hang them in the gallery</button>{/if}
@@ -883,6 +927,65 @@
       background: transparent;
       color: $walnut-900;
       text-decoration: underline;
+    }
+  }
+
+  // Keep tonight's gallery (archive), under the pieces in the reveal.
+  .keep {
+    margin: 1rem 0;
+    padding: 1rem;
+    border: 1px dashed #b9a483;
+    border-radius: $radius-sm;
+    color: $walnut-900;
+
+    h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1.0625rem;
+    }
+    p {
+      margin: 0 0 0.75rem;
+    }
+    .hint {
+      font-size: 0.9375rem;
+    }
+    .link-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    input {
+      flex: 1 1 16rem;
+      min-height: $tap-min;
+      padding: 0 0.75rem;
+      border: 1px solid #b9a483;
+      border-radius: $radius-sm;
+      background: #fffaf0;
+      color: $walnut-900;
+    }
+    button {
+      min-height: $tap-min;
+      padding: 0 1.125rem;
+      border-radius: $radius-pill;
+      font-weight: 700;
+    }
+    .dark {
+      border: 0;
+      background: $walnut-900;
+      color: $cream;
+      &:disabled {
+        opacity: 0.6;
+      }
+    }
+    .plain {
+      border: 1px solid #b9a483;
+      background: transparent;
+      color: $walnut-900;
+    }
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid $focus;
+      outline-offset: 2px;
     }
   }
 </style>

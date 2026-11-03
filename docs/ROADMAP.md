@@ -75,11 +75,13 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] **Moved into the party (Nov 3, 2026):** the painting table replaces the Phase 1 painting screen; stamp-based strokes, per-turn owned layers, late-joiner history, host canvas shape, reveal → gallery with real pieces. `?demo=painting` and `?demo=art` removed; all future work happens in the party (AGENTS.md §8.5). See DECISIONS 2026-11-03.
 - [ ] Configure approved Clerk email + optional Discord and Railway Postgres; prove real account save/reload, account switching and cross-device behavior.
 - [x] One canvas per guest: passing ring (clockwise by seat, random circle, custom), N + 1 rounds with owners first and last, per-artist canvas shape, simultaneous rounds, per-canvas history, watchers, credits and per-piece time-lapse with artist chapters *(Nov 3, 2026)*
-- [ ] Party archive on Railway: every finished piece (images + strokes, no AV) behind a share link; artists' own pieces in their profile; owners can delete
-- [ ] Archive gallery: click a piece in the 360° room to open its detail (credits, time-lapse, jump to an artist)
+- [x] Party archive on Railway: host saves the finished pieces (images + strokes, no AV) behind a share link; private delete link *(Nov 3; live after commit + push)*
+- [ ] Artists' own pieces in their profile (needs Clerk sign-in tied to party membership)
+- [~] Archive gallery: pieces page with credits, time-lapse and artist jump is done (`?archive=`); clicking a piece *inside* the 360° room still to do
 - [x] Radio plays for everyone on join (the join click allows audio); CSS tube radio panel on the table
 - [ ] Clicking the radio in the 360° room opens the radio panel (needs a `spot_radio` marker)
-- [x] Per-seat viewpoints: textures/props moved into Blender, script renders a panorama per seat plus each viewpoint's spots/art positions *(draft renders; finals after review — see studio/SEAT-VIEWS.md)*
+- [x] Per-seat viewpoints: textures/props moved into Blender, script renders a panorama per seat plus each viewpoint's seat positions *(final 4096 renders; artwork in the middle view only — see studio/SEAT-VIEWS.md)*
+- [x] Room tool `?seats=<room>`: every viewpoint, every seat filled with placeholder guests, sample artwork, click/nudge to place seats, saves one 3D seat map that updates all views *(Nov 3)*
 - [x] Studio grime pass in Blender: darker, worn ceiling wood; chips, paint drips and wear on the table and chairs *(first pass; tune after review)*
 - [ ] Avatar builder: paper-cutout character builder (human, monster, anime families), building on papr.world's drawing/picking tools; saved in the profile
 - [ ] **Redesign "Mix a color"** — owner brief received. *Done: recipe tray with parts, even vs streaked loads weighted by parts, saved mixes. Open: streak blend amount, finite paint/reload, named trays, pigment-model mixing.*
@@ -123,7 +125,7 @@ Replace placeholders with the real Blender studio.
 - [x] Spot picking in the 360° room ("Sit here" markers, list alternative) *(landed early, Oct 2026, with the cream-city room — see phase 1)*
 - [ ] **Wall gallery**: hang each party's artwork on the room's blank canvases, export a social-ready photo and a shareable pan-able room save, nicknames under each piece *(details pending from the owner)*
   - [x] Boundary tool at `?art=cream-city`: draw the canvas boxes on the flat panorama → `art.json` per room *(dev-gated like the spots editor)*
-  - [x] Demo seating at `?demo=seats`: fake guests (canvas-painted video tracks + initials cards) to judge seat spacing before LiveKit exists
+  - [x] Demo seating at `?demo=seats` *(now part of the room tool, `?seats=<room>`)*: fake guests (canvas-painted video tracks + initials cards) to judge seat spacing before LiveKit exists
   - [x] Placeholder-art proof at `?demo=art`: a deterministic painting hung in every quad, corner-pinned into the 3D room (screen-space homography, `matrix3d`)
   - [x] Owner decision (Oct 2026): **both layers** — pieces hang on wall quads first, overflow leans in freeform areas; lean areas are `role: "lean"` quads drawn in the same `?art=` editor (same warp, dashed-teal, per-group show/hide)
   - [x] Gallery preview with host controls (`?demo=art`): hang mode + piece count; lean areas pack by dimensions (two tall canvases where one landscape fits)

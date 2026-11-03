@@ -5,7 +5,7 @@
   The "Jump to" list gives keyboard and screen-reader users the same room.
 -->
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, type Snippet } from 'svelte';
   import { Viewer, events } from '@photo-sphere-viewer/core';
   import { MarkersPlugin, events as markerEvents } from '@photo-sphere-viewer/markers-plugin';
   import type { MarkerConfig } from '@photo-sphere-viewer/markers-plugin';
@@ -22,14 +22,33 @@
     youId?: string | null;
     videos?: GuestVideo[];
     onTakeSpot?: (spotId: string) => void;
+    /** Room tool: spots given directly (live edits) instead of fetched from spotsUrl. */
+    spots?: Spot[];
+    /** Room tool: a click on the panorama itself (not a marker), in degrees. */
+    onPanoramaClick?: (yaw: number, pitch: number) => void;
+    /** Room tool: the seat being edited gets a highlight ring. */
+    selectedId?: string | null;
+    /** Extra layers inside the panorama (artwork), given the live viewer. */
+    overlay?: Snippet<[Viewer]>;
+    /** Room tool: hide the jump list (the tool has its own seat list). */
+    showJump?: boolean;
   }
-  let { panorama, spotsUrl, members = [], youId = null, videos = [], onTakeSpot }: Props = $props();
+  let { panorama, spotsUrl, members = [], youId = null, videos = [], onTakeSpot, spots: givenSpots, onPanoramaClick, selectedId = null, overlay, showJump = true }: Props = $props();
 
   let container: HTMLDivElement;
-  let viewer: Viewer | null = null;
+  // $state.raw: the overlay snippet needs the viewer reactively, but PSV breaks behind a deep proxy.
+  let viewer = $state.raw<Viewer | null>(null);
   let markersPlugin: MarkersPlugin | null = null;
   let viewerReady = $state(false);
-  let spots = $state<Spot[]>([]);
+  let fetchedSpots = $state<Spot[]>([]);
+  let spots = $derived(givenSpots ?? fetchedSpots);
+  /** Ignore the panorama click that fires together with a marker click. */
+  let markerClickedAt = 0;
+  const RAD = 180 / Math.PI;
+  // Seat frames are portrait 3:4 (135 px tall, like before): cameras are
+  // center-cropped left and right; cut-out avatars fit the shape. The marker
+  // box is a little wider than the frame so name tags have room.
+  const SEAT_WIDTH = 140;
 
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -43,8 +62,10 @@
   );
 
   onMount(async () => {
-    const response = await fetch(spotsUrl);
-    spots = (await response.json()).spots ?? [];
+    if (!givenSpots) {
+      const response = await fetch(spotsUrl);
+      fetchedSpots = (await response.json()).spots ?? [];
+    }
 
     viewer = new Viewer({
       container,
@@ -65,7 +86,15 @@
     // Sitting down by clicking a free seat in the room.
     markersPlugin.addEventListener(markerEvents.SelectMarkerEvent.type, (event) => {
       const marker = (event as markerEvents.SelectMarkerEvent).marker;
+      markerClickedAt = Date.now();
       if (onTakeSpot && marker.id.startsWith('seat_')) onTakeSpot(marker.id.slice('seat_'.length));
+    });
+
+    viewer.addEventListener(events.ClickEvent.type, (event) => {
+      if (!onPanoramaClick || Date.now() - markerClickedAt < 150) return;
+      const click = (event as events.ClickEvent).data;
+      // PSV reports radians, yaw 0–2π; spots speak degrees, yaw -180–180.
+      onPanoramaClick(Math.round(((((click.yaw * RAD) + 180) % 360 + 360) % 360 - 180) * 10) / 10, Math.round(click.pitch * RAD * 10) / 10);
     });
 
     container.addEventListener('focusin', () => viewer?.startKeyboardControl());
@@ -83,7 +112,7 @@
   let lastKey = '';
   $effect(() => {
     if (!viewerReady || !markersPlugin) return;
-    const key = seats.map((s) => `${s.spot.id}:${s.member?.id ?? ''}:${s.track ? 'cam' : 'av'}`).join('|');
+    const key = seats.map((s) => `${s.spot.id}:${s.spot.yaw},${s.spot.pitch}:${s.member?.id ?? ''}:${s.track ? 'cam' : 'av'}:${s.spot.id === selectedId ? 'sel' : ''}`).join('|');
     if (key === lastKey) return;
     lastKey = key;
     markersPlugin.setMarkers(seats.map((seat) => markerFor(seat)));
@@ -100,11 +129,12 @@
 
   function markerFor(seat: { spot: Spot; member: Member | null; track: MediaStreamTrack | null }): MarkerConfig {
     const { spot, member, track } = seat;
+    const selected = spot.id === selectedId ? ' is-selected' : '';
     if (!member) {
       return {
         id: `seat_${spot.id}`,
         position: { yaw: `${spot.yaw}deg`, pitch: `${spot.pitch}deg` },
-        html: `<span class="spot-marker">${escapeHtml(spot.label)} · Sit here</span>`,
+        html: `<span class="spot-marker${selected}">${escapeHtml(spot.label)} · Sit here</span>`,
         anchor: 'center center',
         tooltip: `Sit at ${spot.label}`
       };
@@ -114,10 +144,16 @@
     return {
       id: `seat_${spot.id}`,
       position: { yaw: `${spot.yaw}deg`, pitch: `${spot.pitch}deg` },
-      html: `<figure class="seat" data-seat="${member.id}">${media}<figcaption>${escapeHtml(member.name)}</figcaption></figure>`,
+      html: `<figure class="seat${selected}" data-seat="${member.id}">${media}<figcaption>${escapeHtml(member.name)}</figcaption></figure>`,
       anchor: 'center bottom',
-      size: { width: 180, height: 168 }
+      size: { width: SEAT_WIDTH, height: 168 }
     };
+  }
+
+  /** Turn to face a spot by id (the room tool uses this when a seat is chosen). */
+  export function lookAtSpot(id: string) {
+    const spot = spots.find((s) => s.id === id);
+    if (spot) lookAt(spot);
   }
 
   /** Turn to face a spot. Instant under reduced motion, a short glide otherwise. */
@@ -133,7 +169,7 @@
   }
 </script>
 
-<section class="room" aria-label="The studio, 360 degree view">
+<section class="room" class:solo={!showJump} aria-label="The studio, 360 degree view">
   <!-- tabindex makes the room itself a keyboard stop; focus here to pan with arrow keys. -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the panorama is a custom interactive widget (drag or arrow keys), so it must be a tab stop -->
   <div
@@ -142,8 +178,14 @@
     tabindex="0"
     role="application"
     aria-label="Studio room. Use the arrow keys to look around."
-  ></div>
+  >
+    {#if viewer && viewerReady && overlay}
+      <!-- Above the panorama (z 0), below the seat markers (z 10): guests stand in front of the art. -->
+      <div class="overlay">{@render overlay(viewer)}</div>
+    {/if}
+  </div>
 
+  {#if showJump}
   <nav class="jump" aria-label="Places in the room">
     <h2>Jump to</h2>
     <ul>
@@ -161,6 +203,7 @@
       {/each}
     </ul>
   </nav>
+  {/if}
 </section>
 
 <style lang="scss">
@@ -176,9 +219,13 @@
     @media (max-width: 760px) {
       grid-template-columns: minmax(0, 1fr);
     }
+    &.solo {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   .viewer {
+    position: relative;
     min-height: 60vh;
     border-radius: $radius-sm;
     overflow: hidden;
@@ -188,6 +235,13 @@
       outline: 3px solid $focus;
       outline-offset: -3px;
     }
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
   }
 
   .jump {
@@ -252,13 +306,14 @@
   // camera is off — same seat either way.
   :global(.seat) {
     margin: 0;
-    width: 180px;
+    width: 140px;
     text-align: center;
   }
   :global(.seat video) {
     display: block;
-    width: 180px;
+    width: 101px; // 3:4 portrait; object-fit: cover crops the camera's sides evenly
     height: 135px;
+    margin-inline: auto;
     object-fit: cover;
     border-radius: $radius-sm;
     border: 4px solid $paper;
@@ -268,8 +323,9 @@
   :global(.seat-avatar) {
     display: grid;
     place-items: center;
-    width: 180px;
+    width: 101px;
     height: 135px;
+    margin-inline: auto;
     border-radius: $radius-sm;
     border: 4px solid $paper;
     background: $paper;
@@ -278,6 +334,13 @@
     font-weight: 800;
     font-size: 3rem;
     box-shadow: 0 8px 20px rgb(0 0 0 / 0.45);
+  }
+  // Room tool: the seat being placed.
+  :global(.spot-marker.is-selected),
+  :global(.seat.is-selected video),
+  :global(.seat.is-selected .seat-avatar) {
+    outline: 4px solid $focus;
+    outline-offset: 3px;
   }
   :global(.seat figcaption) {
     @include tape-label;

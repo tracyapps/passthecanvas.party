@@ -60,7 +60,11 @@
   }
 
   .frame {
-    aspect-ratio: 4 / 3;
+    // Portrait 3:4, the same height the old 4:3 tile had (56.25% of the
+    // width × 4/3 = 75% of the width); the camera is cropped evenly left/right.
+    aspect-ratio: 3 / 4;
+    width: 56.25%;
+    margin-inline: auto;
     border-radius: $radius-sm;
     overflow: hidden;
     background: rgb(243 234 217 / 0.08);

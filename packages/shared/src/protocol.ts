@@ -68,6 +68,11 @@ export interface PartyState {
   /** How the host hangs the finished art in the gallery; every guest follows. */
   galleryMode: GalleryMode;
   radio: { stationName: string; streamUrl: string; playing: boolean } | null;
+  /**
+   * The party's saved gallery, once the host chose to keep one (reveal only).
+   * `available` is false when the server has no archive storage connected.
+   */
+  archive: { available: boolean; saving: boolean; id: string | null; error: string | null };
 }
 
 // ---------- browser → server ----------
@@ -87,7 +92,8 @@ export type ClientMessage =
   | { type: 'watch'; canvasId: string | null } // follow a canvas live (late joiners, the reveal)
   | { type: 'takeSpot'; spotId: string }
   | { type: 'chat'; text: string }
-  | { type: 'setRadio'; stationName: string; streamUrl: string; playing: boolean }; // host only
+  | { type: 'setRadio'; stationName: string; streamUrl: string; playing: boolean } // host only
+  | { type: 'saveArchive' }; // host only, at the reveal
 
 // ---------- server → browser ----------
 
@@ -106,4 +112,5 @@ export type ServerMessage =
   | { type: 'timer'; secondsLeft: number }
   | { type: 'requestSnapshot'; round: number; canvasId: string }
   | { type: 'chat'; fromId: string; name: string; text: string; at: number }
+  | { type: 'archiveSaved'; id: string; deleteKey: string } // to the host only: the private delete link
   | { type: 'error'; message: string };

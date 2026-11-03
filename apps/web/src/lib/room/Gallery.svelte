@@ -10,11 +10,12 @@
 -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { partyUrl } from '../party/origin';
   import { Viewer, events } from '@photo-sphere-viewer/core';
   import type { ArtFile, ArtRegion } from '@ptc/shared';
-  import ArtLayer, { type Hang } from './ArtLayer.svelte';
+  import ArtLayer from './ArtLayer.svelte';
   import { planGallery, type GalleryPiece, type HangMode } from './leanLayout';
-  import { paintPlaceholder } from './placeholderArt';
+  import { hangsFor } from './hangs';
   import { renderCurrentView } from './exportView';
   import { decodeGallery, galleryUrl, type GalleryData } from './galleryLink';
   import '@photo-sphere-viewer/core/index.css';
@@ -74,7 +75,8 @@
       if (!piece.url || images[piece.url]) continue;
       const url = piece.url;
       const image = new Image();
-      image.src = url;
+      image.crossOrigin = 'anonymous'; // drawn onto canvases (hangs, export)
+      image.src = partyUrl(url);
       image.decode().then(() => (images = { ...images, [url]: image })).catch(() => {});
     }
   });
@@ -99,41 +101,7 @@
 
   let placements = $derived(planGallery(art, pieces, mode));
 
-  /** One painting per placement, pixel-sized from the quad it lands on. */
-  let hangs = $derived(
-    placements.map((p) => {
-      const ys = p.quad.map((c) => c.yaw);
-      const ps = p.quad.map((c) => c.pitch);
-      const wDeg = Math.max(...ys) - Math.min(...ys);
-      const hDeg = Math.max(...ps) - Math.min(...ps);
-      // 24 px per degree keeps pieces crisp up close; guards keep one bad
-      // quad from taking the layer down.
-      const w = Number.isFinite(wDeg) ? Math.min(1024, Math.max(48, Math.round(wDeg * 24))) : 48;
-      const h = Number.isFinite(hDeg) ? Math.min(1024, Math.max(48, Math.round(hDeg * 24))) : 48;
-      const painting = document.createElement('canvas');
-      painting.width = w;
-      painting.height = h;
-      const piece = pieces[p.pieceIndex]!;
-      const image = piece.url ? images[piece.url] : undefined;
-      if (image) {
-        // Fit the whole piece on a primed canvas, never stretched to the wall's shape.
-        const ctx = painting.getContext('2d')!;
-        ctx.fillStyle = '#e1dfda';
-        ctx.fillRect(0, 0, w, h);
-        const fit = Math.min(w / image.naturalWidth, h / image.naturalHeight);
-        const dw = image.naturalWidth * fit;
-        const dh = image.naturalHeight * fit;
-        ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
-      }
-      else if (piece.url) {
-        // Still loading: plain primed canvas for a moment.
-        const ctx = painting.getContext('2d')!;
-        ctx.fillStyle = '#e1dfda';
-        ctx.fillRect(0, 0, w, h);
-      } else paintPlaceholder(painting, piece.seed);
-      return { id: `${p.regionId}#${p.pieceIndex}`, corners: p.quad, painting } satisfies Hang;
-    })
-  );
+  let hangs = $derived(hangsFor(placements, pieces, images));
 
   let countsText = $derived(() => {
     const leaning = placements.filter((p) => p.role === 'lean').length;
@@ -297,7 +265,7 @@
     <section class="captions" aria-label="On display">
       <h2>On display</h2>
       <ol>
-        {#each pieces as piece (piece.seed)}<li>{piece.caption ?? piece.seed}{#if piece.url}{' · '}<a href={piece.url} download>Download</a>{/if}</li>{/each}
+        {#each pieces as piece (piece.seed)}<li>{piece.caption ?? piece.seed}{#if piece.url}{' · '}<a href={partyUrl(piece.url)} download>Download</a>{/if}</li>{/each}
       </ol>
     </section>
   {/if}

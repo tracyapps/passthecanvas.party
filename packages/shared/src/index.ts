@@ -5,3 +5,4 @@ export * from './art';
 export * from './community';
 export * from './paint';
 export * from './ring';
+export * from './views';

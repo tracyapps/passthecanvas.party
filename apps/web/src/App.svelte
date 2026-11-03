@@ -1,6 +1,6 @@
 <!--
   Top-level screen switch: public site → owner room tools (dev only:
-  ?spots=room, ?art=room, ?demo=seats) → shared gallery link → join form →
+  ?spots=room, ?art=room, ?seats=room) → shared gallery link → join form →
   the party (painting table, room, reveal gallery).
   Party id comes from the URL (?party=maya-30th); one is made up if missing.
 -->
@@ -10,13 +10,15 @@
 
   const params = new URLSearchParams(location.search);
   const publicPath = location.pathname.replace(/\/$/, '') || '/';
-  const developmentRoute = import.meta.env.DEV && ['demo', 'spots', 'art'].some(key => params.has(key));
+  const developmentRoute = import.meta.env.DEV && ['demo', 'spots', 'art', 'seats'].some(key => params.has(key));
   // Painting, the gallery and host tools all live inside the party now
   // (?party=…). The dev-only routes below are room-authoring tools only.
-  const showPublicSite = !params.has('party') && !params.has('gallery') && !developmentRoute;
+  const showPublicSite = !params.has('party') && !params.has('gallery') && !params.has('archive') && !developmentRoute;
   const editRoom = import.meta.env.DEV ? params.get('spots') : null; // "?spots=cream-city" opens the spot editor
   const artRoom = import.meta.env.DEV ? params.get('art') : null; // "?art=cream-city" opens the wall art editor
-  const demoSeats = import.meta.env.DEV && params.get('demo') === 'seats'; // "?demo=seats" fills the room with fake guests
+  // "?seats=cream-city" opens the room tool: every viewpoint, every seat filled, place markers. (?demo=seats is the old name.)
+  const seatRoom = import.meta.env.DEV ? (params.get('seats') ?? (params.get('demo') === 'seats' ? 'cream-city' : null)) : null;
+  const archiveId = params.get('archive'); // "?archive=<id>" opens a saved party gallery
   const galleryRoom = params.get('gallery'); // "?gallery=cream-city#g=…" opens a shared gallery room
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -54,12 +56,19 @@
   {:then { default: ArtEditor }}
     <ArtEditor room={artRoom} />
   {/await}
-{:else if demoSeats}
-  <!-- Owner tool: fake guests in every combination of seats, to judge spacing. -->
-  {#await import('./lib/room/DemoRoom.svelte')}
+{:else if seatRoom}
+  <!-- Owner tool: check seats from every viewpoint with placeholder guests, and move them. -->
+  {#await import('./lib/room/SeatTool.svelte')}
     <main class="loading">Filling the seats…</main>
-  {:then { default: DemoRoom }}
-    <DemoRoom />
+  {:then { default: SeatTool }}
+    <SeatTool room={seatRoom} />
+  {/await}
+{:else if archiveId}
+  <!-- A saved party gallery, from the host's share link. -->
+  {#await import('./lib/room/ArchiveView.svelte')}
+    <main class="loading">Opening the gallery…</main>
+  {:then { default: ArchiveView }}
+    <ArchiveView id={archiveId} />
   {/await}
 {:else if galleryRoom}
   <!-- A shared party gallery link. Parties open their own gallery from the reveal. -->

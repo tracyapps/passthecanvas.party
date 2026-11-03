@@ -9,8 +9,9 @@ import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { sanitizeArt, sanitizeSpots } from '@ptc/shared';
+import { sanitizeArt, sanitizeGeometry, sanitizeSpots, spotsForView } from '@ptc/shared';
 import { getParty, SNAPSHOT_DIR } from './party.ts';
+import { archiveHandler } from './archive.ts';
 import { makeLiveKitToken } from './livekit.ts';
 import { configuredAccountHandler } from './accounts.ts';
 import { configuredCommunityHandler } from './community.ts';
@@ -23,6 +24,11 @@ const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.
 // reach files outside the snapshot folder.
 const SAFE_ID = /^[a-z0-9-]{3,40}$/;
 const SAFE_FILE = /^c\d{1,2}-r\d{1,3}\.png$/;
+// The website (Vercel) and this server (Railway) live on different origins.
+// Party sockets, video tokens and archive deletes only accept these origins;
+// with none set (local dev, same origin through Vite's proxy) anything goes.
+const PARTY_ORIGINS = (process.env.PARTY_ALLOWED_ORIGINS ?? process.env.ACCOUNT_ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const originAllowed = (origin: string | undefined) => !PARTY_ORIGINS.length || !origin || PARTY_ORIGINS.includes(origin);
 const accountHandler = configuredAccountHandler();
 const communityHandler = configuredCommunityHandler();
 configuredAccountMail();
@@ -45,7 +51,21 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname.startsWith('/api/archive/')) {
+    await archiveHandler(req, res, url.pathname, PARTY_ORIGINS);
+    return;
+  }
+
   if (url.pathname === '/api/token') {
+    const origin = req.headers.origin;
+    if (!originAllowed(origin)) {
+      res.writeHead(403).end();
+      return;
+    }
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
     const party = url.searchParams.get('party') ?? '';
     const name = (url.searchParams.get('name') ?? '').trim().slice(0, 40);
     // The browser sends its party member id as the LiveKit identity, so a
@@ -132,11 +152,52 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Save a room's 3D seat map (seats/geometry.json) from the room tool
+  // (?seats=<room>), then rewrite every seat view's spots.json from it, so a
+  // seat moved once moves in every view. Same SPOTS_EDITOR gate as above.
+  if (req.method === 'PUT' && url.pathname.startsWith('/api/seats/')) {
+    if (process.env.SPOTS_EDITOR === '0') {
+      res.writeHead(403).end('seat editor is disabled');
+      return;
+    }
+    const room = url.pathname.split('/')[3] ?? '';
+    const body = await readBody(req, 256 * 1024);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400).end('bad JSON');
+      return;
+    }
+    const geometry = sanitizeGeometry(parsed);
+    if (!geometry || geometry.room !== room) {
+      res.writeHead(400).end('seat map failed validation');
+      return;
+    }
+    const spotsFile = sanitizeSpots(JSON.parse(await readFile(join(STUDIO_DIR, room, 'spots.json'), 'utf8').catch(() => 'null')));
+    if (!spotsFile) {
+      res.writeHead(400).end('this room has no spots.json yet');
+      return;
+    }
+    const seatsDir = join(STUDIO_DIR, room, 'seats');
+    await writeAtomic(join(seatsDir, 'geometry.json'), geometry);
+    // View ids passed SAFE_ID in sanitizeGeometry, so they are safe folder names.
+    const written: string[] = [];
+    for (const viewId of Object.keys(geometry.views)) {
+      await writeAtomic(join(seatsDir, viewId, 'spots.json'), { room, spots: spotsForView(geometry, viewId, spotsFile.spots) });
+      written.push(viewId);
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ saved: written.length }));
+    return;
+  }
+
   const snap = url.pathname.match(/^\/snapshots\/([^/]+)\/([^/]+)$/);
   if (snap && SAFE_ID.test(snap[1]!) && SAFE_FILE.test(snap[2]!)) {
     try {
       const file = await readFile(join(SNAPSHOT_DIR, snap[1]!, snap[2]!));
-      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' });
+      // Public like the party link; CORS so the website can draw it onto a canvas.
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });
       res.end(file);
     } catch {
       res.writeHead(404).end();
@@ -154,7 +215,7 @@ server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const match = url.pathname.match(/^\/party\/([^/]+)$/);
   const partyId = match?.[1];
-  if (!partyId || !SAFE_ID.test(partyId)) {
+  if (!partyId || !SAFE_ID.test(partyId) || !originAllowed(req.headers.origin)) {
     socket.destroy();
     return;
   }
@@ -184,4 +245,12 @@ function readBody(req: import('node:http').IncomingMessage, limit: number): Prom
     req.on('end', () => resolve(Buffer.concat(chunks).toString()));
     req.on('error', reject);
   });
+}
+
+/** Write JSON via a temp file + rename, so readers never see half a file. */
+async function writeAtomic(target: string, data: unknown) {
+  await mkdir(dirname(target), { recursive: true });
+  const staging = `${target}.tmp`;
+  await writeFile(staging, JSON.stringify(data, null, 2) + '\n');
+  await rename(staging, target);
 }

@@ -35,6 +35,8 @@ import {
   type ServerMessage
 } from '@ptc/shared';
 
+import { archiveConfigured, buildArchive, saveArchive } from './archive.ts';
+
 export const SNAPSHOT_DIR = join(process.cwd(), 'data', 'snapshots');
 const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.url));
 const TURN_SECONDS = Number(process.env.TURN_SECONDS ?? 90);
@@ -92,7 +94,8 @@ class Party {
       turnSeconds: TURN_SECONDS,
       overtime: false,
       galleryMode: 'walls-then-lean',
-      radio: null
+      radio: null,
+      archive: { available: archiveConfigured(), saving: false, id: null, error: null }
     };
     void this.loadSeats();
   }
@@ -322,6 +325,12 @@ class Party {
         return;
       }
 
+      case 'saveArchive': {
+        if (!from.isHost || this.state.phase !== 'reveal' || this.state.archive.saving || this.state.archive.id || !this.state.archive.available) return;
+        void this.archive(fromId);
+        return;
+      }
+
       case 'setRadio': {
         if (!from.isHost) return;
         // https streams only, and a real URL of sane length. We never fetch it:
@@ -352,6 +361,7 @@ class Party {
     const nameOf = (id: string) => this.member(id)?.name ?? 'A guest';
     this.state.order = ring;
     this.state.totalRounds = total;
+    this.state.archive = { ...this.state.archive, saving: false, id: null, error: null };
     this.state.pieces = ring.map((ownerId, index) => {
       const shape = this.member(ownerId)?.canvasShape ?? DEFAULT_CANVAS_SHAPE;
       return {
@@ -480,6 +490,34 @@ class Party {
     const file = `${canvasId}-r${round}.png`;
     await writeFile(join(dir, file), Buffer.from(dataUrl.slice(prefix.length), 'base64'));
     turn.url = `/snapshots/${this.state.partyId}/${file}`;
+    this.broadcastState();
+  }
+
+  // ---------- archive ----------
+
+  /** The host chose to keep the gallery: store finished images + strokes (never AV or chat). */
+  private async archive(hostId: string) {
+    this.state.archive = { ...this.state.archive, saving: true, error: null };
+    this.broadcastState();
+    try {
+      const built = await buildArchive(
+        this.state.pieces,
+        (canvasId) => {
+          const history = this.histories.get(canvasId);
+          return history?.complete ? history.strokes : null;
+        },
+        async (url) => {
+          const file = url.match(/^\/snapshots\/[a-z0-9-]{3,40}\/(c\d{1,2}-r\d{1,3}\.png)$/)?.[1];
+          return file ? readFile(join(SNAPSHOT_DIR, this.state.partyId, file)).catch(() => null) : null;
+        }
+      );
+      const { id, deleteKey } = await saveArchive(this.state.partyId, this.state.room, built);
+      this.state.archive = { ...this.state.archive, saving: false, id };
+      this.sendTo(hostId, { type: 'archiveSaved', id, deleteKey });
+    } catch (error) {
+      console.error('[archive]', error);
+      this.state.archive = { ...this.state.archive, saving: false, error: (error as Error).message.startsWith('This party') ? (error as Error).message : "Couldn't save the gallery. Try again in a moment." };
+    }
     this.broadcastState();
   }
 

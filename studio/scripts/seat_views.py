@@ -7,13 +7,15 @@ in the 360° room), this script:
      along the spot's yaw/pitch, the same convention as export_spots.py;
   2. puts a 360° camera at sitting eye height there, facing the room's center;
   3. renders the panorama, and
-  4. re-projects every other seat and every wall/lean art area (from the hand
-     drawn art.json, also found in 3D by ray casting) into that seat's view,
-     dropping the ones hidden behind something.
+  4. re-projects every other seat into that seat's view, dropping the ones
+     hidden behind something (artwork hangs in the center view only).
 
 Output, per seat:  apps/web/public/studio/<room>/seats/<spot>/
-   panorama.webp   spots.json   art.json
-and seats/index.json listing them (with "draft": true until final renders).
+   panorama.webp   spots.json
+plus seats/index.json listing them (with "draft": true until final renders)
+and seats/geometry.json: cameras + 3D seat markers + who's hidden from where.
+The room tool (?seats=<room>) edits geometry.json; the server then rewrites
+every seat's spots.json from it, so no re-render is needed to move a marker.
 
 Run (Blender 5.x, background), after texture_pass.py has been saved:
   Blender -b studio/blender/cream-city-studio-wphotos.blend \\
@@ -87,7 +89,6 @@ def visible(eye, point):
 
 # ---------- 1. seats in 3D ----------
 spots = json.loads((PUBLIC / 'spots.json').read_text())['spots']
-art = json.loads((PUBLIC / 'art.json').read_text())['art']
 cm = center.matrix_world
 FLOORISH = ('Hardwood', 'Concrete', 'rug', 'kilim', 'floor', 'Floor')
 
@@ -179,17 +180,7 @@ def eye_for(sid):
     z = seat.z + 0.75 if seat.z < 0.3 else (1.45 if 'beanbag' in names_at.get(sid, '') else 1.2)
     return Vector((seat.x + step.x, seat.y + step.y, z))
 
-# ---------- 2. art areas in 3D ----------
-art3d = []
-for region in art:
-    pts = []
-    for c in region['corners']:
-        hit = cast(cm.translation, direction(cm, c['yaw'], c['pitch']))
-        pts.append(hit[0] if hit else None)
-    if all(pts):
-        art3d.append((region, pts))
-    else:
-        print('[seats] art area off-surface, skipped:', region['id'])
+# ---------- 2. (art areas: center view only, see art.json beside panorama.webp) ----------
 
 # ---------- 3. one camera, moved seat to seat ----------
 cam = bpy.data.objects.get('SEAT_CAM')
@@ -199,6 +190,17 @@ if cam is None:
 cam.scale = (1, 1, 1)
 
 index = []
+def cam_json(matrix):
+    f, r, u = basis(matrix)
+    v = lambda x: [round(c, 4) for c in x]
+    return {'eye': v(matrix.translation), 'forward': v(f), 'right': v(r), 'up': v(u)}
+# geometry.json: the 3D seat map the room tool (?seats=) edits. Every seat
+# view's spots.json is math on this file, so a seat moved once moves everywhere.
+geometry_file = OUT / 'geometry.json'
+geometry = json.loads(geometry_file.read_text()) if geometry_file.exists() else {'views': {}}
+geometry['room'] = ROOM
+geometry['center'] = cam_json(cm)
+geometry['markers'] = {k: [round(c, 4) for c in m] for k, m in markers.items()}
 OUT.mkdir(parents=True, exist_ok=True)
 
 if '--center' in ARGS and not DATA_ONLY:
@@ -230,32 +232,28 @@ for s in spots:
     vm = cam.matrix_world
 
     view_spots = []
+    hidden = []
     for other in spots:
         if other['id'] == sid or other['id'] not in markers:
             continue
         m = markers[other['id']]
         if not visible(eye, m):
+            hidden.append(other['id'])
             continue
         yaw, pitch = angles(vm, m)
         view_spots.append({**other, 'yaw': yaw, 'pitch': pitch})
-    view_art = []
-    for region, pts in art3d:
-        middle = sum(pts, Vector()) / 4
-        if not visible(eye, middle):
-            continue
-        corners = [dict(zip(('yaw', 'pitch'), angles(vm, p))) for p in pts]
-        # Skip areas that wrap around behind this seat (the quad would tear).
-        yaws = [c['yaw'] for c in corners]
-        if max(yaws) - min(yaws) > 120:
-            continue
-        view_art.append({**region, 'corners': corners})
+    # Artwork hangs only in the middle-of-the-room view (owner's call, Nov 3),
+    # so seat views get no art.json.
+    geometry['views'][sid] = {**cam_json(vm), 'hidden': hidden}
 
     folder = OUT / sid
     folder.mkdir(parents=True, exist_ok=True)
     (folder / 'spots.json').write_text(json.dumps({'room': ROOM, 'spots': view_spots}, indent=2) + '\n')
-    (folder / 'art.json').write_text(json.dumps({'room': ROOM, 'art': view_art}, indent=2) + '\n')
-    index.append({'id': sid, 'label': s['label'], 'eye': [round(v, 3) for v in eye], 'spots': len(view_spots), 'art': len(view_art)})
-    print('[seats]', sid, 'eye', [round(v, 2) for v in eye], 'sees', len(view_spots), 'seats and', len(view_art), 'art areas')
+    stale_art = folder / 'art.json'
+    if stale_art.exists():
+        stale_art.unlink()
+    index.append({'id': sid, 'label': s['label'], 'eye': [round(v, 3) for v in eye], 'spots': len(view_spots)})
+    print('[seats]', sid, 'eye', [round(v, 2) for v in eye], 'sees', len(view_spots), 'seats,', len(hidden), 'hidden')
 
     if not DATA_ONLY:
         scene.camera = cam
@@ -268,11 +266,15 @@ for s in spots:
         bpy.ops.render.render(write_still=True)
         print('[seats] rendered', sid)
 
+geometry_file.write_text(json.dumps(geometry, indent=2) + '\n')
 existing = {}
 index_file = OUT / 'index.json'
+was_draft = True
 if index_file.exists():
-    existing = {s['id']: s for s in json.loads(index_file.read_text()).get('seats', [])}
+    old = json.loads(index_file.read_text())
+    existing = {s['id']: s for s in old.get('seats', [])}
+    was_draft = old.get('draft', True)
 for entry in index:
     existing[entry['id']] = entry
-index_file.write_text(json.dumps({'room': ROOM, 'draft': not FINAL, 'resolution': [RES, RES // 2], 'seats': sorted(existing.values(), key=lambda e: e['id'])}, indent=2) + '\n')
+index_file.write_text(json.dumps({'room': ROOM, 'draft': (was_draft if DATA_ONLY else not FINAL) and not FINAL, 'resolution': [RES, RES // 2], 'seats': sorted(existing.values(), key=lambda e: e['id'])}, indent=2) + '\n')
 print('[seats] done', len(index))

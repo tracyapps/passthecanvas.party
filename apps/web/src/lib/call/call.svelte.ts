@@ -10,6 +10,7 @@ import {
   type RemoteTrackPublication
 } from 'livekit-client';
 import type { Presence } from '@ptc/shared';
+import { partyUrl } from '../party/origin';
 
 /** Where the call is at, in plain words for the UI. */
 export type CallStatus = 'off' | 'connecting' | 'in-call' | 'unavailable' | 'error';
@@ -50,7 +51,7 @@ export class Call {
     let url: string | null;
     try {
       const params = new URLSearchParams({ party: partyId, name, identity });
-      const response = await fetch(`/api/token?${params}`);
+      const response = await fetch(partyUrl(`/api/token?${params}`));
       if (response.status === 503) {
         this.status = 'unavailable';
         this.note = 'Video is not set up on the server yet.';
