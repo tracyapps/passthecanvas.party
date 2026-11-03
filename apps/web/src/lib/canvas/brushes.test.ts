@@ -149,3 +149,20 @@ describe('brush marks', () => {
     expect(stampSpacing(loaded('airbrush'), 30)).toBeLessThan(5);
   });
 });
+
+describe('pressure curves', () => {
+  it('leave mouse painting (pressure 0.5) exactly as it was', async () => {
+    const { PRESSURE, pressureFactor } = await import('./brushes');
+    for (const curve of Object.values(PRESSURE)) {
+      expect(pressureFactor(curve.width, 0.5)).toBe(1);
+      expect(pressureFactor(curve.ink, 0.5)).toBe(1);
+    }
+  });
+  it('make pencils darker rather than wider, and never vanish at a light touch', async () => {
+    const { PRESSURE, pressureFactor } = await import('./brushes');
+    expect(PRESSURE.pencil.ink).toBeGreaterThan(PRESSURE.pencil.width);
+    expect(PRESSURE.airbrush.width).toBe(0);
+    expect(pressureFactor(PRESSURE.round.width, 0.05, 0.15)).toBeGreaterThan(0.15 - 1e-9);
+    expect(pressureFactor(PRESSURE.round.width, 1)).toBeGreaterThan(pressureFactor(PRESSURE.detail.width, 1));
+  });
+});

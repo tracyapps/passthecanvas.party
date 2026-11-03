@@ -13,6 +13,36 @@ export function stampSpacing(selection: PaintingSelection, size: number): number
   return Math.max(0.8, size * 0.07);
 }
 
+/**
+ * How each tool answers pen pressure. `width` and `ink` are how much the
+ * stamp's size and paint deposit change between a feather-light touch (0)
+ * and a full press (1). Both curves pass through 1 at pressure 0.5, which is
+ * what a mouse reports, so mouse painting looks exactly as before.
+ * - Round and flat brushes splay wide when pressed; detail and fan barely do.
+ * - Pencil, charcoal and pastel mostly get darker, not wider (like real sticks).
+ * - Airbrush: pressure is the trigger, so it changes paint flow, not width.
+ */
+export const PRESSURE: Record<PaintingTool, { width: number; ink: number }> = {
+  round: { width: 1.2, ink: 0.3 },
+  flat: { width: 0.9, ink: 0.3 },
+  detail: { width: 0.5, ink: 0.5 },
+  fan: { width: 0.4, ink: 0.4 },
+  foam: { width: 0.3, ink: 0.5 },
+  knife: { width: 0.4, ink: 0.3 },
+  airbrush: { width: 0, ink: 1.2 },
+  pencil: { width: 0.4, ink: 1.1 },
+  charcoal: { width: 0.6, ink: 0.9 },
+  pastel: { width: 0.6, ink: 0.7 },
+  sponge: { width: 0.3, ink: 0 },
+  burnisher: { width: 0.5, ink: 0.6 },
+  eraser: { width: 0.9, ink: 0 }
+};
+
+/** Pressure 0–1 → a multiplier that is exactly 1 at 0.5 (a mouse). */
+export function pressureFactor(slope: number, pressure: number, floor = 0.2): number {
+  return Math.max(floor, 1 + slope * (pressure - 0.5));
+}
+
 export function drawMark(
   ctx: CanvasRenderingContext2D, selection: PaintingSelection, size: number,
   point: StrokePoint, angle: number, stampIndex: number, intensity = 0.5
@@ -24,11 +54,13 @@ export function drawMark(
   const strength = (Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 0.5) * 2;
   if ((tool === 'airbrush' || tool === 'burnisher') && strength === 0) return;
   const pressure = Math.max(0.05, Math.min(1, point.pressure));
-  const width = Math.max(1, size * (0.55 + pressure * 0.9));
+  const curve = PRESSURE[tool];
+  const width = Math.max(1, size * pressureFactor(curve.width, pressure, 0.15));
+  const ink = pressureFactor(curve.ink, pressure);
   ctx.save();
 
   if (tool === 'burnisher') {
-    burnishPaint(ctx, point, width, angle, strength);
+    burnishPaint(ctx, point, width, angle, strength * ink);
     ctx.restore();
     return;
   }
@@ -71,17 +103,17 @@ export function drawMark(
       ctx.rect(-width * 2, -width * 0.85 + index * band, width * 4, band);
       ctx.clip();
     }
-    drawTip(ctx, tool, width, color, alpha * flow, stampIndex, watercolor, strength);
+    drawTip(ctx, tool, width, color, alpha * flow * ink, stampIndex, watercolor, strength, ink);
     ctx.restore();
   });
   ctx.restore();
 }
 
-function drawTip(ctx: CanvasRenderingContext2D, tool: PaintingTool, width: number, color: string, alpha: number, seed: number, wash: boolean, strength: number) {
+function drawTip(ctx: CanvasRenderingContext2D, tool: PaintingTool, width: number, color: string, alpha: number, seed: number, wash: boolean, strength: number, ink = 1) {
   switch (tool) {
     case 'airbrush': {
-      softDab(ctx, 0, 0, width * 0.66, width * 0.66, color, 0.19 * strength, 0.05);
-      speckles(ctx, width * 0.66, color, 22, seed, 0.12 * strength, 0.8);
+      softDab(ctx, 0, 0, width * 0.66, width * 0.66, color, 0.19 * strength * ink, 0.05);
+      speckles(ctx, width * 0.66, color, 22, seed, 0.12 * strength * ink, 0.8);
       break;
     }
     case 'fan': {
@@ -109,18 +141,18 @@ function drawTip(ctx: CanvasRenderingContext2D, tool: PaintingTool, width: numbe
       speckles(ctx, width * 0.55, color, 48, seed, alpha, Math.max(0.7, width * 0.04));
       break;
     case 'knife':
-      ctx.globalAlpha = 0.7;
+      ctx.globalAlpha = Math.min(1, 0.7 * ink);
       ctx.fillStyle = color;
       ctx.fillRect(-width * 0.09, -width * 0.7, width * 0.18, width * 1.4);
       break;
     case 'pencil':
-      softDab(ctx, 0, 0, width * 0.09, width * 0.09, color, 0.3, 0.35);
-      speckles(ctx, width * 0.14, color, 12, seed, 0.24, 0.8);
+      softDab(ctx, 0, 0, width * 0.09, width * 0.09, color, 0.3 * ink, 0.35);
+      speckles(ctx, width * 0.14, color, 12, seed, 0.24 * ink, 0.8);
       break;
     case 'pastel':
     case 'charcoal':
-      softDab(ctx, 0, 0, width * 0.35, width * 0.4, color, tool === 'pastel' ? 0.075 : 0.04, 0.15);
-      speckles(ctx, width * 0.5, color, tool === 'pastel' ? 70 : 48, seed, tool === 'pastel' ? 0.3 : 0.2, Math.max(0.6, width * 0.025));
+      softDab(ctx, 0, 0, width * 0.35, width * 0.4, color, (tool === 'pastel' ? 0.075 : 0.04) * ink, 0.15);
+      speckles(ctx, width * 0.5, color, tool === 'pastel' ? 70 : 48, seed, (tool === 'pastel' ? 0.3 : 0.2) * ink, Math.max(0.6, width * 0.025));
       break;
     default:
       softDab(ctx, 0, 0, width * 0.4, width * 0.47, color, alpha, wash ? 0.1 : 0.55);

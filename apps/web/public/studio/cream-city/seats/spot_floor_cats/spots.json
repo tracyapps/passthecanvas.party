@@ -1,0 +1,124 @@
+{
+  "room": "cream-city",
+  "spots": [
+    {
+      "id": "spot_table_1",
+      "zone": "table",
+      "label": "Painting table",
+      "yaw": -23.2,
+      "pitch": 9.9
+    },
+    {
+      "id": "spot_easel",
+      "zone": "easel",
+      "label": "Easel and art wall",
+      "yaw": -37.5,
+      "pitch": 14.5
+    },
+    {
+      "id": "spot_rocker",
+      "zone": "rocker",
+      "label": "Rocking chair",
+      "yaw": -51.1,
+      "pitch": 9.2
+    },
+    {
+      "id": "spot_beanbag",
+      "zone": "beanbag",
+      "label": "Giant bean bag",
+      "yaw": -5.7,
+      "pitch": 6.8
+    },
+    {
+      "id": "spot_couch_left",
+      "zone": "couch",
+      "label": "Couch",
+      "yaw": 19.2,
+      "pitch": 7.3
+    },
+    {
+      "id": "spot_couch_2",
+      "zone": "cafe",
+      "label": "Couch 2",
+      "yaw": 24.1,
+      "pitch": 5.3
+    },
+    {
+      "id": "spot_couch_3",
+      "zone": "cafe",
+      "label": "Couch 3",
+      "yaw": 31.8,
+      "pitch": 7.4
+    },
+    {
+      "id": "spot_giant_bean_bag_2",
+      "zone": "cafe",
+      "label": "Giant bean bag 2",
+      "yaw": -13.7,
+      "pitch": 9.0
+    },
+    {
+      "id": "spot_ottoman",
+      "zone": "cafe",
+      "label": "Ottoman",
+      "yaw": -3.9,
+      "pitch": -0.1
+    },
+    {
+      "id": "spot_vintage_chair",
+      "zone": "cafe",
+      "label": "Vintage Chair",
+      "yaw": 7.9,
+      "pitch": 6.0
+    },
+    {
+      "id": "spot_painting_table_green_chair",
+      "zone": "cafe",
+      "label": "Painting table - green chair",
+      "yaw": -50.7,
+      "pitch": 9.0
+    },
+    {
+      "id": "spot_painting_table_blue_chair",
+      "zone": "cafe",
+      "label": "Painting table - blue chair",
+      "yaw": -31.9,
+      "pitch": 12.3
+    },
+    {
+      "id": "spot_painting_table_dark_chair",
+      "zone": "cafe",
+      "label": "Painting table - dark chair",
+      "yaw": -24.8,
+      "pitch": 12.0
+    },
+    {
+      "id": "spot_painting_table_white_chair",
+      "zone": "cafe",
+      "label": "Painting table - white chair",
+      "yaw": -18.9,
+      "pitch": 9.8
+    },
+    {
+      "id": "spot_painting_table_stool",
+      "zone": "cafe",
+      "label": "Painting table stool",
+      "yaw": -24.0,
+      "pitch": 7.4
+    },
+    {
+      "id": "spot_window_sill_2",
+      "zone": "cafe",
+      "label": "Window sill 2",
+      "yaw": 98.0,
+      "pitch": 7.6
+    },
+    {
+      "id": "spot_floor_snacks",
+      "zone": "cafe",
+      "label": "Floor - snacks",
+      "yaw": 3.5,
+      "pitch": 0.9
+    }
+  ]
+}

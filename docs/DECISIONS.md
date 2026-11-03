@@ -477,3 +477,193 @@ Owner direction: from now on every improvement happens in the party itself
   timer handoff is unchanged: a stroke in progress at time-up is dropped by
   the server.
 
+
+### 2026-11-03 — Party loop: gentle timer, lobby setup, notepad, reveal time-lapse, synced gallery
+
+Built straight into the party (no study), following the briefs in
+PAINTING-WORKSPACE.md and the Phase 2 list.
+
+- **Gentle timer.** At zero the server stops the clock and sets `overtime`;
+  the painter keeps the canvas until they press "Pass the canvas" (the button
+  gets a soft ring; it only pulses when motion is allowed). The host can still
+  "Pass for them" for a stalled turn, and a painter who disconnects passes
+  automatically. No chime yet (the brief says off by default anyway).
+- **Ordered cutoff.** The server accepts the finishing painter's strokes during
+  the 4-second "passing" card, and the cutoff is the next painter's turn. Pass
+  buttons finish any stroke in progress before sending the pass, and a stroke
+  in mid-air when the host passes is flushed and accepted, so every screen
+  (and the saved round image) stays identical. Verified in two browsers.
+- **Lobby "Party setup" (host only):** canvas shape, turn length (30 s – 5 min
+  presets; server clamps 20–600 s) and passing order. Reordering uses
+  "Move earlier / later" buttons with spoken confirmation; drag-to-reorder was
+  left out on purpose (the buttons work for mouse, touch and keyboard). The
+  server only accepts a reorder of exactly the people in the party.
+- **Notepad (chat).** A movable ruled-paper panel; `role="log"`; your notes
+  say "You". Unread count on the Notes button; while it's closed, a polite
+  "New note from …" announcement. Keeps the last 200 notes in the browser
+  only; the server still stores no chat.
+- **Reveal.** Framed piece, "Who painted what" by round, download, and a
+  time-lapse rebuilt from the strokes each screen already has (no new
+  storage). It opens on the finished picture and never autoplays; a slider
+  scrubs and says whose round is showing. Screens that joined too late for the
+  full history fall back to the saved image.
+- **Gallery hang mode is the host's call**, synced to every guest
+  (`setGalleryMode`); guests see it, read-only, with a note saying so.
+
+
+### 2026-11-03 — Party radio
+
+- The host searches the Radio Browser directory from their own browser
+  (three mirrors tried in order; https streams only; top 20 by popularity).
+  Mood shortcuts: lofi, jazz, classical, indie, soul, ambient.
+- "Play for everyone" sends `setRadio`; the server only shares the station
+  name and URL (it now also checks the URL parses and is under 2,000
+  characters). It never fetches or relays audio.
+- Every guest presses **Listen** themselves (no autoplay; browsers would block
+  it anyway), with their own volume starting at 30% and "Mute for me".
+  Closing the panel keeps the music playing. Station changes are announced
+  politely.
+- Privacy: searching contacts radio-browser.info from the host's browser, and
+  listening contacts the station from each listener's browser, only after they
+  press Listen. No station logos are loaded (they come from arbitrary hosts).
+- Not yet: the tube-radio skin from the design canvas; the panel is the
+  notepad's paper style for now.
+
+
+### 2026-11-03 — Per-tool pressure curves (and why edge darkening waits)
+
+- Each tool now has its own pen-pressure curve for size and paint deposit
+  (`PRESSURE` in `brushes.ts`). Round/flat brushes splay; detail/fan barely
+  change; pencil, charcoal and pastel mostly get darker rather than wider;
+  the airbrush treats pressure as the trigger (flow, not width). Every curve
+  is exactly 1 at pressure 0.5, which is what a mouse reports, so mouse
+  painting is unchanged; a test guards that.
+- Watercolor edge darkening was tried as a "rimmed" dab and dropped: swept
+  along a stroke, the chord through the middle of the stroke is longer than
+  at the edges, so the middle still comes out darker. Real pooling needs a
+  stroke-level pass (when a wash stroke ends, darken where its coverage
+  falls off). Wet-on-wet needs a per-layer wetness map driven by stamp count
+  (not wall-clock time, so every screen agrees). Both stay open.
+
+
+### 2026-11-03 — Tray recipes and saved mixes; invite link
+
+- **Recipe tray** (first step of the "Mix a color" redesign brief): the tray
+  holds colors *with parts* ("2 parts Bright blue, 1 part Brick red") with
+  −/+/Remove buttons, up to 9 parts. "Mix evenly" weights by parts;
+  "Keep colors separate" makes streaks whose width follows the parts. On the
+  wire a streaked load is the color repeated per part, so the stroke
+  protocol is unchanged. Still RGB averaging (approximate); a pigment model
+  (e.g. Mixbox, license check needed) is a separate decision.
+- **Saved mixes**: "Save mix" keeps up to 12 recipes on this browser
+  (localStorage, like saved views; never shared). Tap one to refill the tray.
+- **Not yet from the brief:** a "Blend amount" for streak softness (needs a
+  protocol field), finite paint/reload, named trays, import/export.
+- **Invite link**: Party setup and the table menu have "Copy invite link"
+  (the party address; clipboard with a select-it-yourself fallback).
+
+
+### 2026-11-03 — Everyone starts their own canvas; canvases pass clockwise by seat
+
+Owner direction (Nov 3): every artist always starts their own canvas and
+chooses its shape; canvases pass around the room; the owner adds the last
+layer; credits read "Owner, with the help of …" in painting order.
+
+- **The ring** (`packages/shared/src/ring.ts`): default order is clockwise
+  by seat (sorted by the seat's yaw from `spots.json`; people without a seat
+  follow in arrival order). Canvases pass to the next person in the ring
+  ("to your left"). N artists → N + 1 rounds; round N + 1 brings each canvas
+  home. The host can choose **Random circle**: the ring is shuffled *once*
+  and then passes the same way every round, which is what guarantees
+  everyone paints every canvas exactly once. Moving someone makes it Custom.
+  Tests prove no two artists share a canvas in any round.
+- **Simultaneous rounds.** Everyone paints at once. "Pass the canvas" means
+  "I'm done with this one"; the round moves on when everyone has passed, or
+  the host chooses "Pass everyone on" (shown after the host has passed, or at
+  zero). Zero is still only a cue.
+- **Protocol (breaking).** `PartyState` now has `pieces` (each canvas with
+  its planned turns, painter names and saved image per turn),
+  `assignments` (who has which canvas this round), `passed`, `orderMode` and
+  `room`; `painterId`/`canvas`/`rounds`/`snapshotUrl` are gone. Members carry
+  `canvasShape` and `watching`. Strokes carry `canvasId`; the server only
+  accepts a stroke onto the canvas in front of you.
+- **Bandwidth/memory.** Strokes are no longer broadcast to everyone: the
+  server keeps each canvas's history and sends it to whoever receives that
+  canvas next (`canvasHistory`), and relays live strokes only to people
+  watching that canvas. Each browser holds just one canvas's layers at a time.
+  Per-canvas cap 300k stamps, then the latest saved image is the base.
+- **Late joiners** watch (pick any canvas from "Watching"); the ring is fixed
+  at the start. Someone who leaves mid-game: their canvas waits out the
+  rounds they would have painted.
+- **Saved images** are `/snapshots/<party>/c<N>-r<round>.png`; share links
+  accept only that pattern.
+- **Reveal**: every piece with its credit line, yours first; open one for its
+  time-lapse, with the artists as a chapter list (current artist highlighted,
+  pick a name to jump). The gallery hangs everyone's finished piece. This is
+  the in-party version of the archive detail view; the permanent archive
+  (Railway) is the next step.
+
+
+### 2026-11-03 — Radio on for everyone; the table's tube radio
+
+- The radio now plays for every guest when the host puts a station on. The
+  "Join the party" click counts as the gesture browsers require before sound;
+  if a browser still refuses, the panel says so and offers Listen. Each guest
+  keeps their own mute and volume (30% to start).
+- The radio panel is a CSS-drawn tube radio: walnut cabinet, woven grille,
+  a lit glass tuning window with the station name, glowing tubes (they only
+  pulse when motion is allowed) and a bakelite knob that turns with the
+  volume. The real controls underneath are a button and a range input.
+- Planned: clicking the radio in the 360° room opens the same controls
+  (a marker pinned to a `spot_radio` in spots.json), rather than drawing fake
+  knobs over the render, which would drift from other viewpoints.
+
+
+### 2026-11-03 — Seat views and the texture pass (Blender)
+
+Owner direction: see the room from your own seat, so the Photoshop-only
+fixes had to move into the Blender file. Worked directly on
+`studio/blender/cream-city-studio-wphotos.blend` (the owner made a backup).
+Full how-to: `studio/SEAT-VIEWS.md`.
+
+- **Texture pass** (`studio/scripts/texture_pass.py`, re-runnable): draped
+  orange couch, dark green crushed-velvet beanbag (both with real folds in the
+  shape, so they hold up from any seat), striped throw pillow, tall skinny
+  locker built from the locker photo, drying-rack photo card removed, and a
+  "lived-in" grime pass: darker uneven ceiling/timber with stains, more paint
+  drips/splatters on the painting table, crevice dirt and paint flecks on the
+  chairs, stools, side tables and cabinets. All procedural; no new assets.
+- **Seat views** (`studio/scripts/seat_views.py`): one panorama per spot,
+  rendered at sitting eye height facing the middle of the room, plus that
+  view's own `spots.json` and `art.json`, re-projected from 3D (so the
+  hand-drawn art areas follow) with hidden ones dropped. Seats are found
+  automatically; five odd ones (sills, easel, music corner, floor by the cats)
+  are hand-placed in `EYE_OVERRIDES`.
+- **In the party**: once you've picked a seat that has a view, the room shows
+  it from there; "From the middle of the room" switches back.
+- **Drafts first**: the committed views are 2048-wide drafts
+  (`seats/index.json` says `"draft": true`). Final 4096 renders run with
+  `--final` after the owner approves the look.
+- Blender runs headless from the command line (`Blender -b … --python …`);
+  the Blender MCP connection isn't needed.
+
+
+### 2026-11-03 — Final room export: canvas rack, locker fix, Blender-only panorama
+
+- Owner added furniture, books and Poly Haven throw pillows in Blender; the
+  texture pass now keeps the owner's edits (it no longer re-adds its own
+  photo pillow, and leaves moved objects where they are).
+- Canvas storage on the coffee nook's steel shelves
+  (`studio/scripts/add_canvas_rack.py`): 26 canvases on edge across two
+  shelves, about 60% painted (procedural abstracts) and the rest blank, plus
+  one leaning face-out per shelf. The laptop's shelf is left alone.
+- Locker texture rebuilt (`studio/scripts/make_locker_texture.py`): the
+  repeated row is now exactly the small top row, renumbered 1–3 / 4–6 / 7–9,
+  so no number repeats and the open door only appears once.
+- Paint drips on furniture are gathered into a few patches and knocked back
+  toward the surface color (they read as stripes before).
+- The app's middle-of-the-room `panorama.webp` is now rendered straight from
+  Blender (`seat_views.py --center`), replacing the Photoshop composite, and
+  all 24 seat views are final 4096 × 2048 renders (`seats/index.json`
+  `"draft": false`).
+

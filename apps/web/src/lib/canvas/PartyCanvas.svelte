@@ -28,6 +28,8 @@
     /** Spoken summary, e.g. "Round 2. Jordan is painting." */
     label: string;
     wheelZoom?: boolean;
+    /** Which canvas is on the table ("c1"…, or "lobby" before the game). Strokes carry it. */
+    canvasKey: string;
     documentWidth: number;
     documentHeight: number;
     baseWidth?: number;
@@ -37,7 +39,7 @@
     ontoolbarheight?: (height: number) => void;
     onstroke?: (stroke: Stroke) => void;
   }
-  let { selection, size, intensity = 0.5, mode = 'paint', canDraw, painterId, round, label, wheelZoom = false, documentWidth, documentHeight, baseWidth = 800, rotation = $bindable(0), fitVersion = 0, onresizewindow, ontoolbarheight, onstroke }: Props = $props();
+  let { selection, size, intensity = 0.5, mode = 'paint', canDraw, painterId, round, label, wheelZoom = false, canvasKey, documentWidth, documentHeight, baseWidth = 800, rotation = $bindable(0), fitVersion = 0, onresizewindow, ontoolbarheight, onstroke }: Props = $props();
 
   let element: HTMLCanvasElement;
   let viewport: HTMLDivElement;
@@ -73,9 +75,11 @@
   const layers = new TurnLayers(documentWidth, documentHeight);
   /** Every stroke this screen has drawn, for the painting-data export. */
   let log: PaintedStroke[] = [];
+  /** False when this screen joined too late to get every stroke (snapshot base instead). */
+  let fullHistory = true;
 
   // ---- the stroke in progress ----
-  let stroke: { id: string; selection: PaintingSelection; size: number; intensity: number; last: StrokePoint; carry: number; index: number; angle: number } | null = null;
+  let stroke: { id: string; canvasId: string; selection: PaintingSelection; size: number; intensity: number; last: StrokePoint; carry: number; index: number; angle: number } | null = null;
   /** Stamps not yet sent to the party. */
   let outgoing: Stamp[] = [];
   let outgoingFirst = 0;
@@ -108,14 +112,18 @@
   });
   onDestroy(stopStroke);
 
-  // A new canvas shape (chosen by the host in the lobby) starts a clean painting.
+  // A different canvas on the table (the round moved on) starts clean, unless
+  // its history already arrived and was drawn.
+  let loadedKey = '';
   $effect(() => {
+    const key = canvasKey;
     const width = documentWidth;
     const height = documentHeight;
     if (!ready) return;
     untrack(() => {
-      if (layers.width === width && layers.height === height) return;
+      if (loadedKey === key && layers.width === width && layers.height === height) { redraw(); return; }
       stopStroke();
+      loadedKey = key;
       layers.reset(width, height);
       log = [];
       cursor = { x: width / 2, y: height / 2 };
@@ -143,15 +151,19 @@
 
   /** Someone else's stroke, relayed by the party. */
   export function applyRemote(remote: PaintedStroke) {
+    if (remote.canvasId !== loadedKey) return; // meant for a canvas we're not showing
     layers.apply(remote);
     log.push(remote);
     redraw();
   }
 
   /** Late joiner: rebuild every turn's layer from the party's history. */
-  export async function loadHistory(strokes: PaintedStroke[], complete: boolean, snapshotUrl: string | null) {
-    layers.reset(documentWidth, documentHeight);
+  export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, snapshotUrl: string | null) {
+    stopStroke();
+    loadedKey = key;
+    layers.reset(width, height);
     log = [];
+    fullHistory = complete;
     if (!complete && snapshotUrl) {
       // Too much history to replay: show the latest saved picture, protected.
       const image = new Image();
@@ -160,6 +172,11 @@
     }
     for (const remote of strokes) { layers.apply(remote); log.push(remote); }
     redraw();
+  }
+
+  /** The key of the canvas currently drawn (to ignore strokes meant for another). */
+  export function currentKey() {
+    return loadedKey;
   }
 
   /** The finished picture on paper, as a PNG data URL (for the round snapshot). */
@@ -173,6 +190,16 @@
     paper.fillRect(0, 0, flat.width, flat.height);
     paper.drawImage(element, 0, 0);
     return flat.toDataURL('image/png');
+  }
+
+  /** End any stroke in progress and send its last stamps (before passing). */
+  export function finishStroke() {
+    stopStroke();
+  }
+
+  /** Every stroke drawn on this screen so far, in order (for the time-lapse). */
+  export function strokes(): PaintedStroke[] {
+    return fullHistory ? log : [];
   }
 
   /** Painting data only (no audio or video), for the "Export painting data" menu item. */
@@ -206,7 +233,7 @@
 
   function makeStroke(stamps: Stamp[], first: number, done: boolean): Stroke {
     const held = stroke!;
-    return { id: held.id, tool: held.selection.tool!, load: held.selection.load, wet: held.selection.wet, size: held.size, intensity: held.intensity, first, stamps, done };
+    return { id: held.id, canvasId: held.canvasId, tool: held.selection.tool!, load: held.selection.load, wet: held.selection.wet, size: held.size, intensity: held.intensity, first, stamps, done };
   }
 
   function flush(done: boolean) {
@@ -223,7 +250,7 @@
   }
 
   function begin(at: StrokePoint, touch = false) {
-    stroke = { id: crypto.randomUUID(), selection: $state.snapshot(selection), size, intensity, last: at, carry: 0, index: 0, angle: 0 };
+    stroke = { id: crypto.randomUUID(), canvasId: canvasKey, selection: $state.snapshot(selection), size, intensity, last: at, carry: 0, index: 0, angle: 0 };
     outgoing = []; sentAny = false;
     holdUntil = touch ? performance.now() + 200 : 0;
     emit(at);

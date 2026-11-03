@@ -1,0 +1,152 @@
+{
+  "room": "cream-city",
+  "spots": [
+    {
+      "id": "spot_table_1",
+      "zone": "table",
+      "label": "Painting table",
+      "yaw": 38.3,
+      "pitch": 9.3
+    },
+    {
+      "id": "spot_easel",
+      "zone": "easel",
+      "label": "Easel and art wall",
+      "yaw": 40.7,
+      "pitch": 12.0
+    },
+    {
+      "id": "spot_music",
+      "zone": "music",
+      "label": "Music corner",
+      "yaw": 13.2,
+      "pitch": -2.6
+    },
+    {
+      "id": "spot_snacks",
+      "zone": "snacks",
+      "label": "Snack table",
+      "yaw": -42.8,
+      "pitch": -28.5
+    },
+    {
+      "id": "spot_cat_tree",
+      "zone": "cats",
+      "label": "Cat tree",
+      "yaw": -11.4,
+      "pitch": 3.5
+    },
+    {
+      "id": "spot_rocker",
+      "zone": "rocker",
+      "label": "Rocking chair",
+      "yaw": 23.9,
+      "pitch": 2.8
+    },
+    {
+      "id": "spot_beanbag",
+      "zone": "beanbag",
+      "label": "Giant bean bag",
+      "yaw": 110.8,
+      "pitch": 17.7
+    },
+    {
+      "id": "spot_couch_left",
+      "zone": "couch",
+      "label": "Couch",
+      "yaw": -65.9,
+      "pitch": 19.5
+    },
+    {
+      "id": "spot_couch_2",
+      "zone": "cafe",
+      "label": "Couch 2",
+      "yaw": -56.0,
+      "pitch": 6.5
+    },
+    {
+      "id": "spot_couch_3",
+      "zone": "cafe",
+      "label": "Couch 3",
+      "yaw": -51.4,
+      "pitch": 7.3
+    },
+    {
+      "id": "spot_leather_chair",
+      "zone": "cafe",
+      "label": "Leather Arm Chair",
+      "yaw": -35.0,
+      "pitch": 1.0
+    },
+    {
+      "id": "spot_leather_chair_2",
+      "zone": "cafe",
+      "label": "Leather Chair",
+      "yaw": -15.9,
+      "pitch": 0.7
+    },
+    {
+      "id": "spot_giant_bean_bag_2",
+      "zone": "cafe",
+      "label": "Giant bean bag 2",
+      "yaw": 91.6,
+      "pitch": 18.2
+    },
+    {
+      "id": "spot_painting_table_green_chair",
+      "zone": "cafe",
+      "label": "Painting table - green chair",
+      "yaw": 41.8,
+      "pitch": 5.4
+    },
+    {
+      "id": "spot_painting_table_blue_chair",
+      "zone": "cafe",
+      "label": "Painting table - blue chair",
+      "yaw": 44.9,
+      "pitch": 11.6
+    },
+    {
+      "id": "spot_painting_table_dark_chair",
+      "zone": "cafe",
+      "label": "Painting table - dark chair",
+      "yaw": 52.6,
+      "pitch": 14.7
+    },
+    {
+      "id": "spot_painting_table_white_chair",
+      "zone": "cafe",
+      "label": "Painting table - white chair",
+      "yaw": 64.3,
+      "pitch": 15.2
+    },
+    {
+      "id": "spot_painting_table_stool",
+      "zone": "cafe",
+      "label": "Painting table stool",
+      "yaw": 37.4,
+      "pitch": 5.5
+    },
+    {
+      "id": "spot_window_sill",
+      "zone": "cafe",
+      "label": "Window sill",
+      "yaw": -35.7,
+      "pitch": 8.5
+    },
+    {
+      "id": "spot_floor_snacks",
+      "zone": "cafe",
+      "label": "Floor - snacks",
+      "yaw": 7.9,
+      "pitch": -7.2
+    },
+    {
+      "id": "spot_floor_cats",
+      "zone": "cafe",
+      "label": "Floor - cats",
+      "yaw": -6.6,
+      "pitch": -6.6
+    }
+  ]
+}

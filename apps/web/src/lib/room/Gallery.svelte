@@ -25,8 +25,14 @@
     artwork?: GalleryPiece[];
     /** Back to the party's reveal, when opened from a party. */
     onback?: () => void;
+    /** In a party, the host's hang mode; every guest follows it. */
+    partyMode?: HangMode;
+    /** Set for the host only: send a new hang mode to the party. */
+    onpartymode?: (mode: HangMode) => void;
   }
-  let { room = 'cream-city', artwork, onback }: Props = $props();
+  let { room = 'cream-city', artwork, onback, partyMode, onpartymode }: Props = $props();
+  /** Guests at a party see the host's choice but can't change it. */
+  let locked = $derived(partyMode !== undefined && !onpartymode);
 
   // svelte-ignore state_referenced_locally — fixed for this page's lifetime
   const PANORAMA = `/studio/${room}/panorama.webp`;
@@ -47,6 +53,14 @@
 
   // --- Host settings ---------------------------------------------------------
   let mode = $state<HangMode>('walls-then-lean');
+  // Follow the host's choice whenever it changes.
+  $effect(() => {
+    if (partyMode) mode = partyMode;
+  });
+  function chooseMode(next: HangMode) {
+    if (!realArt) linkPieces = null;
+    onpartymode?.(next);
+  }
   let pieceCount = $state(6);
   let shuffle = $state(0); // reshuffle paints fresh placeholders
   /** Pieces loaded from a shared link, reproduced exactly. */
@@ -221,11 +235,12 @@
   </div>
 
   <form class="host" onsubmit={(e) => e.preventDefault()}>
-    <fieldset>
+    <fieldset disabled={locked} aria-describedby={locked ? 'hang-note' : undefined}>
       <legend>Hang the party's art</legend>
-      <label><input type="radio" bind:group={mode} value="walls-then-lean" oninput={() => { if (!realArt) linkPieces = null; }} /> Walls first, lean overflow</label>
-      <label><input type="radio" bind:group={mode} value="walls" oninput={() => { if (!realArt) linkPieces = null; }} /> Walls only</label>
-      <label><input type="radio" bind:group={mode} value="lean" oninput={() => { if (!realArt) linkPieces = null; }} /> Lean spaces only</label>
+      <label><input type="radio" bind:group={mode} value="walls-then-lean" oninput={() => chooseMode('walls-then-lean')} /> Walls first, lean overflow</label>
+      <label><input type="radio" bind:group={mode} value="walls" oninput={() => chooseMode('walls')} /> Walls only</label>
+      <label><input type="radio" bind:group={mode} value="lean" oninput={() => chooseMode('lean')} /> Lean spaces only</label>
+      {#if locked}<p id="hang-note" class="status">The host chooses how the art hangs.</p>{/if}
     </fieldset>
 
 {#if !realArt}

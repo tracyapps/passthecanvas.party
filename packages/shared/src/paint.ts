@@ -78,6 +78,8 @@ export interface Stamp {
 /** A batch of stamps from one continuous drag, plus what the painter was holding. */
 export interface Stroke {
   id: string;
+  /** Which canvas this lands on ("c1", "c2"… one per artist). */
+  canvasId: string;
   tool: ToolId;
   load: PaintLoad | null;
   wet: boolean;
@@ -104,6 +106,8 @@ export function strokeIsPossible(stroke: Pick<Stroke, 'tool' | 'load' | 'wet'>):
 }
 
 const MAX_STAMPS_PER_BATCH = 4000;
+/** Canvas ids are short and safe for file names: c1 … c99. */
+export const CANVAS_ID = /^c\d{1,2}$/;
 
 /** Clamp a stroke from the network to sane values; null if it's junk or impossible. */
 export function sanitizeStroke(input: unknown, canvas: CanvasSize): Stroke | null {
@@ -125,8 +129,10 @@ export function sanitizeStroke(input: unknown, canvas: CanvasSize): Stroke | nul
     const value = Number(n);
     return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
   };
+  if (typeof raw.canvasId !== 'string' || !CANVAS_ID.test(raw.canvasId)) return null;
   const stroke: Stroke = {
     id: String(raw.id ?? '').slice(0, 64),
+    canvasId: raw.canvasId,
     tool: raw.tool as ToolId,
     load,
     wet: Boolean(raw.wet),

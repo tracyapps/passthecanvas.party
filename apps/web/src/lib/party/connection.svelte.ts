@@ -2,41 +2,39 @@
 // Svelte "runes" ($state) make these fields reactive: components that read
 // them update automatically when messages arrive.
 
-import type { ClientMessage, PaintedStroke, PartyState, Presence, ServerMessage } from '@ptc/shared';
+import type { ClientMessage, PaintedStroke, PartyState, Piece, Presence, ServerMessage } from '@ptc/shared';
+
+/** Everything painted on one canvas so far, as the server sent it. */
+export interface CanvasHistory {
+  canvasId: string;
+  strokes: PaintedStroke[];
+  complete: boolean;
+  baseUrl: string | null;
+}
 
 export class PartyConnection {
   state = $state<PartyState | null>(null);
   youId = $state<string | null>(null);
   connected = $state(false);
-  chat = $state<{ name: string; text: string; at: number }[]>([]);
+  chat = $state<{ fromId: string; name: string; text: string; at: number }[]>([]);
+  /** Notes that arrived while the notepad was closed. */
+  unreadChat = $state(0);
+  /** Set by the studio: is the notepad open right now? */
+  chatOpen = false;
   /** Short message for the screen-reader live region. */
   announcement = $state('');
+  /**
+   * The latest canvas history per canvas id. $state.raw: these are big
+   * arrays that are replaced whole, never edited, so no deep tracking.
+   */
+  histories = $state.raw<Record<string, CanvasHistory>>({});
 
   private socket: WebSocket | null = null;
 
-  /**
-   * Strokes that arrive before the canvas is on screen wait here (a late
-   * joiner's history, plus anything painted while the table loads).
-   */
-  private waiting: { history: PaintedStroke[]; complete: boolean; strokes: PaintedStroke[] } = { history: [], complete: true, strokes: [] };
-  private strokeHandler: ((stroke: PaintedStroke) => void) | null = null;
-
-  /**
-   * The canvas is ready: hand it everything that arrived so far, then keep
-   * sending new strokes straight to it.
-   */
-  attachCanvas(handler: (stroke: PaintedStroke) => void) {
-    const waiting = this.waiting;
-    this.waiting = { history: [], complete: true, strokes: [] };
-    this.strokeHandler = handler;
-    return { history: [...waiting.history, ...waiting.strokes], complete: waiting.complete };
-  }
-
-  detachCanvas() {
-    this.strokeHandler = null;
-  }
-  /** Set by the studio screen to answer the server's snapshot request. */
-  onSnapshotRequest: (round: number) => void = () => {};
+  /** Set by the studio: strokes on the canvas you're looking at. */
+  onStroke: (stroke: PaintedStroke) => void = () => {};
+  /** Set by the studio to answer the server's snapshot request. */
+  onSnapshotRequest: (round: number, canvasId: string) => void = () => {};
 
   join(partyId: string, name: string, presence: Presence) {
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -57,8 +55,7 @@ export class PartyConnection {
     this.state = null;
     this.youId = null;
     this.chat = [];
-    this.waiting = { history: [], complete: true, strokes: [] };
-    this.strokeHandler = null;
+    this.histories = {};
   }
 
   send(message: ClientMessage) {
@@ -69,12 +66,34 @@ export class PartyConnection {
     return this.state?.members.find((m) => m.id === this.youId) ?? null;
   }
 
-  get painter() {
-    return this.state?.members.find((m) => m.id === this.state?.painterId) ?? null;
+  /** The canvas in front of you this round (null in the lobby, the reveal, or when watching). */
+  get myCanvasId(): string | null {
+    return (this.youId && this.state?.assignments[this.youId]) || null;
   }
 
-  get isMyTurn() {
-    return this.state?.phase === 'painting' && this.state.painterId === this.youId;
+  piece(canvasId: string | null): Piece | null {
+    return this.state?.pieces.find((p) => p.id === canvasId) ?? null;
+  }
+
+  /** Your own canvas (the one you started). */
+  get myPiece(): Piece | null {
+    return this.state?.pieces.find((p) => p.ownerId === this.youId) ?? null;
+  }
+
+  /** Painting right now: a canvas in front of you, and you haven't passed it yet. */
+  get isPainting() {
+    return this.state?.phase === 'painting' && !!this.myCanvasId && !this.state.passed.includes(this.youId ?? '');
+  }
+
+  /** Still painting this round (for "waiting for 2 others"). */
+  get stillPainting(): string[] {
+    const state = this.state;
+    if (!state || state.phase !== 'painting') return [];
+    return Object.keys(state.assignments).filter((id) => !state.passed.includes(id) && state.members.some((m) => m.id === id));
+  }
+
+  nameOf(id: string | null) {
+    return this.state?.members.find((m) => m.id === id)?.name ?? 'A guest';
   }
 
   private receive(message: ServerMessage) {
@@ -94,21 +113,22 @@ export class PartyConnection {
         if (message.secondsLeft === 30) this.announcement = '30 seconds left';
         if (message.secondsLeft === 10) this.announcement = '10 seconds left';
         break;
-      case 'history':
-        // The socket keeps order, so history always comes before live strokes.
-        if (this.strokeHandler) { message.strokes.forEach((stroke) => this.strokeHandler?.(stroke)); break; }
-        this.waiting.history = message.strokes;
-        this.waiting.complete = message.complete;
+      case 'canvasHistory':
+        this.histories = { ...this.histories, [message.canvasId]: { canvasId: message.canvasId, strokes: message.strokes, complete: message.complete, baseUrl: message.baseUrl } };
         break;
       case 'stroke':
-        if (this.strokeHandler) this.strokeHandler(message.stroke);
-        else this.waiting.strokes.push(message.stroke);
+        this.onStroke(message.stroke);
         break;
       case 'requestSnapshot':
-        this.onSnapshotRequest(message.round);
+        this.onSnapshotRequest(message.round, message.canvasId);
         break;
       case 'chat':
-        this.chat.push({ name: message.name, text: message.text, at: message.at });
+        // Keep the notepad to the last 200 notes; it is a party, not an archive.
+        this.chat = [...this.chat, { fromId: message.fromId, name: message.name, text: message.text, at: message.at }].slice(-200);
+        if (!this.chatOpen && message.fromId !== this.youId) {
+          this.unreadChat += 1;
+          this.announcement = `New note from ${message.name}.`;
+        }
         break;
       case 'error':
         console.warn('[party]', message.message);
@@ -116,12 +136,21 @@ export class PartyConnection {
     }
   }
 
-  /** Turn changes are announced once, not every second. */
+  /** Round changes are announced once, not every second. */
   private announceChanges(before: PartyState | null, after: PartyState) {
-    if (before?.phase !== after.phase && after.phase === 'passing') {
-      this.announcement = 'Time is up. Pass the canvas.';
-    } else if (before?.painterId !== after.painterId && after.painterId) {
-      this.announcement = after.painterId === this.youId ? 'Your turn to paint.' : `${this.painter?.name ?? 'Someone'} is painting now.`;
+    const mine = this.youId ? after.assignments[this.youId] : undefined;
+    const piece = after.pieces.find((p) => p.id === mine);
+    const whose = piece ? (piece.ownerId === this.youId ? 'your own canvas' : `${piece.ownerName}'s canvas`) : '';
+    if (after.radio?.playing && (before?.radio?.streamUrl !== after.radio.streamUrl || !before?.radio?.playing)) {
+      this.announcement = `Party radio: ${after.radio.stationName}. Open Radio to mute it or change your volume.`;
+    } else if (before?.radio?.playing && !after.radio?.playing) {
+      this.announcement = 'The party radio is off.';
+    } else if (!before?.overtime && after.overtime && after.phase === 'painting') {
+      this.announcement = mine ? "Time's up. Finish your stroke, then pass the canvas." : "Time's up. The painters are finishing.";
+    } else if (before?.phase !== after.phase && after.phase === 'passing') {
+      this.announcement = 'Passing the canvases.';
+    } else if ((before?.phase !== 'painting' || before.round !== after.round) && after.phase === 'painting') {
+      this.announcement = `Round ${after.round} of ${after.totalRounds}. ${whose ? `You have ${whose}.` : 'You are watching.'}`;
     } else if (before?.phase !== after.phase && after.phase === 'reveal') {
       this.announcement = 'All rounds done. Time for the reveal.';
     }

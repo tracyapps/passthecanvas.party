@@ -14,7 +14,7 @@ export interface GalleryData {
 }
 
 /** Real party art lives on the party server; links may only point at saved round images. */
-export const SNAPSHOT_PATH = /^\/snapshots\/[a-z0-9-]{3,40}\/round-\d{1,3}\.png$/;
+export const SNAPSHOT_PATH = /^\/snapshots\/[a-z0-9-]{3,40}\/c\d{1,2}-r\d{1,3}\.png$/;
 
 /** Serialize gallery data to the short URL-safe string that goes after #g=. */
 export function encodeGallery(data: GalleryData): string {

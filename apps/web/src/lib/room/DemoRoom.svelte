@@ -50,7 +50,7 @@
     picked.forEach((spot, i) => {
       const name = NAMES[i % NAMES.length]!;
       const id = `demo-${i + 1}`;
-      nextMembers.push({ id, name, presence: cameraSeats.has(spot.id) ? 'camera' : 'avatar', isHost: i === 0, spotId: spot.id });
+      nextMembers.push({ id, name, presence: cameraSeats.has(spot.id) ? 'camera' : 'avatar', isHost: i === 0, spotId: spot.id, canvasShape: 'classic', watching: false });
       if (cameraSeats.has(spot.id)) {
         const track = makeFakeVideoTrack(name[0]!, i);
         liveTracks.push(track);

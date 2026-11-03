@@ -12,9 +12,9 @@ const gallery = {
 
 describe('gallery links', () => {
   it('keeps real party art only when it points at a saved round image', () => {
-    const real = { ...gallery, pieces: [{ seed: 'final', aspect: 1.33, url: '/snapshots/maya-30th/round-4.png' }, { seed: 'x', aspect: 1, url: 'https://evil.example/a.png' }] };
+    const real = { ...gallery, pieces: [{ seed: 'final', aspect: 1.33, url: '/snapshots/maya-30th/c2-r4.png' }, { seed: 'x', aspect: 1, url: 'https://evil.example/a.png' }] };
     const decoded = decodeGallery(encodeGallery(real))!;
-    expect(decoded.pieces[0]!.url).toBe('/snapshots/maya-30th/round-4.png');
+    expect(decoded.pieces[0]!.url).toBe('/snapshots/maya-30th/c2-r4.png');
     expect(decoded.pieces[1]!.url).toBeUndefined();
   });
 

@@ -1,14 +1,16 @@
 <!--
-  The party screen. Three places, one party:
-  - the painting table (default): every guest sees the shared canvas; the
-    current painter paints, everyone else watches and gets their tools ready
-  - the 360° room
-  - the gallery, after the reveal: the finished piece hung in the room
-  Host tools (canvas shape, start, pass now) live in the table's top bar.
+  The party screen. Everyone starts their own canvas; each round everyone
+  paints the canvas in front of them, then all the canvases pass one seat
+  clockwise. Three places, one party:
+  - the painting table (default): the canvas in front of you this round
+  - the 360° room (pick your seat: it sets who you pass to)
+  - the gallery, after the reveal: everyone's finished piece in the room
+  Host tools (passing order, turn length, start, pass everyone) live in
+  "Party setup" and the top bar.
 -->
 <script lang="ts">
-  import { onDestroy, untrack } from 'svelte';
-  import { CANVAS_SHAPES, type CanvasShape } from '@ptc/shared';
+  import { onDestroy } from 'svelte';
+  import { CANVAS_SHAPES, TURN_LENGTHS, creditLine, moveInOrder, roundsFor, turnLengthText, type CanvasShape, type OrderMode, type Piece } from '@ptc/shared';
   import type { PartyConnection } from './party/connection.svelte';
   import { Call } from './call/call.svelte';
   import CallDock from './call/CallDock.svelte';
@@ -16,41 +18,87 @@
   import PaintingTable from './canvas/PaintingTable.svelte';
   import StudioPanel from './canvas/StudioPanel.svelte';
   import TimerDial from './ui/TimerDial.svelte';
+  import ChatNotepad from './chat/ChatNotepad.svelte';
+  import TimeLapse from './canvas/TimeLapse.svelte';
+  import PartyRadio from './radio/PartyRadio.svelte';
   import type { GalleryPiece } from './room/leanLayout';
 
   let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
-
-  // The room this party opens in. Per-party room choice arrives in phase 2.
-  const ROOM = 'cream-city';
-  const ROOM_PANORAMA = `/studio/${ROOM}/panorama.webp`;
-  const ROOM_SPOTS = `/studio/${ROOM}/spots.json`;
 
   let view = $state<'paint' | 'room' | 'gallery'>('paint');
   let table: PaintingTable | undefined = $state();
   let guestsOpen = $state(innerWidth > 1100);
   let revealOpen = $state(true);
+  let setupOpen = $state(true);
+  let notesOpen = $state(false);
+  let radioOpen = $state(false);
+  /** Late joiners (and the reveal) pick a canvas to look at. */
+  let watchedId = $state<string | null>(null);
+  /** The piece opened in the reveal's detail view. */
+  let detailId = $state<string | null>(null);
   const call = new Call();
 
-  // Hand the canvas everything that arrived before it existed (a late
-  // joiner's history), then every new stroke as it comes in.
+
+  let game = $derived(party.state);
+  let room = $derived(game?.room ?? 'cream-city');
+  let isHost = $derived(party.me?.isHost ?? false);
+  let me = $derived(party.me);
+
+  // Seat views: the room as seen from your own seat, when one has been rendered
+  // (studio/scripts/seat_views.py writes seats/index.json). Otherwise, the middle.
+  let seatIds = $state<string[]>([]);
+  let fromSeat = $state(true);
+  $effect(() => {
+    const url = `/studio/${room}/seats/index.json`;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : { seats: [] }))
+      .then((data) => (seatIds = (data.seats ?? []).map((seat: { id: string }) => seat.id)))
+      .catch(() => (seatIds = []));
+  });
+  let mySeat = $derived(me?.spotId && seatIds.includes(me.spotId) ? me.spotId : null);
+  let roomBase = $derived(mySeat && fromSeat ? `/studio/${room}/seats/${mySeat}` : `/studio/${room}`);
+
+  /** The canvas on your table: yours this round, or the one you chose to watch. */
+  let viewId = $derived(party.myCanvasId ?? (game?.phase === 'painting' || game?.phase === 'passing' ? watchedId ?? game.pieces[0]?.id ?? null : null));
+  let viewPiece = $derived(party.piece(viewId));
+  let canvasKey = $derived(viewId ?? 'lobby');
+  let canvasSize = $derived(viewPiece ?? CANVAS_SHAPES[me?.canvasShape ?? 'classic']);
+
+  // Watching a canvas that isn't in front of you: ask the server to follow it.
+  let following: string | null = null;
+  $effect(() => {
+    const target = party.myCanvasId ? null : viewId;
+    if (target === following) return;
+    following = target;
+    party.send({ type: 'watch', canvasId: target });
+  });
+
+  // When a canvas's history arrives (a new round, or something you started
+  // watching), rebuild it on the table with every turn's own layer.
+  let applied: object | null = null;
+  $effect(() => {
+    const current = table;
+    const history = viewId ? party.histories[viewId] : undefined;
+    const piece = viewPiece;
+    if (!current || !history || !piece || history === applied) return;
+    applied = history;
+    void current.loadHistory(piece.id, piece.width, piece.height, history.strokes, history.complete, history.baseUrl);
+  });
+
   $effect(() => {
     const current = table;
     if (!current) return;
-    // untrack: only a new table should rebuild the canvas, never a state update.
-    untrack(() => {
-      const waiting = party.attachCanvas((stroke) => current.applyRemote(stroke));
-      void current.loadHistory(waiting.history, waiting.complete, party.state?.snapshotUrl ?? null);
-    });
-    party.onSnapshotRequest = (round) => party.send({ type: 'snapshot', round, pngDataUrl: current.snapshot() });
-    return () => party.detachCanvas();
+    party.onStroke = (stroke) => current.applyRemote(stroke);
+    party.onSnapshotRequest = (round, canvasId) => {
+      if (canvasId === viewId) party.send({ type: 'snapshot', round, canvasId, pngDataUrl: current.snapshot() });
+    };
   });
 
   // Join the video call once the party tells us who we are. The member id
   // becomes the LiveKit identity, so tiles line up with guests.
   let callJoined = false;
   $effect(() => {
-    const me = party.me;
-    const partyId = party.state?.partyId;
+    const partyId = game?.partyId;
     if (!me || !partyId || callJoined) return;
     callJoined = true;
     void call.join(partyId, me.name, me.id, me.presence);
@@ -64,41 +112,112 @@
     onleave?.();
   }
 
-  let game = $derived(party.state);
-  let painterName = $derived(party.painter?.name ?? '');
-  let isHost = $derived(party.me?.isHost ?? false);
-  let timerLabel = $derived(party.isMyTurn ? 'Your turn' : painterName ? `${painterName}'s turn` : 'Waiting');
+  // Opening the notepad clears the unread count; the connection needs to know
+  // whether it is open so it only counts (and announces) notes you missed.
+  $effect(() => {
+    party.chatOpen = notesOpen;
+    if (notesOpen) party.unreadChat = 0;
+  });
+
+  function whose(piece: Piece | null) {
+    if (!piece) return 'your canvas';
+    return piece.ownerId === party.youId ? 'your own canvas' : `${piece.ownerName}'s canvas`;
+  }
+
+  let waitingCount = $derived(party.stillPainting.length);
+  let timerLabel = $derived(
+    game?.overtime ? (party.isPainting ? "Time's up · finish & pass" : "Time's up")
+      : party.isPainting ? 'Painting' : party.myCanvasId ? 'Passed' : 'Watching'
+  );
   let canvasLabel = $derived(
-    game?.phase === 'painting' ? `Shared canvas, round ${game.round} of ${game.totalRounds}. ${party.isMyTurn ? 'Your turn.' : painterName + ' is painting.'}`
-      : game?.phase === 'reveal' ? 'The finished group painting.' : 'Shared canvas.'
+    !game || game.phase === 'lobby' ? `Your canvas, ${CANVAS_SHAPES[me?.canvasShape ?? 'classic'].name.toLowerCase()}. The game hasn't started.`
+      : game.phase === 'reveal' ? 'All the canvases are finished.'
+      : `Round ${game.round} of ${game.totalRounds}: ${whose(viewPiece)}.`
   );
   let waitingNote = $derived(
     !game ? 'Connecting…'
-      : game.phase === 'lobby' ? (isHost ? 'Choose a canvas, then start the game when everyone is here.' : 'Waiting for the host to start.')
-      : game.phase === 'passing' ? 'Passing the canvas…'
+      : game.phase === 'lobby' ? (isHost ? 'Pick your seat in the room and your canvas shape, then start when everyone is here.' : 'Pick your seat in the room and your canvas shape. The host starts the game.')
+      : game.phase === 'passing' ? 'Passing the canvases…'
       : game.phase === 'reveal' ? 'All rounds done.'
-      : `Watching ${painterName || 'the painter'} paint.`
+      : me?.watching ? `You joined after the start, so you're watching ${whose(viewPiece)}.`
+      : party.myCanvasId && !party.isPainting ? `Passed. Waiting for ${waitingCount} ${waitingCount === 1 ? 'artist' : 'artists'} to finish.`
+      : game.overtime ? "Time's up. Finish your stroke, then pass."
+      : 'Painting.'
   );
 
-  /** The finished piece first, then how it grew round by round. */
-  let artwork = $derived.by((): GalleryPiece[] => {
-    const rounds = game?.rounds ?? [];
-    if (!rounds.length || !game) return [];
-    const aspect = game.canvas.width / game.canvas.height;
-    const last = rounds[rounds.length - 1]!;
-    return [
-      { seed: `final-${last.round}`, aspect, url: last.url, caption: 'The finished piece — everyone' },
-      ...rounds.slice(0, -1).map((r) => ({ seed: `round-${r.round}`, aspect, url: r.url, caption: `After round ${r.round} — ${r.painterName}` }))
-    ];
-  });
+  /** Painter id → name, including people who have since left. */
+  let names = $derived(Object.fromEntries([
+    ...(game?.pieces ?? []).flatMap((piece) => piece.turns.map((turn) => [turn.painterId, turn.painterName])),
+    ...(game?.members ?? []).map((m) => [m.id, m.name])
+  ]));
 
-  function chooseCanvas(shape: CanvasShape) {
-    party.send({ type: 'setCanvas', shape });
+  function finalUrl(piece: Piece) {
+    return [...piece.turns].reverse().find((turn) => turn.url)?.url ?? null;
+  }
+  function credit(piece: Piece) {
+    return creditLine(piece.ownerName, piece.turns.map((turn) => turn.painterName));
+  }
+  /** Your piece first, then everyone else's around the ring. */
+  let revealPieces = $derived([...(game?.pieces ?? [])].sort((a, b) => Number(b.ownerId === party.youId) - Number(a.ownerId === party.youId)));
+
+  /** Everyone's finished piece, for the gallery room. */
+  let artwork = $derived.by((): GalleryPiece[] =>
+    (game?.pieces ?? []).flatMap((piece) => {
+      const url = finalUrl(piece);
+      return url ? [{ seed: piece.id, aspect: piece.width / piece.height, url, caption: credit(piece) }] : [];
+    })
+  );
+
+  function openDetail(piece: Piece) {
+    detailId = piece.id;
+    party.send({ type: 'watch', canvasId: piece.id }); // its strokes, for the time-lapse
+  }
+
+  /** Lobby: the host nudges someone one place earlier or later (makes the order "custom"). */
+  function move(id: string, step: -1 | 1) {
+    if (!game) return;
+    const order = moveInOrder(game.order, id, step);
+    if (order === game.order) return;
+    party.send({ type: 'setOrder', order });
+    party.announcement = `${nameOf(id)} is now number ${order.indexOf(id) + 1} of ${order.length}.`;
+  }
+
+  /** Pass: finish any stroke first so its last stamps arrive before the pass. */
+  function pass() {
+    table?.finishStroke();
+    party.send({ type: 'passNow' });
+  }
+
+  /** Move focus into a dialog when it opens, so keyboard and screen-reader users land in it. */
+  function focusOnOpen(node: HTMLElement) {
+    node.focus();
+  }
+
+  // The invite is just this party's address. Copy it, or select it by hand.
+  let inviteUrl = $derived(game ? `${location.origin}${location.pathname}?party=${encodeURIComponent(game.partyId)}` : '');
+  let inviteStatus = $state('');
+  async function copyInvite() {
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      inviteStatus = 'Invite link copied. Paste it to your friends.';
+    } catch {
+      inviteStatus = 'Copying was blocked. Select the link and copy it yourself.';
+    }
+    party.announcement = inviteStatus;
+  }
+
+  function nameOf(id: string) {
+    return names[id] ?? 'Guest';
+  }
+  function seatOf(id: string) {
+    return game?.members.find((m) => m.id === id)?.spotId ? '' : ' · no seat yet';
   }
   function closeMenu() {
     document.getElementById('table-actions')?.hidePopover();
   }
+  const ORDER_LABELS: Record<OrderMode, string> = { seats: 'By seat, clockwise', random: 'Random circle', custom: 'Custom' };
 </script>
+
 
 <div class="studio">
   {#if view === 'gallery' && game}
@@ -106,34 +225,45 @@
     {#await import('./room/Gallery.svelte')}
       <p class="loading">Hanging the artwork…</p>
     {:then { default: Gallery }}
-      <Gallery room={ROOM} {artwork} onback={() => { view = 'paint'; revealOpen = true; }} />
+      <Gallery {room} {artwork} onback={() => { view = 'paint'; revealOpen = true; }}
+        partyMode={game.galleryMode} onpartymode={isHost ? (mode) => party.send({ type: 'setGalleryMode', mode }) : undefined} />
     {/await}
   {:else if view === 'room'}
     <!-- Loaded only when opened: the 360° viewer (three.js) is the heaviest part of the app. -->
     {#await import('./room/RoomView.svelte')}
       <p class="loading">Opening the room…</p>
     {:then { default: RoomView }}
-      <RoomView
-        panorama={ROOM_PANORAMA}
-        spotsUrl={ROOM_SPOTS}
-        members={game?.members ?? []}
-        youId={party.youId}
-        videos={call.videos}
-        onTakeSpot={(spotId) => party.send({ type: 'takeSpot', spotId })}
-      />
+      {#if mySeat}
+        <div class="viewpoint" role="group" aria-label="Where you look from">
+          <button type="button" aria-pressed={fromSeat} onclick={() => (fromSeat = true)}>From your seat</button>
+          <button type="button" aria-pressed={!fromSeat} onclick={() => (fromSeat = false)}>From the middle of the room</button>
+        </div>
+      {/if}
+      <!-- A new viewpoint is a new panorama: rebuild the viewer for it. -->
+      {#key roomBase}
+        <RoomView
+          panorama={`${roomBase}/panorama.webp`}
+          spotsUrl={`${roomBase}/spots.json`}
+          members={game?.members ?? []}
+          youId={party.youId}
+          videos={call.videos}
+          onTakeSpot={(spotId) => party.send({ type: 'takeSpot', spotId })}
+        />
+      {/key}
     {/await}
   {/if}
 
   <!-- The table stays mounted in the room and gallery too, so the canvas keeps
-       receiving strokes; it is just hidden. -->
+       its layers; it is just hidden. -->
   {#if game && party.youId}
     <div class="table" hidden={view !== 'paint'}>
       <PaintingTable
         bind:this={table}
-        canDraw={party.isMyTurn}
+        canDraw={party.isPainting}
         painterId={party.youId}
         round={game.round}
-        canvasSize={game.canvas}
+        {canvasKey}
+        {canvasSize}
         label={canvasLabel}
         {waitingNote}
         onstroke={(stroke) => party.send({ type: 'stroke', stroke })}
@@ -141,40 +271,115 @@
         {#snippet partyBar()}
           <div class="party-bar">
             <p class="tape">{game.partyId}</p>
-            {#if game.phase === 'lobby' && isHost}
-              <label class="shape">Canvas
-                <select value={game.canvas.shape} onchange={(event) => chooseCanvas(event.currentTarget.value as CanvasShape)}>
+            {#if game.phase === 'lobby'}
+              <label class="inline">Your canvas
+                <select value={me?.canvasShape ?? 'classic'} onchange={(event) => party.send({ type: 'setMyCanvas', shape: event.currentTarget.value as CanvasShape })}>
                   {#each Object.entries(CANVAS_SHAPES) as [id, shape] (id)}<option value={id}>{shape.name}</option>{/each}
                 </select>
               </label>
-              <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
-            {:else if game.phase === 'lobby'}
-              <p class="note">{CANVAS_SHAPES[game.canvas.shape].name} canvas · waiting for the host</p>
+              {#if isHost}
+                <button type="button" aria-pressed={setupOpen} onclick={() => (setupOpen = !setupOpen)}>Party setup</button>
+                <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
+              {:else}
+                <p class="note">{turnLengthText(game.turnSeconds)} turns · waiting for the host</p>
+              {/if}
             {/if}
             {#if game.phase === 'painting' || game.phase === 'passing'}
-              <p class="round">Round <strong>{game.round}</strong> of {game.totalRounds}</p>
+              <p class="round">Round <strong>{game.round}</strong> of {game.totalRounds}<span class="whose">{whose(viewPiece)}</span></p>
               <TimerDial secondsLeft={game.secondsLeft} totalSeconds={game.turnSeconds} label={timerLabel} />
+              {#if me?.watching && game.pieces.length}
+                <label class="inline">Watching
+                  <select value={viewId} onchange={(event) => (watchedId = event.currentTarget.value)}>
+                    {#each game.pieces as piece (piece.id)}<option value={piece.id}>{piece.ownerName}'s canvas</option>{/each}
+                  </select>
+                </label>
+              {/if}
             {/if}
-            {#if game.phase === 'painting' && (party.isMyTurn || isHost)}
-              <button type="button" class="primary" onclick={() => party.send({ type: 'passNow' })}>{party.isMyTurn ? 'Pass now' : 'Pass for them'}</button>
+            {#if game.phase === 'painting' && party.isPainting}
+              <button type="button" class="primary" class:nudge={game.overtime} onclick={pass}>Pass the canvas</button>
+            {:else if game.phase === 'painting' && party.myCanvasId}
+              <p class="note" role="status">Waiting for {waitingCount} {waitingCount === 1 ? 'artist' : 'artists'}</p>
+            {/if}
+            {#if game.phase === 'painting' && isHost && waitingCount > 0 && (game.overtime || !party.isPainting)}
+              <button type="button" onclick={() => party.send({ type: 'passEveryone' })}>Pass everyone on</button>
             {/if}
             {#if game.phase === 'reveal'}
-              <button type="button" class="primary" onclick={() => (revealOpen = true)}>See the finished piece</button>
+              <button type="button" class="primary" onclick={() => (revealOpen = true)}>See the finished pieces</button>
             {/if}
+            <button type="button" aria-pressed={radioOpen} onclick={() => (radioOpen = !radioOpen)}>
+              Radio{#if game.radio?.playing}<span class="badge" aria-hidden="true">on</span><span class="sr-only">, playing</span>{/if}
+            </button>
+            <button type="button" aria-pressed={notesOpen} onclick={() => (notesOpen = !notesOpen)}>
+              Notes{#if party.unreadChat}<span class="badge">{party.unreadChat}<span class="sr-only"> new</span></span>{/if}
+            </button>
           </div>
         {/snippet}
         {#snippet menu()}
           <button type="button" aria-pressed={guestsOpen} onclick={() => { guestsOpen = !guestsOpen; closeMenu(); }}>{guestsOpen ? 'Hide guests' : 'Show guests'}</button>
-          <button type="button" onclick={() => { view = 'room'; closeMenu(); }}>Go to the room</button>
+          <button type="button" onclick={() => { void copyInvite(); closeMenu(); }}>Copy invite link</button>
+          <button type="button" onclick={() => { view = 'room'; closeMenu(); }}>{game.phase === 'lobby' ? 'Pick a seat in the room' : 'Go to the room'}</button>
           {#if artwork.length}<button type="button" onclick={() => { view = 'gallery'; closeMenu(); }}>Open the gallery</button>{/if}
           <button type="button" onclick={leave}>Leave the party</button>
         {/snippet}
       </PaintingTable>
 
+      {#if game.phase === 'lobby' && isHost && setupOpen}
+        <!-- Host tools: everything that has to be settled before the first round. -->
+        <StudioPanel title="Party setup" label="party setup" dock="palette" flow={innerWidth <= 1100} onclose={() => (setupOpen = false)}>
+          <div class="setup">
+            <label>Turn length
+              <select value={game.turnSeconds} onchange={(event) => party.send({ type: 'setTurnSeconds', seconds: Number(event.currentTarget.value) })}>
+                {#if !(TURN_LENGTHS as readonly number[]).includes(game.turnSeconds)}<option value={game.turnSeconds}>{turnLengthText(game.turnSeconds)}</option>{/if}
+                {#each TURN_LENGTHS as seconds (seconds)}<option value={seconds}>{turnLengthText(seconds)}</option>{/each}
+              </select>
+            </label>
+            <p class="hint">
+              {game.order.length} {game.order.length === 1 ? 'artist' : 'artists'} → {roundsFor(game.order.length)} rounds. Everyone paints every canvas; each owner paints the first and last layer.
+              When the timer reaches zero, painters finish their stroke and pass. Nothing is cut off.
+            </p>
+            <fieldset class="modes">
+              <legend>Passing order</legend>
+              {#each ['seats', 'random', 'custom'] as const as mode (mode)}
+                <label><input type="radio" name="order-mode" checked={game.orderMode === mode} disabled={mode === 'custom' && game.orderMode !== 'custom'} onchange={() => party.send({ type: 'setOrderMode', mode })} /> {ORDER_LABELS[mode]}</label>
+              {/each}
+            </fieldset>
+            <p class="hint">Canvases pass to the next person on the list (to your left around the room). The last person passes back to the first.{game.orderMode === 'random' ? ' The circle is shuffled once, so everyone still paints every canvas.' : ''} Moving someone makes the order custom.</p>
+            <ol class="order" aria-label="Passing order">
+              {#each game.order as id, index (id)}
+                <li>
+                  <span class="place" aria-hidden="true">{index + 1}</span>
+                  <span class="name">{nameOf(id)}{id === party.youId ? ' (you)' : ''}<small>{seatOf(id)}</small></span>
+                  <button type="button" aria-label={`Move ${nameOf(id)} earlier`} disabled={index === 0} onclick={() => move(id, -1)}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+                  </button>
+                  <button type="button" aria-label={`Move ${nameOf(id)} later`} disabled={index === game.order.length - 1} onclick={() => move(id, 1)}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
+                </li>
+              {/each}
+            </ol>
+            <label>Invite link
+              <input type="text" readonly value={inviteUrl} onfocus={(event) => event.currentTarget.select()} />
+            </label>
+            <button type="button" onclick={copyInvite}>Copy invite link</button>
+            {#if inviteStatus}<p class="hint" role="status">{inviteStatus}</p>{/if}
+            <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
+          </div>
+        </StudioPanel>
+      {/if}
+
+      {#if notesOpen}
+        <StudioPanel title="Notepad" label="party notes" dock="notes" flow={innerWidth <= 1100} onclose={() => (notesOpen = false)}>
+          <ChatNotepad {party} />
+        </StudioPanel>
+      {/if}
+
+      <PartyRadio {party} open={radioOpen} compact={innerWidth <= 1100} onclose={() => (radioOpen = false)} />
+
       {#if guestsOpen}
         <StudioPanel title="Around the table" label="guests" dock="guests" flow={innerWidth <= 1100} onclose={() => (guestsOpen = false)}>
           <ul class="guests">
-            {#each game.order as id (id)}
+            {#each [...game.order, ...game.members.filter((m) => !game.order.includes(m.id)).map((m) => m.id)] as id (id)}
               {@const member = game.members.find((m) => m.id === id)}
               {#if member}
                 <li>
@@ -182,7 +387,7 @@
                     name={member.name}
                     you={member.id === party.youId}
                     host={member.isHost}
-                    painting={member.id === game.painterId}
+                    painting={game.phase === 'painting' && !!game.assignments[member.id] && !game.passed.includes(member.id)}
                     track={member.id === party.youId
                       ? call.camOn && call.status === 'in-call'
                         ? call.localVideo
@@ -208,24 +413,49 @@
   {#if game?.phase === 'passing'}
     <div class="pass" role="alertdialog" aria-labelledby="pass-title">
       <div class="card">
-        <p class="hand">Time's up!</p>
-        <h2 id="pass-title">Pass the canvas</h2>
+        <p class="hand">Round {game.round} done!</p>
+        <h2 id="pass-title">{game.round >= game.totalRounds ? 'Bringing the canvases home' : 'Pass to your left'}</h2>
       </div>
     </div>
   {/if}
 
   {#if game?.phase === 'reveal' && revealOpen && view === 'paint'}
-    <div class="pass" role="dialog" aria-labelledby="reveal-title">
-      <div class="card">
-        <h2 id="reveal-title">You made this together.</h2>
-        {#if game.snapshotUrl}
-          <img src={game.snapshotUrl} alt="The finished group painting" />
+    {@const detail = party.piece(detailId)}
+    <div class="pass" role="dialog" aria-modal="true" aria-labelledby="reveal-title">
+      <div class="card reveal" tabindex="-1" use:focusOnOpen>
+        {#if detail}
+          {@const history = party.histories[detail.id]}
+          <button type="button" class="plain back" onclick={() => (detailId = null)}>All the pieces</button>
+          <h2 id="reveal-title">{detail.ownerId === party.youId ? 'Your piece' : `${detail.ownerName}'s piece`}</h2>
+          <p class="credit">{credit(detail)}</p>
+          {#if history?.complete && history.strokes.length}
+            {#key history}
+              <TimeLapse strokes={history.strokes} width={detail.width} height={detail.height} {names} turns={detail.turns} />
+            {/key}
+          {:else if finalUrl(detail)}
+            <img src={finalUrl(detail)} alt={`Finished piece: ${credit(detail)}`} />
+          {:else}
+            <p>Loading the piece…</p>
+          {/if}
+          <div class="reveal-actions">
+            {#if finalUrl(detail)}<a href={finalUrl(detail)} download={`pass-the-canvas-${detail.ownerName}.png`}>Download full size</a>{/if}
+          </div>
         {:else}
-          <p>Saving the finished piece…</p>
+          <h2 id="reveal-title">You made {revealPieces.length === 1 ? 'this' : 'these'} together.</h2>
+          <ul class="pieces">
+            {#each revealPieces as piece (piece.id)}
+              <li>
+                <button type="button" class="piece" onclick={() => openDetail(piece)} aria-label={`Open ${piece.ownerName}'s piece: ${credit(piece)}`}>
+                  {#if finalUrl(piece)}<img src={finalUrl(piece)} alt="" />{:else}<span class="saving">Saving…</span>{/if}
+                  <span class="owner">{piece.ownerId === party.youId ? 'Yours' : piece.ownerName}</span>
+                </button>
+                <p class="credit">{credit(piece)}</p>
+              </li>
+            {/each}
+          </ul>
         {/if}
         <div class="reveal-actions">
-          {#if artwork.length}<button type="button" class="dark" onclick={() => (view = 'gallery')}>Hang it in the gallery</button>{/if}
-          {#if game.snapshotUrl}<a href={game.snapshotUrl} download="pass-the-canvas.png">Download full size</a>{/if}
+          {#if artwork.length}<button type="button" class="dark" onclick={() => (view = 'gallery')}>Hang them in the gallery</button>{/if}
           <button type="button" class="plain" onclick={() => (revealOpen = false)}>Back to the table</button>
         </div>
       </div>
@@ -235,6 +465,7 @@
   <div class="sr-only" aria-live="polite">{party.announcement}</div>
 </div>
 
+
 <style lang="scss">
   @use '../styles/tokens' as *;
   @use '../styles/mixins' as *;
@@ -242,6 +473,34 @@
   .studio {
     @include walnut-table;
     min-height: 100dvh;
+  }
+
+  .viewpoint {
+    position: fixed;
+    top: 0.75rem;
+    left: 50%;
+    translate: -50% 0;
+    z-index: 20;
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: $radius-pill;
+    background: rgb(24 16 11 / 0.85);
+
+    button {
+      min-height: $tap-min;
+      padding: 0 1rem;
+      border: 0;
+      border-radius: $radius-pill;
+      background: transparent;
+      color: $cream;
+
+      &[aria-pressed='true'] {
+        background: $cream;
+        color: $walnut-900;
+        font-weight: 700;
+      }
+    }
   }
 
   .table[hidden] {
@@ -258,6 +517,34 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem 1rem;
+
+    > button:not(.primary) {
+      min-height: $tap-min;
+      padding: 0 0.875rem;
+      border: 1px solid #9d8c67;
+      border-radius: 4px;
+      background: #1c150fe8;
+      color: $cream;
+
+      &[aria-pressed='true'] {
+        background: #e8ddbc;
+        color: #21160d;
+      }
+    }
+
+    .badge {
+      display: inline-grid;
+      place-items: center;
+      min-width: 1.375rem;
+      height: 1.375rem;
+      margin-left: 0.375rem;
+      padding: 0 0.25rem;
+      border-radius: 999px;
+      background: $cadmium-orange;
+      color: #21160d;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
   }
 
   .tape {
@@ -276,12 +563,6 @@
     color: $cream-muted;
   }
 
-  .shape {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-  }
 
   .primary {
     min-height: $tap-min;
@@ -294,6 +575,112 @@
   }
 
   // A row of small tiles across the top-right, above the brush rail.
+  .setup {
+    display: grid;
+    gap: 0.75rem;
+
+    label {
+      display: grid;
+      gap: 0.25rem;
+      font-size: 0.875rem;
+      font-weight: 700;
+    }
+    select {
+      min-height: $tap-min;
+      font: inherit;
+      font-weight: 400;
+      color: $cream;
+      background: #1c150f;
+      border: 1px solid #9d8c67;
+      border-radius: 4px;
+      padding: 0 0.5rem;
+    }
+    input {
+      min-height: $tap-min;
+      padding: 0 0.5rem;
+      font: inherit;
+      font-weight: 400;
+      color: $cream;
+      background: #17100c;
+      border: 1px solid #9d8c67;
+      border-radius: 4px;
+    }
+    > button:not(.primary) {
+      min-height: $tap-min;
+      border: 1px solid #9d8c67;
+      border-radius: 4px;
+      background: transparent;
+      color: $cream;
+    }
+    .hint {
+      margin: 0;
+      font-size: 0.8125rem;
+      color: $cream-muted;
+    }
+  }
+
+  .order {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.25rem;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .place {
+      width: 1.5rem;
+      font-weight: 700;
+      color: $cream-muted;
+    }
+    .name {
+      flex: 1;
+
+      small {
+        color: $cream-muted;
+      }
+    }
+    button {
+      width: $tap-min;
+      min-height: $tap-min;
+      display: grid;
+      place-items: center;
+      border: 1px solid #84714e;
+      border-radius: 4px;
+      background: transparent;
+      color: $cream;
+
+      &:disabled {
+        opacity: 0.35;
+      }
+    }
+    svg {
+      width: 1.25rem;
+      height: 1.25rem;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+    }
+  }
+
+  // At zero the pass button gently draws the eye; no alarm, no motion if reduced.
+  .nudge {
+    box-shadow: 0 0 0 3px $cadmium-orange;
+
+    @media (prefers-reduced-motion: no-preference) {
+      animation: nudge 2.4s ease-in-out infinite;
+    }
+  }
+
+  @keyframes nudge {
+    50% {
+      box-shadow: 0 0 0 6px rgb(232 116 42 / 0.45);
+    }
+  }
+
   .guests {
     list-style: none;
     margin: 0;
@@ -321,6 +708,14 @@
 
     .card {
       max-width: 32rem;
+
+      &.reveal {
+        max-width: min(46rem, 100%);
+        transform: none;
+      }
+      &:focus {
+        outline: none;
+      }
       max-height: calc(100dvh - 2.5rem);
       overflow: auto;
       padding: 1.75rem 2rem;
@@ -349,6 +744,118 @@
       font-weight: 700;
     }
   }
+
+  .credit {
+    margin: 0.25rem 0 0.75rem;
+    font-size: 0.9375rem;
+  }
+
+  .back {
+    min-height: $tap-min;
+    margin-bottom: 0.5rem;
+    padding: 0 0.5rem;
+    border: 0;
+    background: transparent;
+    color: $walnut-900;
+    text-decoration: underline;
+  }
+
+  .pieces {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: 1rem;
+
+    .credit {
+      font-size: 0.8125rem;
+    }
+  }
+
+  .piece {
+    width: 100%;
+    display: grid;
+    gap: 0.375rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: $walnut-900;
+    text-align: left;
+    cursor: pointer;
+
+    img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: contain;
+      margin: 0;
+      background: #e1dfda;
+      border: 8px solid #6b4426;
+    }
+    .saving {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 4 / 3;
+      background: #e1dfda;
+    }
+    .owner {
+      font-weight: 700;
+    }
+    &:focus-visible {
+      outline: 3px solid $focus;
+      outline-offset: 2px;
+    }
+  }
+
+  .inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+
+    select {
+      min-height: $tap-min;
+      font: inherit;
+      color: $cream;
+      background: #1c150f;
+      border: 1px solid #9d8c67;
+      border-radius: 4px;
+    }
+  }
+
+  .whose {
+    display: block;
+    font-size: 0.8125rem;
+    color: $cream-muted;
+  }
+
+  .modes {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+
+    legend {
+      font-weight: 700;
+      font-size: 0.875rem;
+      margin-bottom: 0.25rem;
+    }
+    label {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.5rem;
+      min-height: $tap-min;
+      font-weight: 400;
+    }
+    input {
+      width: 1.125rem;
+      height: 1.125rem;
+      accent-color: $cadmium-orange;
+    }
+  }
+
 
   .reveal-actions {
     display: flex;

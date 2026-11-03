@@ -22,7 +22,7 @@ const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.
 // Party ids and file names are restricted to safe characters so nobody can
 // reach files outside the snapshot folder.
 const SAFE_ID = /^[a-z0-9-]{3,40}$/;
-const SAFE_FILE = /^round-\d{1,3}\.png$/;
+const SAFE_FILE = /^c\d{1,2}-r\d{1,3}\.png$/;
 const accountHandler = configuredAccountHandler();
 const communityHandler = configuredCommunityHandler();
 configuredAccountMail();

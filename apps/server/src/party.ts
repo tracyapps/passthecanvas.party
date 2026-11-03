@@ -1,29 +1,50 @@
-// One Party = one game room. It owns the members, the turn order and the timer.
-// The server is the source of truth: browsers ask, the party decides.
+// One Party = one game room. It owns the members, the passing ring, the
+// rounds and the timer. The server is the source of truth: browsers ask, the
+// party decides.
+//
+// The game (see packages/shared/src/ring.ts): everyone starts their own
+// canvas. Each round everyone paints at the same time on the canvas in front
+// of them; when everyone has passed, every canvas moves one seat clockwise.
+// N artists → N + 1 rounds, so each owner paints the first and last layer.
 
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { WebSocket } from 'ws';
 import {
+  CANVAS_ID,
   CANVAS_SHAPES,
+  canvasOwnerFor,
+  clampTurnSeconds,
+  contributionsFor,
   DEFAULT_CANVAS_SHAPE,
-  painterForRound,
+  GALLERY_MODES,
+  ORDER_MODES,
+  reorder,
+  roundsFor,
+  sanitizeSpots,
   sanitizeStroke,
+  seatRing,
+  shuffledRing,
   type ClientMessage,
   type Member,
   type PaintedStroke,
   type PartyState,
+  type Piece,
   type ServerMessage
 } from '@ptc/shared';
 
 export const SNAPSHOT_DIR = join(process.cwd(), 'data', 'snapshots');
+const STUDIO_DIR = fileURLToPath(new URL('../../web/public/studio', import.meta.url));
 const TURN_SECONDS = Number(process.env.TURN_SECONDS ?? 90);
-// Late joiners rebuild the painting from every accepted stroke. Past this many
-// stamps the party stops keeping history and late joiners get the latest
-// snapshot instead (a stamp is four numbers, so this is a few tens of MB).
-const MAX_HISTORY_STAMPS = 400_000;
+const DEFAULT_ROOM = 'cream-city';
+// Each canvas keeps its strokes so the next painter (and anyone watching) can
+// rebuild it with every turn's own layer. Past this many stamps a canvas stops
+// keeping history, and its latest saved image becomes a protected base.
+const MAX_CANVAS_STAMPS = 300_000;
 const MAX_SNAPSHOT_CHARS = 3_500_000; // about 2.5 MB of PNG
+const PASS_CARD_MS = 4000;
 
 const parties = new Map<string, Party>();
 
@@ -36,31 +57,56 @@ export function getParty(id: string): Party {
   return party;
 }
 
+interface CanvasHistory {
+  strokes: PaintedStroke[];
+  stamps: number;
+  complete: boolean;
+}
+
 class Party {
   private sockets = new Map<string, WebSocket>(); // memberId → socket
   private ticker: ReturnType<typeof setInterval> | null = null;
+  private passTimer: ReturnType<typeof setTimeout> | null = null;
   private state: PartyState;
-  /** Every accepted stroke, in order, for late joiners. Never video or audio. */
-  private history: PaintedStroke[] = [];
-  private historyStamps = 0;
-  private historyComplete = true;
+  /** Painting data per canvas. Never video or audio; dropped when the party ends. */
+  private histories = new Map<string, CanvasHistory>();
+  /** Who is following which canvas live (besides its painter). */
+  private watchers = new Map<string, string>();
+  /** Seat angles from the room's spots.json, for the clockwise ring. */
+  private yawOf: Record<string, number> = {};
 
   constructor(id: string) {
     this.state = {
       partyId: id,
+      room: DEFAULT_ROOM,
       members: [],
       order: [],
+      orderMode: 'seats',
       phase: 'lobby',
       round: 1,
       totalRounds: 0,
-      painterId: null,
+      assignments: {},
+      passed: [],
+      pieces: [],
       secondsLeft: TURN_SECONDS,
       turnSeconds: TURN_SECONDS,
-      canvas: { shape: DEFAULT_CANVAS_SHAPE, width: CANVAS_SHAPES[DEFAULT_CANVAS_SHAPE].width, height: CANVAS_SHAPES[DEFAULT_CANVAS_SHAPE].height },
-      snapshotUrl: null,
-      rounds: [],
+      overtime: false,
+      galleryMode: 'walls-then-lean',
       radio: null
     };
+    void this.loadSeats();
+  }
+
+  /** Read the room's seat angles once. Without them, the ring falls back to arrival order. */
+  private async loadSeats() {
+    try {
+      const file = sanitizeSpots(JSON.parse(await readFile(join(STUDIO_DIR, this.state.room, 'spots.json'), 'utf8')));
+      this.yawOf = Object.fromEntries((file?.spots ?? []).map((spot) => [spot.id, spot.yaw]));
+      this.refreshLobbyOrder();
+      this.broadcastState();
+    } catch {
+      this.yawOf = {};
+    }
   }
 
   /** A browser connected. It becomes a member once it sends `join`. */
@@ -95,23 +141,21 @@ class Party {
     const id = randomUUID();
     const name = String(rawName ?? '').trim().slice(0, 40) || 'Guest';
     const isHost = this.state.members.length === 0; // first one in hosts
-    this.state.members.push({ id, name, presence: presence === 'avatar' ? 'avatar' : 'camera', isHost, spotId: null });
-    this.state.order.push(id);
+    // Arriving after the start means watching this party: the ring is fixed.
+    const watching = this.state.phase !== 'lobby';
+    this.state.members.push({ id, name, presence: presence === 'avatar' ? 'avatar' : 'camera', isHost, spotId: null, canvasShape: DEFAULT_CANVAS_SHAPE, watching });
     this.sockets.set(id, ws);
+    this.refreshLobbyOrder();
 
     this.send(ws, { type: 'welcome', youId: id, state: this.state });
-    if (this.history.length || !this.historyComplete) {
-      this.send(ws, { type: 'history', strokes: this.historyComplete ? this.history : [], complete: this.historyComplete });
-    }
     this.broadcastState();
     return id;
   }
 
   private removeMember(id: string) {
-    const wasPainter = this.state.painterId === id;
     this.sockets.delete(id);
+    this.watchers.delete(id);
     this.state.members = this.state.members.filter((m) => m.id !== id);
-    this.state.order = this.state.order.filter((m) => m !== id);
 
     // Hand the host role on if the host left.
     const first = this.state.members[0];
@@ -119,15 +163,39 @@ class Party {
 
     if (this.state.members.length === 0) {
       this.stopTimer();
+      if (this.passTimer) clearTimeout(this.passTimer);
       parties.delete(this.state.partyId);
       return;
     }
-    if (wasPainter && this.state.phase === 'painting') this.nextTurn();
-    else this.broadcastState();
+    if (this.state.phase === 'lobby') {
+      this.refreshLobbyOrder();
+    } else if (this.state.phase === 'painting' && this.everyonePassed()) {
+      // Someone left mid-round: their canvas waits this round out.
+      this.endRound();
+      return;
+    }
+    this.broadcastState();
   }
 
   private member(id: string) {
     return this.state.members.find((m) => m.id === id);
+  }
+
+  private present(id: string) {
+    return this.sockets.has(id);
+  }
+
+  /** Lobby only: keep the ring matching the people (and seats) in the room. */
+  private refreshLobbyOrder() {
+    if (this.state.phase !== 'lobby') return;
+    const artists = this.state.members.filter((m) => !m.watching).map((m) => m.id);
+    if (this.state.orderMode === 'seats') {
+      this.state.order = seatRing(artists, (id) => this.member(id)?.spotId ?? null, this.yawOf);
+      return;
+    }
+    // Random and custom rings keep their order; newcomers join the end, leavers drop out.
+    const kept = this.state.order.filter((id) => artists.includes(id));
+    this.state.order = [...kept, ...artists.filter((id) => !kept.includes(id))];
   }
 
   // ---------- messages ----------
@@ -135,48 +203,106 @@ class Party {
   private handle(fromId: string, msg: ClientMessage) {
     const from = this.member(fromId);
     if (!from) return;
+    const lobbyHost = from.isHost && this.state.phase === 'lobby';
 
     switch (msg.type) {
       case 'start': {
-        if (!from.isHost || this.state.phase !== 'lobby') return;
-        this.state.totalRounds = this.state.order.length;
-        this.state.round = 1;
-        this.startTurn();
+        if (!lobbyHost || this.state.order.length === 0) return;
+        this.startGame();
         return;
       }
 
-      case 'setCanvas': {
-        if (!from.isHost || this.state.phase !== 'lobby') return;
-        const shape = CANVAS_SHAPES[msg.shape];
-        if (!shape) return;
-        this.state.canvas = { shape: msg.shape, width: shape.width, height: shape.height };
+      case 'setMyCanvas': {
+        if (this.state.phase !== 'lobby' || !CANVAS_SHAPES[msg.shape]) return;
+        from.canvasShape = msg.shape;
+        this.broadcastState();
+        return;
+      }
+
+      case 'setTurnSeconds': {
+        if (!lobbyHost) return;
+        const seconds = clampTurnSeconds(msg.seconds);
+        if (seconds === null) return;
+        this.state.turnSeconds = seconds;
+        this.state.secondsLeft = seconds;
+        this.broadcastState();
+        return;
+      }
+
+      case 'setOrderMode': {
+        if (!lobbyHost || !ORDER_MODES.includes(msg.mode)) return;
+        this.state.orderMode = msg.mode;
+        if (msg.mode === 'random') this.state.order = shuffledRing(this.state.order);
+        this.refreshLobbyOrder();
+        this.broadcastState();
+        return;
+      }
+
+      case 'setOrder': {
+        if (!lobbyHost) return;
+        const order = reorder(this.state.order, msg.order);
+        if (!order) return;
+        this.state.order = order;
+        this.state.orderMode = 'custom';
+        this.broadcastState();
+        return;
+      }
+
+      case 'setGalleryMode': {
+        if (!from.isHost || !GALLERY_MODES.includes(msg.mode)) return;
+        this.state.galleryMode = msg.mode;
         this.broadcastState();
         return;
       }
 
       case 'stroke': {
-        // Only the current painter may paint. Everyone else's strokes are dropped.
-        if (this.state.phase !== 'painting' || fromId !== this.state.painterId) return;
-        const clean = sanitizeStroke(msg.stroke, this.state.canvas);
+        // Only onto the canvas in front of you, this round. During "passing"
+        // the end of a stroke already in flight is still accepted; the cutoff
+        // is the next round.
+        const open = this.state.phase === 'painting' || this.state.phase === 'passing';
+        const canvasId = this.state.assignments[fromId];
+        if (!open || !canvasId || msg.stroke?.canvasId !== canvasId) return;
+        const piece = this.piece(canvasId);
+        const clean = piece && sanitizeStroke(msg.stroke, piece);
         if (!clean) return;
         // The server, not the browser, says whose turn (and so whose layer) it is.
         const stroke: PaintedStroke = { ...clean, painterId: fromId, round: this.state.round };
         this.remember(stroke);
-        this.broadcast({ type: 'stroke', stroke }, fromId);
+        for (const [watcherId, watched] of this.watchers) {
+          if (watched === canvasId && watcherId !== fromId) this.sendTo(watcherId, { type: 'stroke', stroke });
+        }
         return;
       }
 
       case 'passNow': {
-        if (this.state.phase !== 'painting') return;
-        if (fromId !== this.state.painterId && !from.isHost) return;
-        this.endTurn();
+        if (this.state.phase !== 'painting' || !this.state.assignments[fromId] || this.state.passed.includes(fromId)) return;
+        this.state.passed = [...this.state.passed, fromId];
+        if (this.everyonePassed()) this.endRound();
+        else this.broadcastState();
+        return;
+      }
+
+      case 'passEveryone': {
+        if (!from.isHost || this.state.phase !== 'painting') return;
+        this.endRound();
         return;
       }
 
       case 'snapshot': {
-        // Only the painter of this round sends its snapshot.
-        if (fromId !== this.state.painterId || msg.round !== this.state.round) return;
-        void this.saveSnapshot(msg.round, msg.pngDataUrl, fromId);
+        // Only the painter of that canvas, for this round, when asked.
+        if (msg.round !== this.state.round || this.state.assignments[fromId] !== msg.canvasId) return;
+        void this.saveSnapshot(msg.round, msg.canvasId, msg.pngDataUrl);
+        return;
+      }
+
+      case 'watch': {
+        if (msg.canvasId === null) {
+          this.watchers.delete(fromId);
+          return;
+        }
+        if (typeof msg.canvasId !== 'string' || !this.piece(msg.canvasId)) return;
+        this.watchers.set(fromId, msg.canvasId);
+        this.sendHistory(fromId, msg.canvasId);
         return;
       }
 
@@ -184,6 +310,7 @@ class Party {
         const taken = this.state.members.some((m) => m.spotId === msg.spotId && m.id !== fromId);
         if (taken || typeof msg.spotId !== 'string' || msg.spotId.length > 60) return;
         from.spotId = msg.spotId;
+        this.refreshLobbyOrder();
         this.broadcastState();
         return;
       }
@@ -197,7 +324,10 @@ class Party {
 
       case 'setRadio': {
         if (!from.isHost) return;
-        if (!/^https:\/\//.test(msg.streamUrl)) return; // https streams only
+        // https streams only, and a real URL of sane length. We never fetch it:
+        // each guest's browser plays the station itself.
+        if (typeof msg.streamUrl !== 'string' || msg.streamUrl.length > 2000 || !/^https:\/\//.test(msg.streamUrl)) return;
+        try { new URL(msg.streamUrl); } catch { return; }
         this.state.radio = {
           stationName: String(msg.stationName).slice(0, 80),
           streamUrl: msg.streamUrl,
@@ -209,26 +339,61 @@ class Party {
     }
   }
 
-  private remember(stroke: PaintedStroke) {
-    if (!this.historyComplete) return;
-    this.historyStamps += stroke.stamps.length;
-    if (this.historyStamps > MAX_HISTORY_STAMPS) {
-      // Too big to replay: free it, and late joiners fall back to the snapshot.
-      this.history = [];
-      this.historyComplete = false;
-      return;
-    }
-    this.history.push(stroke);
+  // ---------- the game ----------
+
+  private piece(canvasId: string): Piece | undefined {
+    return this.state.pieces.find((p) => p.id === canvasId);
   }
 
-  // ---------- turns + timer ----------
+  /** Freeze the ring and give every artist their own canvas. */
+  private startGame() {
+    const ring = this.state.order.filter((id) => this.present(id));
+    const total = roundsFor(ring.length);
+    const nameOf = (id: string) => this.member(id)?.name ?? 'A guest';
+    this.state.order = ring;
+    this.state.totalRounds = total;
+    this.state.pieces = ring.map((ownerId, index) => {
+      const shape = this.member(ownerId)?.canvasShape ?? DEFAULT_CANVAS_SHAPE;
+      return {
+        id: `c${index + 1}`,
+        ownerId,
+        ownerName: nameOf(ownerId),
+        shape,
+        width: CANVAS_SHAPES[shape].width,
+        height: CANVAS_SHAPES[shape].height,
+        turns: contributionsFor(ring, ownerId, total).map((turn) => ({ ...turn, painterName: nameOf(turn.painterId), url: null }))
+      };
+    });
+    for (const piece of this.state.pieces) this.histories.set(piece.id, { strokes: [], stamps: 0, complete: true });
+    this.state.round = 1;
+    this.startRound();
+  }
 
-  private startTurn() {
+  private startRound() {
+    const ring = this.state.order;
     this.state.phase = 'painting';
-    this.state.painterId = painterForRound(this.state.order, this.state.round);
+    this.state.assignments = {};
+    for (const painterId of ring) {
+      if (!this.present(painterId)) continue; // away: that canvas waits this round
+      const ownerId = canvasOwnerFor(ring, painterId, this.state.round);
+      const piece = this.state.pieces.find((p) => p.ownerId === ownerId);
+      if (piece) this.state.assignments[painterId] = piece.id;
+    }
+    this.state.passed = [];
     this.state.secondsLeft = this.state.turnSeconds;
+    this.state.overtime = false;
     this.broadcastState();
-    this.startTimer();
+    // Each painter gets the canvas now in front of them, with every earlier layer.
+    for (const [painterId, canvasId] of Object.entries(this.state.assignments)) {
+      this.watchers.delete(painterId);
+      this.sendHistory(painterId, canvasId);
+    }
+    if (Object.keys(this.state.assignments).length === 0) this.endRound();
+    else this.startTimer();
+  }
+
+  private everyonePassed() {
+    return Object.keys(this.state.assignments).every((id) => !this.present(id) || this.state.passed.includes(id));
   }
 
   private startTimer() {
@@ -236,7 +401,13 @@ class Party {
     this.ticker = setInterval(() => {
       this.state.secondsLeft -= 1;
       this.broadcast({ type: 'timer', secondsLeft: this.state.secondsLeft });
-      if (this.state.secondsLeft <= 0) this.endTurn();
+      // Zero is a gentle cue: stop the clock and let everyone finish and pass.
+      if (this.state.secondsLeft <= 0) {
+        this.stopTimer();
+        this.state.secondsLeft = 0;
+        this.state.overtime = true;
+        this.broadcastState();
+      }
     }, 1000);
   }
 
@@ -245,42 +416,70 @@ class Party {
     this.ticker = null;
   }
 
-  /** Time's up (or passed early): ask the painter for a snapshot, then move on. */
-  private endTurn() {
+  /** Everyone passed (or the host moved it on): save each canvas, then pass them all. */
+  private endRound() {
+    if (this.state.phase !== 'painting') return;
     this.stopTimer();
     this.state.phase = 'passing';
-    const painterSocket = this.state.painterId ? this.sockets.get(this.state.painterId) : undefined;
-    if (painterSocket) this.send(painterSocket, { type: 'requestSnapshot', round: this.state.round });
+    this.state.overtime = false;
+    for (const [painterId, canvasId] of Object.entries(this.state.assignments)) {
+      this.sendTo(painterId, { type: 'requestSnapshot', round: this.state.round, canvasId });
+    }
     this.broadcastState();
-
     // Give everyone a moment to see the "pass the canvas" card.
-    setTimeout(() => this.nextTurn(), 4000);
+    this.passTimer = setTimeout(() => this.nextRound(), PASS_CARD_MS);
   }
 
-  private nextTurn() {
+  private nextRound() {
+    this.passTimer = null;
     if (this.state.round >= this.state.totalRounds) {
       this.state.phase = 'reveal';
-      this.state.painterId = null;
+      this.state.assignments = {};
+      this.state.passed = [];
       this.stopTimer();
       this.broadcastState();
       return;
     }
     this.state.round += 1;
-    this.startTurn();
+    this.startRound();
   }
 
-  private async saveSnapshot(round: number, dataUrl: string, painterId: string) {
-    if (typeof dataUrl !== 'string' || dataUrl.length > MAX_SNAPSHOT_CHARS) return;
+  // ---------- canvases ----------
+
+  private remember(stroke: PaintedStroke) {
+    const history = this.histories.get(stroke.canvasId);
+    if (!history || !history.complete) return;
+    history.stamps += stroke.stamps.length;
+    if (history.stamps > MAX_CANVAS_STAMPS) {
+      // Too big to replay: free it; the latest saved image becomes the base.
+      history.strokes = [];
+      history.complete = false;
+      return;
+    }
+    history.strokes.push(stroke);
+  }
+
+  private sendHistory(memberId: string, canvasId: string) {
+    const history = this.histories.get(canvasId);
+    const piece = this.piece(canvasId);
+    if (!history || !piece) return;
+    const baseUrl = [...piece.turns].reverse().find((turn) => turn.url)?.url ?? null;
+    this.sendTo(memberId, { type: 'canvasHistory', canvasId, strokes: history.complete ? history.strokes : [], complete: history.complete, baseUrl });
+  }
+
+  private async saveSnapshot(round: number, canvasId: string, dataUrl: string) {
+    if (typeof dataUrl !== 'string' || dataUrl.length > MAX_SNAPSHOT_CHARS || !CANVAS_ID.test(canvasId)) return;
     const prefix = 'data:image/png;base64,';
     if (!dataUrl.startsWith(prefix) || !Number.isInteger(round) || round < 1 || round > 999) return;
+    const piece = this.piece(canvasId);
+    const turn = piece?.turns.find((t) => t.round === round);
+    if (!piece || !turn) return;
 
     const dir = join(SNAPSHOT_DIR, this.state.partyId);
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, `round-${round}.png`), Buffer.from(dataUrl.slice(prefix.length), 'base64'));
-    const url = `/snapshots/${this.state.partyId}/round-${round}.png`;
-    const painterName = this.member(painterId)?.name ?? 'A guest';
-    this.state.snapshotUrl = url;
-    this.state.rounds = [...this.state.rounds.filter((r) => r.round !== round), { round, painterId, painterName, url }].sort((a, b) => a.round - b.round);
+    const file = `${canvasId}-r${round}.png`;
+    await writeFile(join(dir, file), Buffer.from(dataUrl.slice(prefix.length), 'base64'));
+    turn.url = `/snapshots/${this.state.partyId}/${file}`;
     this.broadcastState();
   }
 
@@ -288,6 +487,11 @@ class Party {
 
   private send(ws: WebSocket, msg: ServerMessage) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+  }
+
+  private sendTo(memberId: string, msg: ServerMessage) {
+    const ws = this.sockets.get(memberId);
+    if (ws) this.send(ws, msg);
   }
 
   private broadcast(msg: ServerMessage, exceptId?: string) {

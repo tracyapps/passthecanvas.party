@@ -47,14 +47,14 @@ The whole game loop, accessible, without the fancy room yet.
 
 **Gate: a real party with friends (4–8 people) plays a full game start to finish.**
 
-- [ ] Create party → share link → join with name + camera-or-avatar choice
-- [ ] Lobby: host sets turn length, order (drag to reorder, plus keyboard reorder), room
-- [ ] Turn loop: timer from the server, "Pass now", pass card, next painter
-- [ ] Watching mode for non-painters (live stroke replay)
-- [ ] Chat (notepad drawer)
-- [ ] Party radio: Radio Browser search, host picks, every client streams the station itself
-- [ ] Reveal screen: framed piece, who painted which round, download full-size PNG
-- [ ] Replay: time-lapse built from saved strokes
+- [ ] Create party → share link → join with name + camera-or-avatar choice *(built, incl. "Copy invite link"; tick after the real two-computer test)*
+- [x] Lobby: host sets turn length, order (move earlier/later buttons, keyboard + touch), canvas shape *(room choice waits for a second room; drag-to-reorder deliberately skipped)*
+- [x] Turn loop: timer from the server, "Pass now", pass card, next painter *(gentle timer: zero is a cue, painter passes; host can pass a stalled turn)*
+- [x] Watching mode for non-painters (live stroke replay; tools can be prepared while waiting)
+- [x] Chat (notepad drawer)
+- [x] Party radio: Radio Browser search, host picks, every client streams the station itself *(tube-radio skin still to come)*
+- [x] Reveal screen: framed piece, who painted which round, download full-size PNG
+- [x] Replay: time-lapse built from saved strokes *(client-side from the party's strokes; saved/scrubbable account playback stays in the parking lot)*
 - [ ] **Paint box**: perfect the media and how they interact (see the dedicated section below)
 
 ### The paint box (started Oct 2026)
@@ -74,13 +74,20 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] Owner testing round seven: local named views, visual-row movement, side columns, separate resizable canvas window, outside zoom/rotation controls, canvas-size preparation and emitted-stamp JSON export. Clerk + Railway Postgres account workspace boundary wired; hosted credentials/login/save evidence remains open.
 - [x] **Moved into the party (Nov 3, 2026):** the painting table replaces the Phase 1 painting screen; stamp-based strokes, per-turn owned layers, late-joiner history, host canvas shape, reveal → gallery with real pieces. `?demo=painting` and `?demo=art` removed; all future work happens in the party (AGENTS.md §8.5). See DECISIONS 2026-11-03.
 - [ ] Configure approved Clerk email + optional Discord and Railway Postgres; prove real account save/reload, account switching and cross-device behavior.
-- [ ] Implement approved one-canvas-per-guest passing ring with stable contributor ownership and durable accepted art events; shared types and both apps must change together.
-- [ ] **Redesign "Mix a color"** — owner brief received; prototype multi-color recipes, streaked loads and reusable trays in the delivery order above; existing toggle unchanged so far
-- [ ] Gentle timer handoff: zero cues finishing rather than forcing a pass; explicit server-authorized handoff, final-stroke flush and recovery tests (brief above; not implemented)
+- [x] One canvas per guest: passing ring (clockwise by seat, random circle, custom), N + 1 rounds with owners first and last, per-artist canvas shape, simultaneous rounds, per-canvas history, watchers, credits and per-piece time-lapse with artist chapters *(Nov 3, 2026)*
+- [ ] Party archive on Railway: every finished piece (images + strokes, no AV) behind a share link; artists' own pieces in their profile; owners can delete
+- [ ] Archive gallery: click a piece in the 360° room to open its detail (credits, time-lapse, jump to an artist)
+- [x] Radio plays for everyone on join (the join click allows audio); CSS tube radio panel on the table
+- [ ] Clicking the radio in the 360° room opens the radio panel (needs a `spot_radio` marker)
+- [x] Per-seat viewpoints: textures/props moved into Blender, script renders a panorama per seat plus each viewpoint's spots/art positions *(draft renders; finals after review — see studio/SEAT-VIEWS.md)*
+- [x] Studio grime pass in Blender: darker, worn ceiling wood; chips, paint drips and wear on the table and chairs *(first pass; tune after review)*
+- [ ] Avatar builder: paper-cutout character builder (human, monster, anime families), building on papr.world's drawing/picking tools; saved in the profile
+- [ ] **Redesign "Mix a color"** — owner brief received. *Done: recipe tray with parts, even vs streaked loads weighted by parts, saved mixes. Open: streak blend amount, finite paint/reload, named trays, pigment-model mixing.*
+- [x] Gentle timer handoff: zero cues finishing rather than forcing a pass; explicit server-authorized handoff, final-stroke flush *(optional chime not added)*
 - [ ] Configurable photo-tool widgets, named layouts and local popouts; paired devices and private account albums need separate identity/protocol/persistence design (brief above; not implemented)
 - [ ] Wet-on-wet diffusion (watercolor bleeding into wet areas)
-- [ ] Watercolor edge darkening (pigment pooling at wash edges)
-- [ ] Per-tool pressure curves; airbrush spraying while held still
+- [ ] Watercolor edge darkening (pigment pooling at wash edges) *(per-dab rim tried and rejected; needs a stroke-level pass — see DECISIONS 2026-11-03)*
+- [x] Per-tool pressure curves; airbrush spraying while held still *(mouse feel unchanged)*
 - [ ] Impasto feel for thick acrylic (light/shadow on ridges)
 
 ### Parking lot (owner ideas, not scheduled yet)
@@ -122,7 +129,7 @@ Replace placeholders with the real Blender studio.
   - [x] Gallery preview with host controls (`?demo=art`): hang mode + piece count; lean areas pack by dimensions (two tall canvases where one landscape fits)
   - [x] Export preview (PNG of the current view, art composited) + shareable 3D room link in the URL hash (`?gallery=cream-city#g=…`, no server storage)
   - [x] Hang real party artwork (snapshots per round) + nicknames under pieces *(reveal → "Hang it in the gallery"; names in an "On display" list, not yet painted under each piece)*
-  - [ ] Sync the host's hang mode to every guest's gallery
+  - [x] Sync the host's hang mode to every guest's gallery
   - [ ] Later, if parties use it: drag artwork between spots before saving; server-saved rooms; social-photo layout design
 
 ---

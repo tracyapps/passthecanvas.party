@@ -4,7 +4,7 @@ import { sanitizeStroke, strokeIsPossible, unavailability } from './paint';
 const canvas = { width: 1600, height: 1200 };
 const blue = { medium: 'acrylic' as const, name: 'Blue', colors: ['#1234ab'] };
 function stroke(extra: Record<string, unknown> = {}) {
-  return { id: 's1', tool: 'round', load: blue, wet: false, size: 24, intensity: 0.5, first: 0, done: false, stamps: [{ x: 10, y: 20, pressure: 0.5, angle: 0 }], ...extra };
+  return { id: 's1', canvasId: 'c1', tool: 'round', load: blue, wet: false, size: 24, intensity: 0.5, first: 0, done: false, stamps: [{ x: 10, y: 20, pressure: 0.5, angle: 0 }], ...extra };
 }
 
 describe('shared paint rules', () => {
@@ -30,5 +30,6 @@ describe('shared paint rules', () => {
     expect(sanitizeStroke(stroke({ load: { ...blue, colors: ['red'] } }), canvas)).toBeNull();
     expect(sanitizeStroke(stroke({ load: { ...blue, colors: Array(10).fill('#000000') } }), canvas)).toBeNull();
     expect(sanitizeStroke(stroke({ id: '' }), canvas)).toBeNull();
+    expect(sanitizeStroke(stroke({ canvasId: '../x' }), canvas)).toBeNull();
   });
 });

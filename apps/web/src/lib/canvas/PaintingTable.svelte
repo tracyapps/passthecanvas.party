@@ -14,6 +14,7 @@
   import PhotoSupply from './PhotoSupply.svelte';
   import StudioPanel from './StudioPanel.svelte';
   import PartyCanvas from './PartyCanvas.svelte';
+  import { addPart, decodeMixes, expand, mixColor, recipeText, rememberMix, removeColor, removePart, totalParts, MAX_PARTS, SAVED_MIXES_KEY, type Recipe, type SavedMix } from './recipes';
   import { PALETTES } from './palettes';
   import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './workspaces';
   import burnishingPad from './burnishing-pad.svg?url';
@@ -26,6 +27,8 @@
     /** Your party member id; with `round` it names your turn's layer. */
     painterId: string;
     round: number;
+    /** Which canvas is on the table ("c1"…, or "lobby"). */
+    canvasKey: string;
     canvasSize: { width: number; height: number };
     /** Spoken canvas summary, e.g. "Round 2 of 4. Jordan is painting." */
     label: string;
@@ -37,11 +40,13 @@
     /** Extra items for the table menu (host tools, guests, room). */
     menu?: Snippet;
   }
-  let { canDraw, painterId, round, canvasSize, label, waitingNote, onstroke, partyBar, menu }: Props = $props();
+  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu }: Props = $props();
   let canvas = $state<PartyCanvas>();
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
-  export async function loadHistory(strokes: PaintedStroke[], complete: boolean, snapshotUrl: string | null) { await canvas?.loadHistory(strokes, complete, snapshotUrl); }
+  export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl); }
   export function snapshot(): string { return canvas?.snapshot() ?? ''; }
+  export function finishStroke() { canvas?.finishStroke(); }
+  export function strokes(): PaintedStroke[] { return canvas?.strokes() ?? []; }
 
   function asset(name: string, extension = 'svg'): string { return images[`../../../../../_design/mockups/asset-review/study-${name}.${extension}`] ?? ''; }
   const supplies: { id: string; name: string; box: number[]; hit?: number[]; tip?: number[]; tool?: PaintingTool; medium?: PaintingMedium }[] = [
@@ -105,7 +110,10 @@
   let paletteOpen = $state(false);
   let paletteMedium = $state<PaintingMedium>('acrylic');
   let trayOpen = $state(false);
-  let dabs = $state<{ name: string; hex: string }[]>([]);
+  // The tray holds a recipe (colors + parts). `dabs` is every part, in order.
+  let recipe = $state<Recipe>([]);
+  let dabs = $derived(expand(recipe));
+  let savedMixes = $state<SavedMix[]>([]);
   let trayMode = $state<'solid' | 'multicolor'>('multicolor');
   let trayMedium = $state<'acrylic' | 'watercolor'>('acrylic');
   let announcement = $state('');
@@ -121,7 +129,7 @@
     : selection.load ? `${selection.load.name}${selection.wet ? ', with water' : ''}. Ready to paint.`
     : selection.wet ? 'Water only. Only your own turn will change.' : 'Choose a compatible paint to load your tool.');
   let trayReason = $derived(unavailability(selection.tool, trayMedium));
-  let solidColor = $derived(averageColor(dabs.map(dab => dab.hex)));
+  let solidColor = $derived(mixColor(recipe));
   let availableColors = $derived(PALETTES[trayOpen ? trayMedium : paletteMedium]);
   let canvasBox = $derived.by(() => {
     const top = headerHeight + toolbarHeight + 32;
@@ -142,6 +150,7 @@
     frameObserver.observe(canvasFrame);
     const headerObserver = new ResizeObserver(() => headerHeight = statusStrip.clientHeight);
     headerObserver.observe(statusStrip);
+    readMixes();
     try {
       const raw = localStorage.getItem(WORKSPACE_KEY);
       if (raw) { const stored = decodeWorkspaces(raw, supplies.map(item => item.id)); savedViews = stored.views; selectedView = stored.selected; applyLayout(stored.current); }
@@ -233,16 +242,6 @@
     const maxHeight = compact ? windowHeight * 1.3 : Math.max(200, board.height - canvasBox.y - 64);
     frameOverride = { width: Math.max(260, Math.min(maxWidth, width)), height: Math.max(200, Math.min(maxHeight, height)) };
   }
-  function averageColor(colors: string[]): string {
-    if (!colors.length) return '#f6f3ea';
-    let result = '#';
-    for (const start of [1, 3, 5]) {
-      let total = 0;
-      for (const color of colors) total += parseInt(color.slice(start, start + 2), 16);
-      result += Math.round(total / colors.length).toString(16).padStart(2, '0');
-    }
-    return result;
-  }
   function putDown() {
     selection = { ...selection, tool: null, load: null, wet: false };
     paletteOpen = false;
@@ -291,9 +290,25 @@
   }
   function loadTray() {
     if (!dabs.length || trayReason) return;
-    const load: PaintLoad = { medium: trayMedium, name: `Tray: ${trayMode === 'solid' ? 'even mix' : 'multicolor'}, ${dabs.length} colors`, colors: trayMode === 'solid' ? [solidColor] : dabs.map(dab => dab.hex) };
+    const load: PaintLoad = { medium: trayMedium, name: `Tray: ${trayMode === 'solid' ? 'even mix' : 'streaked'}, ${recipeText(recipe)}`.slice(0, 80), colors: trayMode === 'solid' ? [solidColor] : dabs.map(dab => dab.hex) };
     selection = loadPaint(selection, load);
-    announcement = `${toolName} loaded from the color tray.`;
+    announcement = `${toolName} loaded from the color tray: ${recipeText(recipe)}.`;
+  }
+
+  // Saved mixes are a per-browser convenience, like saved views.
+  function readMixes() {
+    try { savedMixes = decodeMixes(localStorage.getItem(SAVED_MIXES_KEY)); } catch { savedMixes = []; }
+  }
+  function saveMix() {
+    if (!recipe.length) return;
+    savedMixes = rememberMix(savedMixes, { id: crypto.randomUUID(), recipe: $state.snapshot(recipe), mode: trayMode });
+    try { localStorage.setItem(SAVED_MIXES_KEY, JSON.stringify(savedMixes)); announcement = 'Mix saved on this browser.'; }
+    catch { announcement = 'This browser could not save the mix. It is still in the tray.'; }
+  }
+  function useMix(mix: SavedMix) {
+    recipe = mix.recipe.map(item => ({ ...item }));
+    trayMode = mix.mode;
+    announcement = `Tray refilled: ${recipeText(recipe)}.`;
   }
   function rinse() { selection = { ...selection, load: null, wet: true }; announcement = `${toolName} rinsed. Water only.`; }
   async function showSettings() { settingsOpen = true; await tick(); document.getElementById('brush-size')?.focus(); }
@@ -389,7 +404,7 @@
 
   <section bind:this={canvasFrame} class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
     style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface')}')`} style:--canvas-x={`${canvasBox.x}px`} style:--canvas-y={`${canvasBox.y}px`} style:--canvas-width={`${canvasBox.width}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height} style:width={frameOverride ? `${Math.min(frameOverride.width, compact ? windowWidth - 24 : board.width - canvasBox.x - (dock === 'right' || dock === 'both' ? Math.min(360, board.width * .3) : 16))}px` : undefined} style:height={frameOverride ? `${Math.min(frameOverride.height, compact ? windowHeight * 1.3 : Math.max(200, board.height - canvasBox.y - 64))}px` : undefined}>
-    <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {mode} {canDraw} {painterId} {round} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => toolbarHeight = height} onresizewindow={resizeWindow} {onstroke} />
+    <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {mode} {canDraw} {painterId} {round} {canvasKey} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => toolbarHeight = height} onresizewindow={resizeWindow} {onstroke} />
     <p class="canvas-hint">{status}</p>
   </section>
 
@@ -410,16 +425,32 @@
     {#if paletteOpen}
       <StudioPanel title={trayOpen ? 'Color tray' : MEDIUM_NAMES[paletteMedium]} label="color palette" dock="palette" flow={compact} onclose={() => paletteOpen = false}>
         {#if trayOpen}
-          <div class="mixing-well" style:background-image={`url('${asset('tray')}')`} aria-label={`${dabs.length} colors in the mixing area`}>
-            {#each dabs as dab, index}<button type="button" class="dab" style:background={trayMode === 'solid' ? solidColor : dab.hex} style:left={`${25 + index % 3 * 16}%`} style:top={`${20 + Math.floor(index / 3) * 21}%`} aria-label={`Remove ${dab.name} from tray`} onclick={() => dabs = dabs.filter((_, position) => position !== index)}></button>{/each}
+          <!-- The well is the picture; the recipe list below is the control. -->
+          <div class="mixing-well" style:background-image={`url('${asset('tray')}')`} aria-hidden="true">
+            {#each recipe as item, index (item.hex)}<span class="dab" style:background={trayMode === 'solid' ? solidColor : item.hex} style:left={`${25 + index % 3 * 16}%`} style:top={`${20 + Math.floor(index / 3) * 21}%`} style:scale={0.8 + item.parts * 0.1}></span>{/each}
           </div>
-          <fieldset class="tray-options"><legend>In this tray</legend><label><input type="radio" bind:group={trayMode} value="multicolor" /> Keep colors separate</label><label><input type="radio" bind:group={trayMode} value="solid" /> Mix evenly</label></fieldset>
+          <ul class="recipe" aria-label={`Tray recipe, ${totalParts(recipe)} of ${MAX_PARTS} parts`}>
+            {#each recipe as item (item.hex)}
+              <li>
+                <span class="swatch" style:background={item.hex} aria-hidden="true"></span>
+                <span class="recipe-name">{item.name}</span>
+                <button type="button" aria-label={`One less part of ${item.name}`} onclick={() => recipe = removePart(recipe, item.hex)}>−</button>
+                <output aria-label={`${item.name} parts`}>{item.parts}</output>
+                <button type="button" aria-label={`One more part of ${item.name}`} disabled={totalParts(recipe) >= MAX_PARTS} onclick={() => recipe = addPart(recipe, item)}>+</button>
+                <button type="button" class="remove" aria-label={`Remove ${item.name} from the tray`} onclick={() => recipe = removeColor(recipe, item.hex)}>Remove</button>
+              </li>
+            {:else}
+              <li class="empty">Tap colors below to add them. Tap again for another part.</li>
+            {/each}
+          </ul>
+          <fieldset class="tray-options"><legend>In this tray</legend><label><input type="radio" bind:group={trayMode} value="multicolor" /> Keep colors separate (streaks)</label><label><input type="radio" bind:group={trayMode} value="solid" /> Mix evenly</label></fieldset>
           <label class="medium-choice">Medium<select bind:value={trayMedium}><option value="acrylic">Acrylic</option><option value="watercolor">Watercolor</option></select></label>
         {:else}<label class="medium-choice">Paint set<select value={paletteMedium} onchange={(event) => changePalette(event.currentTarget.value as PaintingMedium)}>{#each Object.entries(MEDIUM_NAMES) as [medium, name]}<option value={medium}>{name}</option>{/each}</select></label><p class="palette-caption">{#if paletteMedium === 'pencil' || paletteMedium === 'charcoal'}{availableColors.length} colors · pictured shades plus extra studio colors.{:else}{availableColors.length} colors from the pictured {MEDIUM_NAMES[paletteMedium].toLowerCase()} set.{/if}</p>{/if}
         <div class="paint-grid" role="group" aria-label={trayOpen ? 'Add colors to mixing area' : `${MEDIUM_NAMES[paletteMedium]} colors`}>
-          {#each availableColors as paint}<button type="button" title={paint.name} aria-label={paint.name} aria-pressed={!trayOpen && selection.load?.name === paint.name} disabled={trayOpen ? dabs.length >= 9 : !!unavailability(selection.tool, paletteMedium)} onclick={() => { if (trayOpen) dabs = [...dabs, paint]; else chooseColor(paint); }}><span style:background={paint.hex}></span></button>{/each}
+          {#each availableColors as paint}<button type="button" title={paint.name} aria-label={paint.name} aria-pressed={!trayOpen && selection.load?.name === paint.name} disabled={trayOpen ? totalParts(recipe) >= MAX_PARTS : !!unavailability(selection.tool, paletteMedium)} onclick={() => { if (trayOpen) recipe = addPart(recipe, paint); else chooseColor(paint); }}><span style:background={paint.hex}></span></button>{/each}
         </div>
-        {#if trayOpen}<div class="tray-actions"><button type="button" class="primary" disabled={!dabs.length || !!trayReason} onclick={loadTray}>Load {trayMode === 'solid' ? 'even mix' : 'multicolor swatch'}</button><button type="button" class="secondary" disabled={!dabs.length} onclick={() => dabs = []}>Empty tray</button></div><p class="palette-caption">{trayReason || 'Tap a dab to remove it. Both modes keep your colors.'} Mixing remains approximate.</p>
+        {#if trayOpen}<div class="tray-actions"><button type="button" class="primary" disabled={!dabs.length || !!trayReason} onclick={loadTray}>Load {trayMode === 'solid' ? 'even mix' : 'multicolor swatch'}</button><button type="button" class="secondary" disabled={!recipe.length} onclick={saveMix}>Save mix</button><button type="button" class="secondary" disabled={!recipe.length} onclick={() => recipe = []}>Empty tray</button></div><p class="palette-caption">{trayReason || 'Parts set how much of each color goes in. Streaks get wider with more parts.'} Mixing is approximate.</p>
+        {#if savedMixes.length}<div class="saved-mixes" role="group" aria-label="Saved mixes"><span>Saved mixes</span>{#each savedMixes as mix (mix.id)}<button type="button" aria-label={`Refill the tray: ${mix.mode === 'solid' ? 'even mix' : 'streaks'}, ${recipeText(mix.recipe)}`} onclick={() => useMix(mix)}><span class="mini" aria-hidden="true">{#each mix.mode === 'solid' ? [mixColor(mix.recipe)] : expand(mix.recipe).map(dab => dab.hex) as color}<i style:background={color}></i>{/each}</span></button>{/each}</div>{/if}
         {:else}<label class="custom-color">Custom color<input type="color" aria-label="Custom paint color" disabled={!!unavailability(selection.tool, paletteMedium)} value={selection.load?.colors[0] ?? '#ffffff'} oninput={(event) => chooseColor({ name: `Custom ${event.currentTarget.value}`, hex: event.currentTarget.value })} /></label><p class="palette-caption" aria-live="polite">{unavailability(selection.tool, paletteMedium) || (selection.load?.medium === paletteMedium ? selection.load.name : 'Choose a color to load your tool.')}</p>{/if}
       </StudioPanel>
     {/if}
@@ -495,6 +526,19 @@
   .paint-grid button[aria-pressed='true'] { outline: 2px solid #f1ec35; outline-offset: 1px; }
   .paint-grid button > span { display: block; width: 100%; height: 32px; border: 1px solid #fff5; border-radius: 2px; }
   .mixing-well { position: relative; width: 220px; height: 160px; margin: auto; background-position: center; background-size: contain; background-repeat: no-repeat; }
+  .recipe { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+  .recipe li { display: flex; align-items: center; gap: 6px; }
+  .recipe .empty { font-size: 12px; }
+  .recipe .swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #fff5; flex: none; }
+  .recipe-name { flex: 1; min-width: 0; }
+  .recipe button { min-width: 44px; padding: 4px 8px; }
+  .recipe .remove { font-size: 12px; }
+  .recipe output { float: none; min-width: 1.5em; text-align: center; font-weight: 700; }
+  .saved-mixes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; }
+  .saved-mixes > span { flex-basis: 100%; font-weight: 700; }
+  .saved-mixes button { padding: 6px; }
+  .mini { display: flex; width: 64px; height: 18px; border: 1px solid #fff6; }
+  .mini i { flex: 1; }
   .dab { position: absolute; width: 44px; height: 44px; min-width: 44px; padding: 0; border-radius: 50%; border: 1px solid #3a2a1a; box-shadow: 1px 3px 4px #0005; }
   .tray-options { display: flex; gap: 12px; flex-wrap: wrap; border: 0; padding: 0; font-size: 12px; }
   .tray-options label, .medium-choice { display: flex; gap: 8px; align-items: center; min-height: 44px; }

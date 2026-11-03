@@ -1,0 +1,281 @@
+{
+  "room": "cream-city",
+  "art": [
+    {
+      "id": "art_panoramic_1",
+      "label": "Panoramic - 1",
+      "role": "wall",
+      "corners": [
+        {
+          "yaw": -81.0,
+          "pitch": 23.3
+        },
+        {
+          "yaw": -67.2,
+          "pitch": 19.6
+        },
+        {
+          "yaw": -67.2,
+          "pitch": 13.8
+        },
+        {
+          "yaw": -82.3,
+          "pitch": 17.3
+        }
+      ]
+    },
+    {
+      "id": "art_small_square_1",
+      "label": "Square - 1",
+      "role": "wall",
+      "corners": [
+        {
+          "yaw": -63.2,
+          "pitch": 31.1
+        },
+        {
+          "yaw": -70.4,
+          "pitch": 31.0
+        },
+        {
+          "yaw": -70.2,
+          "pitch": 25.6
+        },
+        {
+          "yaw": -75.0,
+          "pitch": 27.1
+        }
+      ]
+    },
+    {
+      "id": "art_portrait_2",
+      "label": "Portrait - 2",
+      "role": "wall",
+      "corners": [
+        {
+          "yaw": -49.8,
+          "pitch": 25.0
+        },
+        {
+          "yaw": -45.3,
+          "pitch": 23.2
+        },
+        {
+          "yaw": -45.2,
+          "pitch": 13.8
+        },
+        {
+          "yaw": -49.8,
+          "pitch": 14.8
+        }
+      ]
+    },
+    {
+      "id": "art_square_2",
+      "label": "Square - 3",
+      "role": "wall",
+      "corners": [
+        {
+          "yaw": -44.3,
+          "pitch": 13.8
+        },
+        {
+          "yaw": -41.1,
+          "pitch": 13.4
+        },
+        {
+          "yaw": -41.6,
+          "pitch": 8.9
+        },
+        {
+          "yaw": -44.3,
+          "pitch": 9.1
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_2",
+      "label": "Square - 4",
+      "role": "wall",
+      "corners": [
+        {
+          "yaw": -79.7,
+          "pitch": 12.3
+        },
+        {
+          "yaw": -73.5,
+          "pitch": 11.4
+        },
+        {
+          "yaw": -73.5,
+          "pitch": 5.7
+        },
+        {
+          "yaw": -79.6,
+          "pitch": 6.4
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_3",
+      "label": "Square - 5",
+      "role": "wall",
+      "corners": [
+        {
+          "yaw": -47.3,
+          "pitch": 10.2
+        },
+        {
+          "yaw": -45.1,
+          "pitch": 9.9
+        },
+        {
+          "yaw": -45.1,
+          "pitch": 5.9
+        },
+        {
+          "yaw": -47.3,
+          "pitch": 6.1
+        }
+      ]
+    },
+    {
+      "id": "art_canvas_8",
+      "label": "Small Square - bookcase wall -  2",
+      "role": "wall",
+      "corners": [
+        {
+          "yaw": 71.5,
+          "pitch": 21.2
+        },
+        {
+          "yaw": 75.0,
+          "pitch": 21.7
+        },
+        {
+          "yaw": 75.0,
+          "pitch": 18.6
+        },
+        {
+          "yaw": 71.4,
+          "pitch": 18.0
+        }
+      ]
+    },
+    {
+      "id": "art_lean_space_3",
+      "label": "Couch",
+      "role": "lean",
+      "corners": [
+        {
+          "yaw": 40.6,
+          "pitch": 10.9
+        },
+        {
+          "yaw": 78.3,
+          "pitch": 14.7
+        },
+        {
+          "yaw": 77.9,
+          "pitch": -2.3
+        },
+        {
+          "yaw": 47.2,
+          "pitch": 1.4
+        }
+      ]
+    },
+    {
+      "id": "art_lean_space_4",
+      "label": "Painting table",
+      "role": "lean",
+      "corners": [
+        {
+          "yaw": -5.3,
+          "pitch": 6.7
+        },
+        {
+          "yaw": 6.6,
+          "pitch": 8.0
+        },
+        {
+          "yaw": 8.8,
+          "pitch": -4.0
+        },
+        {
+          "yaw": -2.9,
+          "pitch": -6.8
+        }
+      ]
+    },
+    {
+      "id": "art_lean_space_5",
+      "label": "Ottoman",
+      "role": "lean",
+      "corners": [
+        {
+          "yaw": 16.5,
+          "pitch": -2.4
+        },
+        {
+          "yaw": 25.5,
+          "pitch": -3.2
+        },
+        {
+          "yaw": 16.8,
+          "pitch": -7.9
+        },
+        {
+          "yaw": 13.9,
+          "pitch": -9.7
+        }
+      ]
+    },
+    {
+      "id": "art_lean_space_6",
+      "label": "Leather window chair",
+      "role": "lean",
+      "corners": [
+        {
+          "yaw": -117.9,
+          "pitch": 51.4
+        },
+        {
+          "yaw": -149.7,
+          "pitch": 15.4
+        },
+        {
+          "yaw": -50.2,
+          "pitch": -13.8
+        },
+        {
+          "yaw": -168.2,
+          "pitch": -14.9
+        }
+      ]
+    },
+    {
+      "id": "art_lean_space_8",
+      "label": "Facing the window",
+      "role": "lean",
+      "corners": [
+        {
+          "yaw": -73.3,
+          "pitch": 6.6
+        },
+        {
+          "yaw": -64.6,
+          "pitch": 5.4
+        },
+        {
+          "yaw": -57.9,
+          "pitch": -14.7
+        },
+        {
+          "yaw": -79.2,
+          "pitch": -12.1
+        }
+      ]
+    }
+  ]
+}
