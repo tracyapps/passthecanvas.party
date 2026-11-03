@@ -1,9 +1,9 @@
 {
   "room": "cream-city",
-  "draft": true,
+  "draft": false,
   "resolution": [
-    2048,
-    1024
+    4096,
+    2048
   ],
   "seats": [
     {
@@ -26,14 +26,14 @@
         1.2
       ],
       "spots": 23,
-      "art": 15
+      "art": 14
     },
     {
       "id": "spot_couch_2",
       "label": "Couch 2",
       "eye": [
-        -3.088,
-        -2.348,
+        -3.077,
+        -2.309,
         1.2
       ],
       "spots": 21,
@@ -43,23 +43,23 @@
       "id": "spot_couch_3",
       "label": "Couch 3",
       "eye": [
-        -3.885,
-        -1.902,
+        -3.797,
+        -1.768,
         1.2
       ],
       "spots": 21,
-      "art": 12
+      "art": 13
     },
     {
       "id": "spot_couch_left",
       "label": "Couch",
       "eye": [
-        -2.467,
-        -2.77,
+        -2.35,
+        -2.55,
         1.2
       ],
       "spots": 21,
-      "art": 13
+      "art": 14
     },
     {
       "id": "spot_easel",
@@ -98,12 +98,12 @@
       "id": "spot_giant_bean_bag_2",
       "label": "Giant bean bag 2",
       "eye": [
-        1.824,
-        -1.951,
+        1.892,
+        -1.992,
         1.45
       ],
       "spots": 22,
-      "art": 12
+      "art": 11
     },
     {
       "id": "spot_leather_chair",
@@ -113,7 +113,7 @@
         -0.534,
         1.2
       ],
-      "spots": 21,
+      "spots": 22,
       "art": 15
     },
     {
@@ -125,7 +125,7 @@
         1.2
       ],
       "spots": 22,
-      "art": 14
+      "art": 13
     },
     {
       "id": "spot_music",
@@ -136,7 +136,7 @@
         1.1
       ],
       "spots": 21,
-      "art": 12
+      "art": 13
     },
     {
       "id": "spot_ottoman",
@@ -219,8 +219,8 @@
       "id": "spot_snacks",
       "label": "Snack table",
       "eye": [
-        -3.131,
-        -2.175,
+        -3.133,
+        -2.177,
         1.2
       ],
       "spots": 22,

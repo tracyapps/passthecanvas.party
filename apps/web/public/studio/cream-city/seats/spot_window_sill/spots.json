@@ -47,22 +47,22 @@
       "id": "spot_couch_left",
       "zone": "couch",
       "label": "Couch",
-      "yaw": 63.2,
-      "pitch": 6.7
+      "yaw": 68.6,
+      "pitch": 6.6
     },
     {
       "id": "spot_couch_2",
       "zone": "cafe",
       "label": "Couch 2",
-      "yaw": 63.7,
+      "yaw": 62.9,
       "pitch": 2.4
     },
     {
       "id": "spot_couch_3",
       "zone": "cafe",
       "label": "Couch 3",
-      "yaw": 67.8,
-      "pitch": 9.1
+      "yaw": 62.1,
+      "pitch": 9.0
     },
     {
       "id": "spot_leather_chair",
@@ -82,14 +82,14 @@
       "id": "spot_giant_bean_bag_2",
       "zone": "cafe",
       "label": "Giant bean bag 2",
-      "yaw": 36.2,
+      "yaw": 36.4,
       "pitch": 6.8
     },
     {
       "id": "spot_ottoman",
       "zone": "cafe",
       "label": "Ottoman",
-      "yaw": 44.3,
+      "yaw": 44.2,
       "pitch": -4.3
     },
     {

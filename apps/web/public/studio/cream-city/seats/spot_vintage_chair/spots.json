@@ -26,8 +26,8 @@
       "id": "spot_snacks",
       "zone": "snacks",
       "label": "Snack table",
-      "yaw": -42.8,
-      "pitch": -28.5
+      "yaw": -43.0,
+      "pitch": -28.6
     },
     {
       "id": "spot_cat_tree",
@@ -54,21 +54,21 @@
       "id": "spot_couch_left",
       "zone": "couch",
       "label": "Couch",
-      "yaw": -65.9,
-      "pitch": 19.5
+      "yaw": -80.6,
+      "pitch": 19.6
     },
     {
       "id": "spot_couch_2",
       "zone": "cafe",
       "label": "Couch 2",
-      "yaw": -56.0,
-      "pitch": 6.5
+      "yaw": -55.0,
+      "pitch": 6.6
     },
     {
       "id": "spot_couch_3",
       "zone": "cafe",
       "label": "Couch 3",
-      "yaw": -51.4,
+      "yaw": -48.5,
       "pitch": 7.3
     },
     {
@@ -89,8 +89,8 @@
       "id": "spot_giant_bean_bag_2",
       "zone": "cafe",
       "label": "Giant bean bag 2",
-      "yaw": 91.6,
-      "pitch": 18.2
+      "yaw": 92.7,
+      "pitch": 18.1
     },
     {
       "id": "spot_painting_table_green_chair",

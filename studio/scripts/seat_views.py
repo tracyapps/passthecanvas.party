@@ -146,6 +146,7 @@ EYE_OVERRIDES = {
     'spot_ottoman': (-0.65, -1.25, 1.05),
     'spot_cat_tree': (-4.0, 2.2, 1.2),
     'spot_painting_table_green_chair': (1.4, 2.5, 1.2),
+    'spot_couch_left': (-2.35, -2.55, 1.2),  # in front of the back cushion, above the new pillow
 }
 
 markers, seats_at, names_at = {}, {}, {}
