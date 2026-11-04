@@ -20,11 +20,11 @@
 
   let { href = '/', label = 'Pass the Canvas home' }: { href?: string; label?: string } = $props();
 
-  const TILT_Y = 12; // degrees, side to side, with the mouse at the sign's edge
-  const TILT_X = 8; // degrees, up and down
-  const EASING = 0.035; // per 60 fps frame, each stage, while following the mouse
-  const EASING_HOME = 0.028; // a touch slower when settling back to flat
-  const LIFT = 0.015; // scale when fully "present"
+  const TILT_Y = 22; // degrees, side to side, with the mouse at the sign's edge
+  const TILT_X = 18; // degrees, up and down
+  const EASING = 0.085; // per 60 fps frame, each stage, while following the mouse
+  const EASING_HOME = 0.038; // a touch slower when settling back to flat
+  const LIFT = 0.00; // scale when fully "present"
 
   let sign: HTMLSpanElement;
   let pointer = { x: 0, y: 0 }; // offset from the sign's center, -0.5…0.5

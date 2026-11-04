@@ -40,7 +40,7 @@
   .site-header { position: relative; z-index: 10; min-height: 102px; padding: 20px clamp(20px, 4vw, 64px); display: flex; gap: 24px; align-items: center; background: #f5edda url('/site/paper.svg'); border-bottom: 1px solid #31251c26; }
   // The sign hangs over the bottom of the header (and sits close to the top), without
   // making the header taller: negative margins keep the row its normal height.
-  .site-header .tilt-logo { --logo-height: 150px; align-self: flex-start; margin: -12px 0 -84px -6px; }
+  .site-header .tilt-logo { --logo-height: 150px; align-self: flex-start; margin: -38px 0 -84px -6px; }
   .wordmark { display: flex; align-items: center; gap: 10px; line-height: .96; font-family: 'Viga', sans-serif; font-weight: 800; letter-spacing: -.055em; font-size: 22px; text-decoration: none; flex-shrink: 0; }
   .wordmark svg { width: 44px; height: 48px; transform: rotate(-5deg); }
   .wordmark-dot { font-family: 'Square Peg', cursive; color: #993f2e; font-size: 19px; letter-spacing: -.02em; font-weight: 700; padding-left: 3px; }
