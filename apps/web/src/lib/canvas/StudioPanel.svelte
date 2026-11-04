@@ -1,9 +1,15 @@
+<script lang="ts" module>
+  /** Where you last moved each panel (this visit), so it reopens in the same spot. */
+  const placed = new Map<string, { x: number; y: number }>();
+</script>
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
   let { title, label, dock = 'bottom', flow = false, onclose, children }: { title: string; label: string; dock?: 'bottom' | 'palette' | 'guests' | 'notes' | 'radio' | 'arrange'; flow?: boolean; onclose: () => void; children: Snippet } = $props();
   let panel: HTMLElement;
-  let position = $state<{ x: number; y: number } | null>(null);
+  // svelte-ignore state_referenced_locally — a panel keeps its label for life
+  let position = $state<{ x: number; y: number } | null>(placed.get(label) ?? null);
+  $effect(() => { if (position) placed.set(label, position); else placed.delete(label); });
   let start: { x: number; y: number; left: number; top: number; pointer: number } | null = null;
   function bounded(x: number, y: number) {
     const box = panel.getBoundingClientRect();

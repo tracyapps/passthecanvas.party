@@ -174,6 +174,7 @@
   label={`Practice canvas, ${CANVAS_SHAPES[shape].name}`}
   waitingNote=""
   onstroke={() => {}}
+  notice={status}
 >
   {#snippet menu()}
     <h2>This piece</h2>
@@ -217,7 +218,7 @@
   </form>
 </dialog>
 
-<p class="toast" class:shown={!!status} role="status">{status}</p>
+<p class="sr-only" role="status">{status}</p>
 
 <style lang="scss">
   @use '../../styles/tokens' as *;
@@ -249,7 +250,5 @@
   .actions .primary { border: 0; border-radius: $radius-pill; background: $cream; color: $walnut-900; font-weight: 700; padding: 0 1.25rem; }
   .chooser :focus-visible { outline: 3px solid $focus; outline-offset: 2px; }
 
-  .toast { position: fixed; left: 50%; bottom: 20px; z-index: 60; margin: 0; max-width: min(32rem, calc(100vw - 32px)); padding: 0.625rem 1rem; border-radius: 6px; background: #0c0806f0; border: 1px solid #9d8c67; color: $cream; font-size: 0.875rem; transform: translate(-50%, 0); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
-  .toast.shown { opacity: 1; }
-  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>

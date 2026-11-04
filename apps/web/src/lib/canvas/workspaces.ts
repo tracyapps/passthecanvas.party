@@ -5,7 +5,8 @@ export interface WorkspaceLayout {
   positions: Record<string, { x: number; y: number }>;
   order: string[];
   dock: ToolDock;
-  frame: { width: number; height: number } | null;
+  /** The canvas window, as fractions of the screen. x/y are new; older views only kept the size. */
+  frame: { x?: number; y?: number; width: number; height: number } | null;
   rotation: number;
 }
 export interface SavedWorkspace { id: string; name: string; layout: WorkspaceLayout }
@@ -38,7 +39,9 @@ function readLayout(value: unknown, ids: string[]): WorkspaceLayout {
   }
   if (source.frame !== null) {
     if (!source.frame || !Number.isFinite(source.frame.width) || !Number.isFinite(source.frame.height) || source.frame.width <= 0 || source.frame.height <= 0 || source.frame.width > 2 || source.frame.height > 2) throw new Error('Invalid window size.');
-    layout.frame = { ...source.frame };
+    const { x, y } = source.frame;
+    const place = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= -1 && value <= 2;
+    layout.frame = { width: source.frame.width, height: source.frame.height, ...(place(x) && place(y) ? { x: x as number, y: y as number } : {}) };
   }
   layout.dock = source.dock; layout.rotation = source.rotation;
   return layout;

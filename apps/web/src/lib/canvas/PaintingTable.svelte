@@ -7,7 +7,7 @@
   everyone else's strokes in via `applyRemote`.
 -->
 <script lang="ts">
-  import { onMount, tick, type Snippet } from 'svelte';
+  import { onMount, tick, untrack, type Snippet } from 'svelte';
   import type { PaintedStroke, Stroke } from '@ptc/shared';
   import AccountControls from '../account/AccountControls.svelte';
   import { accountState, loadAccountWorkspaces, saveAccountWorkspaces } from '../account/account.svelte';
@@ -41,8 +41,10 @@
     menu?: Snippet;
     /** Account and site links (my studio, practice pieces), kept apart from the tools. */
     utility?: Snippet;
+    /** A short message from the page (saved, downloaded…), shown in the header for a few seconds. */
+    notice?: string;
   }
-  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility }: Props = $props();
+  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '' }: Props = $props();
   let canvas = $state<PartyCanvas>();
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
   export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl); }
@@ -79,8 +81,8 @@
   let rotation = $state(0);
   let viewReset = $state(0);
   let toolbarHeight = $state(110);
-  let frameOverride = $state<{ width: number; height: number } | null>(null);
-  let frameActual = $state({ width: 800, height: 425 });
+  /** A canvas window you've resized by its edges, in pixels. Null = the default for this screen. */
+  let frameOverride = $state<{ x: number; y: number; width: number; height: number } | null>(null);
   let documentSize = $derived(canvasSize);
   let savedViews = $state<SavedWorkspace[]>([]);
   let selectedView = $state('');
@@ -125,7 +127,7 @@
   let toolName = $derived(selection.tool ? TOOL_NAMES[selection.tool] : 'None');
   let status = $derived(mode === 'arrange' ? 'Canvas locked. Arrange supplies or explore the artwork.'
     : !canDraw ? `${waitingNote} Get your tools ready while you wait.`
-    : !selection.tool ? 'Your turn. Choose a tool to begin.'
+    : !selection.tool ? 'Choose a tool to begin. Drag the canvas (or hold Space) to move around.'
     : selection.tool === 'burnisher' ? 'Smudge & intensify. Only your own turn will change.'
     : selection.tool === 'eraser' || selection.tool === 'sponge' ? 'Ready. Only your own turn will change.'
     : selection.load ? `${selection.load.name}${selection.wet ? ', with water' : ''}. Ready to paint.`
@@ -133,25 +135,62 @@
   let trayReason = $derived(unavailability(selection.tool, trayMedium));
   let solidColor = $derived(mixColor(recipe));
   let availableColors = $derived(PALETTES[trayOpen ? trayMedium : paletteMedium]);
+  // The default canvas window depends only on the screen, the tool dock and the
+  // canvas shape. Palettes and settings panels float above it, so opening one
+  // never moves the canvas or the supplies.
   let canvasBox = $derived.by(() => {
-    const top = headerHeight + toolbarHeight + 32;
+    const top = headerHeight + toolbarHeight + 16;
     const scale = Math.min(board.width / 1440, board.height / 1024);
-    // Leave room for the acrylic rack (the widest supply on the left) beside the canvas,
-    // so a wide canvas never pushes it out of its corner.
-    const left = dock === 'right' ? 24 : dock === 'left' || dock === 'both' ? Math.min(360, board.width * .3) : paletteOpen ? 456 : Math.max(board.width * 0.18, 352 * scale);
+    // Leave room for the acrylic rack (the widest supply on the left) beside the canvas.
+    const left = dock === 'right' ? 24 : dock === 'left' || dock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
     const rightRail = dock === 'right' || dock === 'both' ? Math.min(360, board.width * .3) : dock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
     const available = Math.max(300, board.width - left - rightRail);
-    const settingsSpace = dock !== 'surround' ? 90 : hasIntensity && settingsOpen ? 360 : 270;
-    const width = Math.min(available, Math.max(260, (board.height - top - settingsSpace) * documentSize.width / documentSize.height));
-    return { x: left + (available - width) / 2, y: top, width };
+    const bottomSpace = dock !== 'surround' ? 56 : 250 * scale + 20;
+    const width = Math.min(available, Math.max(260, (board.height - top - bottomSpace) * documentSize.width / documentSize.height));
+    return { x: left + (available - width) / 2, y: top, width, height: width * documentSize.height / documentSize.width };
   });
+  let frameRect = $derived(frameOverride ?? canvasBox);
+  /** Keep a resized window on screen and at a usable size. */
+  function fitFrame(rect: { x: number; y: number; width: number; height: number }, edge: Edge) {
+    const minW = 260, minH = 200, top = headerHeight + toolbarHeight + 8;
+    let { x, y, width, height } = rect;
+    if (edge === 'left') { const right = x + width; x = Math.max(0, Math.min(right - minW, x)); width = right - x; }
+    if (edge === 'top') { const bottom = y + height; y = Math.max(top, Math.min(bottom - minH, y)); height = bottom - y; }
+    width = Math.max(minW, Math.min(board.width - x, width));
+    height = Math.max(minH, Math.min(board.height - y - 8, height));
+    return { x, y, width, height };
+  }
+  type Edge = 'top' | 'right' | 'bottom' | 'left' | 'corner';
+  const EDGES: Edge[] = ['top', 'right', 'bottom', 'left'];
+  let edgeDrag: { edge: Edge; x: number; y: number; rect: { x: number; y: number; width: number; height: number }; pointer: number } | null = null;
+  function moveEdge(edge: Edge, rect: { x: number; y: number; width: number; height: number }, dx: number, dy: number) {
+    const next = { ...rect };
+    if (edge === 'left') { next.x += dx; next.width -= dx; }
+    if (edge === 'right' || edge === 'corner') next.width += dx;
+    if (edge === 'top') { next.y += dy; next.height -= dy; }
+    if (edge === 'bottom' || edge === 'corner') next.height += dy;
+    frameOverride = fitFrame(next, edge);
+  }
+  function startEdge(event: PointerEvent, edge: Edge) {
+    if (event.button !== 0) return;
+    edgeDrag = { edge, x: event.clientX, y: event.clientY, rect: { ...frameRect }, pointer: event.pointerId };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  }
+  function dragEdge(event: PointerEvent) {
+    if (edgeDrag && event.pointerId === edgeDrag.pointer) moveEdge(edgeDrag.edge, edgeDrag.rect, event.clientX - edgeDrag.x, event.clientY - edgeDrag.y);
+  }
+  function edgeKey(event: KeyboardEvent, edge: Edge) {
+    const steps: Record<string, [number, number]> = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
+    const step = steps[event.key];
+    if (!step) return;
+    event.preventDefault();
+    moveEdge(edge, frameRect, step[0], step[1]);
+  }
   onMount(() => {
     board = { width: bench.clientWidth, height: bench.clientHeight };
     headerHeight = statusStrip.clientHeight;
     const observer = new ResizeObserver(() => { board = { width: bench.clientWidth, height: bench.clientHeight }; });
     observer.observe(bench);
-    const frameObserver = new ResizeObserver(() => { frameActual = { width: canvasFrame.clientWidth, height: canvasFrame.clientHeight }; });
-    frameObserver.observe(canvasFrame);
     const headerObserver = new ResizeObserver(() => headerHeight = statusStrip.clientHeight);
     headerObserver.observe(statusStrip);
     readMixes();
@@ -160,12 +199,13 @@
       if (raw) { const stored = decodeWorkspaces(raw, supplies.map(item => item.id)); savedViews = stored.views; selectedView = stored.selected; applyLayout(stored.current); }
     } catch { storageError = 'Saved views could not be read. Existing browser data has been kept.'; }
     storageReady = true;
-    return () => { observer.disconnect(); frameObserver.disconnect(); headerObserver.disconnect(); };
+    return () => { observer.disconnect(); headerObserver.disconnect(); };
   });
-  function currentLayout(): WorkspaceLayout { return { positions: $state.snapshot(positions), order: [...order], dock, frame: frameOverride ? { width: frameOverride.width / windowWidth, height: frameOverride.height / windowHeight } : null, rotation }; }
+  function currentLayout(): WorkspaceLayout { return { positions: $state.snapshot(positions), order: [...order], dock, frame: frameOverride ? { x: frameOverride.x / windowWidth, y: frameOverride.y / windowHeight, width: frameOverride.width / windowWidth, height: frameOverride.height / windowHeight } : null, rotation }; }
   function applyLayout(layout: WorkspaceLayout) {
     positions = $state.snapshot(layout.positions); order = [...layout.order]; dock = layout.dock; rotation = layout.rotation;
-    frameOverride = layout.frame ? { width: layout.frame.width * windowWidth, height: layout.frame.height * windowHeight } : null;
+    // Older saved views only kept a size; they reopen at the default spot.
+    frameOverride = layout.frame && typeof layout.frame.x === 'number' && typeof layout.frame.y === 'number' ? { x: layout.frame.x * windowWidth, y: layout.frame.y * windowHeight, width: layout.frame.width * windowWidth, height: layout.frame.height * windowHeight } : null;
     viewReset += 1;
   }
   $effect(() => {
@@ -240,12 +280,6 @@
     const id = crypto.randomUUID(); savedViews = [...savedViews, { id, name, layout: currentLayout() }]; selectedView = id; viewName = ''; announcement = `${name} saved on this browser.`; if (accountState.userId) void saveCloud();
   }
   function loadView(id: string) { const view = savedViews.find(item => item.id === id); if (view) { applyLayout(view.layout); selectedView = id; announcement = `${view.name} restored.`; } }
-  function resizeWindow(width: number, height: number) {
-    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
-    const maxWidth = compact ? Math.max(260, windowWidth - 24) : Math.max(260, board.width - canvasBox.x - (dock === 'right' || dock === 'both' ? Math.min(360, board.width * .3) : 16));
-    const maxHeight = compact ? windowHeight * 1.3 : Math.max(200, board.height - canvasBox.y - 64);
-    frameOverride = { width: Math.max(260, Math.min(maxWidth, width)), height: Math.max(200, Math.min(maxHeight, height)) };
-  }
   function putDown() {
     selection = { ...selection, tool: null, load: null, wet: false };
     paletteOpen = false;
@@ -271,6 +305,9 @@
   }
   function active(id: string): boolean {
     if (id === 'water') return selection.wet;
+    // The paint boxes light up for the palette you're looking at, not only the paint already on the brush.
+    if (id === 'acrylic' || id === 'watercolor') return paletteOpen && !trayOpen ? paletteMedium === id : selection.load?.medium === id;
+    if (id === 'tray' && paletteOpen && trayOpen) return true;
     if (id === 'tray') return selection.load?.name.startsWith('Tray:') ?? false;
     return selection.tool === id || selection.load?.medium === id;
   }
@@ -300,6 +337,12 @@
     selection = loadPaint(selection, { medium: paletteMedium, name: paint.name, colors: [paint.hex] });
     announcement = `${toolName}, ${MEDIUM_NAMES[paletteMedium]}, ${paint.name}, loaded.`;
   }
+  // Mixing loads the brush as you go, like picking a color from a palette:
+  // add a color, change the parts, the mode or the medium, then just paint.
+  $effect(() => {
+    void recipe; void trayMode; void trayMedium;
+    untrack(() => { if (trayOpen && paletteOpen) loadTray(); });
+  });
   function loadTray() {
     if (!dabs.length || trayReason) return;
     const load: PaintLoad = { medium: trayMedium, name: `Tray: ${trayMode === 'solid' ? 'even mix' : 'streaked'}, ${recipeText(recipe)}`.slice(0, 80), colors: trayMode === 'solid' ? [solidColor] : dabs.map(dab => dab.hex) };
@@ -344,8 +387,13 @@
       x = sponge.x + sponge.width * 0.7;
       y = sponge.y + sponge.height * 0.57;
     }
-    const frame = { x: canvasBox.x - 12, y: canvasBox.y - 110, width: frameActual.width + 24, height: frameActual.height + 90 };
-    return constrainSupply({ x, y, width, height }, { x: 8, y: headerHeight + 8, width: board.width - 16, height: Math.max(200, board.height - headerHeight - 32) }, tip, frame);
+    // Supplies can sit right up to the screen edges. A supply you've placed stays
+    // where you put it; only the default spots step around the default canvas
+    // window (so opening a panel or resizing the canvas window never moves them).
+    const bounds = { x: 0, y: headerHeight, width: board.width, height: Math.max(200, board.height - headerHeight) };
+    if (saved) return constrainSupply({ x, y, width, height }, bounds, tip);
+    const frame = { x: canvasBox.x - 12, y: canvasBox.y - toolbarHeight - 16, width: canvasBox.width + 24, height: canvasBox.height + toolbarHeight + 56 };
+    return constrainSupply({ x, y, width, height }, bounds, tip, frame);
   }
   function startMove(event: PointerEvent, supply: typeof supplies[number]) {
     if (mode !== 'arrange' || compact || dock !== 'surround' || event.button !== 0) return;
@@ -391,7 +439,7 @@
 </defs></svg>
 
 <!-- The main element only deselects on its own empty tabletop, never a child's click. -->
-<main bind:this={bench} class="workbench" class:compact class:docked={dock !== 'surround'} class:dock-left={dock === 'left'} class:dock-right={dock === 'right'} class:dock-both={dock === 'both'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
+<main bind:this={bench} class="workbench" class:compact class:docked={dock !== 'surround'} class:dock-left={dock === 'left'} class:dock-right={dock === 'right'} class:dock-both={dock === 'both'} class:arranging={mode === 'arrange'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
   <a class="skip" href="#shared-canvas">Skip to canvas</a>
   <header bind:this={statusStrip} class="status-strip">
     <div class="mode" role="group" aria-label="Workspace mode">
@@ -400,18 +448,24 @@
     </div>
     <div class="selected-tool"><span>Tool selected</span><strong>{toolName}</strong></div>
     <div class="selected-color"><span>Current color</span><div class="load-line"><span class="load-swatch" class:empty={!selection.load} aria-hidden="true">{#each selection.load?.colors ?? [] as color}<i style:background={color}></i>{/each}</span><strong>{selection.load ? MEDIUM_NAMES[selection.load.medium] : selection.wet ? 'Water only' : selection.tool === 'eraser' || selection.tool === 'sponge' || selection.tool === 'burnisher' ? 'Not needed' : 'Unloaded'}</strong></div></div>
+    <!-- Messages live up here, never on the table where you paint. -->
+    <p class="header-note" class:fresh={!!notice}>{notice || status}</p>
     <div class="party-bar">{@render partyBar?.()}</div>
-    <div class="menus">
-      <button type="button" class="secondary" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
-      <!-- Account and site links live apart from the creative tools, so they're hard to hit by accident. -->
-      <button type="button" class="secondary utility" popovertarget="table-account" aria-label="Account and site menu">Account</button>
-    </div>
+    <button type="button" class="menu-button" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
   </header>
 
   <section bind:this={canvasFrame} class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
-    style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface')}')`} style:--canvas-x={`${canvasBox.x}px`} style:--canvas-y={`${canvasBox.y}px`} style:--canvas-width={`${canvasBox.width}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height} style:width={frameOverride ? `${Math.min(frameOverride.width, compact ? windowWidth - 24 : board.width - canvasBox.x - (dock === 'right' || dock === 'both' ? Math.min(360, board.width * .3) : 16))}px` : undefined} style:height={frameOverride ? `${Math.min(frameOverride.height, compact ? windowHeight * 1.3 : Math.max(200, board.height - canvasBox.y - 64))}px` : undefined}>
-    <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {mode} {canDraw} {painterId} {round} {canvasKey} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => toolbarHeight = height} onresizewindow={resizeWindow} {onstroke} />
-    <p class="canvas-hint">{status}</p>
+    style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface')}')`} style:--frame-x={`${frameRect.x}px`} style:--frame-y={`${frameRect.y}px`} style:--frame-width={`${frameRect.width}px`} style:--frame-height={`${frameRect.height}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height}>
+    <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {mode} {canDraw} {painterId} {round} {canvasKey} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => toolbarHeight = height} {onstroke} />
+    {#if !compact}
+      <!-- Drag any edge (or the corner) to resize the canvas window; arrow keys work too. -->
+      {#each EDGES as edge (edge)}
+        <button type="button" class={`edge edge-${edge}`} aria-label={`Resize the canvas window from its ${edge} edge. Drag or use arrow keys.`}
+          onpointerdown={(event) => startEdge(event, edge)} onpointermove={dragEdge} onpointerup={() => edgeDrag = null} onpointercancel={() => edgeDrag = null} onkeydown={(event) => edgeKey(event, edge)}></button>
+      {/each}
+      <button type="button" class="corner" aria-label="Resize the canvas window. Drag or use arrow keys."
+        onpointerdown={(event) => startEdge(event, 'corner')} onpointermove={dragEdge} onpointerup={() => edgeDrag = null} onpointercancel={() => edgeDrag = null} onkeydown={(event) => edgeKey(event, 'corner')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m6 20 14-14M12 20l8-8M18 20l2-2" /></svg></button>
+    {/if}
   </section>
 
   <div class="panels">
@@ -476,7 +530,7 @@
         <div class="paint-grid" role="group" aria-label={trayOpen ? 'Add colors to mixing area' : `${MEDIUM_NAMES[paletteMedium]} colors`}>
           {#each availableColors as paint}<button type="button" title={paint.name} aria-label={paint.name} aria-pressed={!trayOpen && selection.load?.name === paint.name} disabled={trayOpen ? totalParts(recipe) >= MAX_PARTS : !!unavailability(selection.tool, paletteMedium)} onclick={() => { if (trayOpen) recipe = addPart(recipe, paint); else chooseColor(paint); }}><span style:background={paint.hex}></span></button>{/each}
         </div>
-        {#if trayOpen}<div class="tray-actions"><button type="button" class="primary" disabled={!dabs.length || !!trayReason} onclick={loadTray}>Load {trayMode === 'solid' ? 'even mix' : 'multicolor swatch'}</button><button type="button" class="secondary" disabled={!recipe.length} onclick={saveMix}>Save mix</button><button type="button" class="secondary" disabled={!recipe.length} onclick={() => recipe = []}>Empty tray</button></div><p class="palette-caption">{trayReason || 'Parts set how much of each color goes in. Streaks get wider with more parts.'} Mixing is approximate.</p>
+        {#if trayOpen}<div class="tray-actions"><button type="button" class="secondary" disabled={!recipe.length} onclick={saveMix}>Save mix</button><button type="button" class="secondary" disabled={!recipe.length} onclick={() => recipe = []}>Empty tray</button></div><p class="palette-caption">{trayReason || 'Your brush picks up the tray as you mix. Parts set how much of each color goes in; streaks get wider with more parts.'} Mixing is approximate.</p>
         {#if savedMixes.length}<div class="saved-mixes" role="group" aria-label="Saved mixes"><span>Saved mixes</span>{#each savedMixes as mix (mix.id)}<button type="button" aria-label={`Refill the tray: ${mix.mode === 'solid' ? 'even mix' : 'streaks'}, ${recipeText(mix.recipe)}`} onclick={() => useMix(mix)}><span class="mini" aria-hidden="true">{#each mix.mode === 'solid' ? [mixColor(mix.recipe)] : expand(mix.recipe).map(dab => dab.hex) as color}<i style:background={color}></i>{/each}</span></button>{/each}</div>{/if}
         {:else}<label class="custom-color">Custom color<input type="color" aria-label="Custom paint color" disabled={!!unavailability(selection.tool, paletteMedium)} value={selection.load?.colors[0] ?? '#ffffff'} oninput={(event) => chooseColor({ name: `Custom ${event.currentTarget.value}`, hex: event.currentTarget.value })} /></label><p class="palette-caption" aria-live="polite">{unavailability(selection.tool, paletteMedium) || (selection.load?.medium === paletteMedium ? selection.load.name : 'Choose a color to load your tool.')}</p>{/if}
       </StudioPanel>
@@ -509,18 +563,19 @@
     <label class="wheel-option"><input type="checkbox" bind:checked={wheelZoom} /> Scroll wheel zooms canvas</label>
     <button type="button" onclick={() => { canvas?.downloadStrokes(); document.getElementById('table-actions')?.hidePopover(); }}>Export painting data</button>
   </div>
-</div>
-<div id="table-account" class="table-menu" popover aria-label="Account and site menu">
-  <h2>Account</h2>
-  <AccountControls />
-  {#if utility}<div class="menu-group">{@render utility()}</div>{/if}
+  <!-- Account and site links sit last, after a separator, away from the painting actions. -->
+  <div class="menu-group account-group">
+    <h2>Account</h2>
+    <AccountControls />
+    {#if utility}{@render utility()}{/if}
+  </div>
 </div>
 
 <style lang="scss">
   @use '../../styles/tokens' as *;
   .filter-defs { position: absolute; pointer-events: none; }
   .workbench { position: relative; width: 100%; height: 100svh; overflow: clip; isolation: isolate; background-image: linear-gradient(#1e0f0599, #1e0f0599), var(--wood); background-size: auto, 1000px; }
-  .status-strip { position: absolute; inset: 0 0 auto; min-height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 20px; background: #0c0806ed; z-index: 40; }
+  .status-strip { position: absolute; inset: 0 0 auto; min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 20px; background: #0c0806ed; z-index: 40; }
   .mode { display: flex; gap: 4px; }
   .mode button { border: 1px solid #81704f; }
   .mode button[aria-pressed='true'] { background: #e8ddbc; color: #21160d; font-weight: 700; }
@@ -534,8 +589,17 @@
   button, select { font: inherit; color: #fff5e5; background: #1c150fe8; border: 1px solid #9d8c67; border-radius: 4px; padding: 8px 12px; }
   .primary { border-color: #e6df54; font-weight: 700; }
   button:disabled { opacity: 0.5; }
-  .canvas-frame { position: absolute; left: var(--canvas-x); top: var(--canvas-y); width: var(--canvas-width); aspect-ratio: var(--canvas-ratio); background: transparent; z-index: 5; }
-  .canvas-hint { position: absolute; top: calc(100% + 22px); left: 0; right: 0; text-align: center; pointer-events: none; font-size: 13px; margin: 0; color: #fff4df; text-shadow: 0 2px 3px #000; }
+  .canvas-frame { position: absolute; left: var(--frame-x); top: var(--frame-y); width: var(--frame-width); height: var(--frame-height); background: transparent; z-index: 5; }
+  .edge { position: absolute; z-index: 3; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; touch-action: none; }
+  .edge-top, .edge-bottom { left: 12px; right: 12px; height: 14px; cursor: ns-resize; }
+  .edge-left, .edge-right { top: 12px; bottom: 12px; width: 14px; cursor: ew-resize; }
+  .edge-top { top: -7px; } .edge-bottom { bottom: -7px; } .edge-left { left: -7px; } .edge-right { right: -7px; }
+  .edge::after { content: ''; position: absolute; inset: 5px; border-radius: 2px; background: #f1ec35; opacity: 0; transition: opacity .15s; }
+  .edge:hover::after, .edge:focus-visible::after { opacity: .9; }
+  .edge:focus-visible { outline: none; }
+  .corner { position: absolute; right: -6px; bottom: -6px; z-index: 4; display: grid; place-items: center; width: 32px; height: 32px; min-height: 32px; padding: 0; cursor: nwse-resize; touch-action: none; background: #1c150fe8; }
+  @media (prefers-reduced-motion: reduce) { .edge::after { transition: none; } }
+  .arranging .supply { z-index: 6; }
   .supply { position: absolute; pointer-events: none; z-index: 2; }
   .supply.chosen { z-index: 4; }
   .tool-grid { display: grid; gap: 4px 16px; align-items: center; }
@@ -590,9 +654,12 @@
   .dock-both:not(.compact) .supplies { left: 12px; right: 12px; width: auto; grid-template-columns: repeat(2, min(140px, 12vw)) 1fr repeat(2, min(140px, 12vw)); pointer-events: none; }
   .dock-both:not(.compact) .supply { grid-column: var(--dock-column); grid-row: var(--dock-row); }
   .docked:not(.compact) .supply { position: relative; inset: auto !important; width: 100% !important; height: 128px !important; }
-  .party-bar { flex: 1; min-width: 0; display: flex; justify-content: flex-end; }
+  .party-bar { flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-end; }
   .party-bar:empty { display: none; }
-  .menus { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+  .header-note { flex: 1 1 12rem; min-width: 0; margin: 0; font-size: 13px; line-height: 1.4; color: #e8ddcc; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+  .header-note.fresh { color: #fff6e5; font-weight: 700; }
+  .menu-button { flex: none; margin-left: auto; min-height: 40px; padding: 6px 16px; font-size: 14px; }
+  .account-group :global(.account-controls) { font-size: 13px; }
   .arrange-controls { display: grid; gap: 10px; }
   .arrange-field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; font-size: 13px; }
   .arrange-field select { width: 100%; }
@@ -617,7 +684,7 @@
   .compact .mode { flex: 1 0 auto; }
   .compact .selected-tool { flex: 1; min-width: 120px; }
   .compact .selected-color { flex: 1; }
-  .compact .canvas-frame { position: relative; inset: auto; width: min(100%, calc(58svh * var(--canvas-aspect))); margin: var(--toolbar-space) auto 64px; }
+  .compact .canvas-frame { position: relative; inset: auto; width: min(100%, calc(58svh * var(--canvas-aspect))); height: auto; aspect-ratio: var(--canvas-ratio); margin: var(--toolbar-space) auto 32px; }
   .compact .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); align-items: start; gap: 12px; margin-bottom: 16px; }
   .compact .panels:empty { display: none; }
   .compact .supplies { display: grid; grid-template-columns: repeat(auto-fit, minmax(clamp(100px, 13vw, 168px), 1fr)); gap: 12px 8px; }
