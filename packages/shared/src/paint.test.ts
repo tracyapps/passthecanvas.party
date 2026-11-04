@@ -20,7 +20,8 @@ describe('shared paint rules', () => {
     expect(strokeIsPossible({ tool: 'round', load: null, wet: true })).toBe(true);
     expect(strokeIsPossible({ tool: 'eraser', load: null, wet: false })).toBe(true);
     expect(strokeIsPossible({ tool: 'knife', load: { ...blue, medium: 'watercolor' }, wet: false })).toBe(false);
-    expect(strokeIsPossible({ tool: 'sponge', load: null, wet: true })).toBe(false);
+    expect(strokeIsPossible({ tool: 'sponge', load: null, wet: true })).toBe(true);
+    expect(strokeIsPossible({ tool: 'eraser', load: null, wet: true })).toBe(false);
   });
 
   it('clamps stamps to the canvas and drops junk', () => {

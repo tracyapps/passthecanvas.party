@@ -1,12 +1,12 @@
 // What the painter is holding: the object in your hand (tool), what it carries
 // (load) and whether it is wet. The tool/paint rules themselves are shared with
 // the party server in @ptc/shared, so the server refuses impossible strokes.
-import { isBrush, unavailability as sharedUnavailability, worksDry, type MediumId, type PaintLoad, type ToolId } from '@ptc/shared';
+import { isBrush, takesWater, unavailability as sharedUnavailability, worksDry, type MediumId, type PaintLoad, type ToolId } from '@ptc/shared';
 
 export type PaintingTool = ToolId;
 export type PaintingMedium = MediumId;
 export type { PaintLoad };
-export { isBrush };
+export { isBrush, takesWater };
 export interface PaintingSelection {
   tool: PaintingTool | null;
   load: PaintLoad | null;
@@ -36,9 +36,10 @@ export function loadPaint(selection: PaintingSelection, load: PaintLoad): Painti
   if (unavailability(selection.tool, load.medium)) return selection;
   return { ...selection, load, remembered: load, wet: false };
 }
+/** The water cup rinses: the paint comes off and the brush (or sponge) is left wet. */
 export function dipInWater(selection: PaintingSelection): PaintingSelection {
-  if (!isBrush(selection.tool)) return selection;
-  return { ...selection, wet: true };
+  if (!takesWater(selection.tool)) return selection;
+  return { ...selection, load: null, wet: true };
 }
 export function canPaint(selection: PaintingSelection): boolean {
   if (!selection.tool) return false;

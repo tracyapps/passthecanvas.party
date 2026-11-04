@@ -116,29 +116,38 @@ describe('brush marks', () => {
     expect(new Set(bands.map(mark => mark.args[1])).size).toBe(3);
   });
 
-  it('wet brushes and texture sponge sample only their supplied painter layer', () => {
-    for (const selection of [dipInWater(selectTool(emptySelection(), 'round')), selectTool(emptySelection(), 'sponge')]) {
+  it('water and the sponge, wet or dry, sample only their supplied painter layer', () => {
+    const wetSponge = dipInWater(selectTool(emptySelection(), 'sponge'));
+    for (const selection of [dipInWater(selectTool(emptySelection(), 'round')), selectTool(emptySelection(), 'sponge'), wetSponge]) {
       const { marks, canvas } = render(selection);
       const copies = marks.filter(mark => mark.method === 'drawImage');
       expect(copies.length).toBeGreaterThan(0);
       expect(copies.every(mark => mark.args[0] === canvas)).toBe(true);
-      expect(copies.every(mark => mark.operation === 'source-atop')).toBe(true);
+      // Moves keep the paint's opacity (source-atop) or only fill in beneath it
+      // (destination-over), so water never piles new pigment on top.
+      expect(copies.every(mark => mark.operation === 'source-atop' || mark.operation === 'destination-over')).toBe(true);
       const fills = marks.filter(mark => mark.method === 'fill' || mark.method === 'fillRect');
       expect(fills.length).toBeGreaterThan(0);
       expect(fills.every(mark => mark.operation === 'destination-out')).toBe(true);
     }
   });
 
-  it('feathers water disturbance and lifts alpha after opacity-preserving blending', () => {
+  it('makes water run and smear more than it lifts', () => {
     const { marks } = render(dipInWater(selectTool(emptySelection(), 'round')));
-    const copies = marks.filter(mark => mark.method === 'drawImage');
-    expect(copies.length).toBeGreaterThan(1);
-    expect(copies.every(mark => mark.operation === 'source-atop')).toBe(true);
-    expect(copies.at(-1)!.alpha).toBeLessThan(copies[0].alpha / 3);
+    const flow = marks.filter(mark => mark.method === 'drawImage' && mark.operation === 'source-atop');
+    expect(flow.length).toBeGreaterThan(1);
+    expect(flow.at(-1)!.alpha).toBeLessThan(flow[0].alpha / 3);
     const lifts = marks.filter(mark => mark.method === 'fill');
-    expect(lifts.every(mark => mark.operation === 'destination-out' && mark.alpha > 0)).toBe(true);
+    expect(lifts.every(mark => mark.operation === 'destination-out' && mark.alpha > 0 && mark.alpha < 0.01)).toBe(true);
     const methods = marks.map(mark => mark.method);
     expect(methods.lastIndexOf('fill')).toBeGreaterThan(methods.lastIndexOf('drawImage'));
+  });
+
+  it('gives the wet sponge a textured (pored) run, different from a wet brush', () => {
+    const sponge = render(dipInWater(selectTool(emptySelection(), 'sponge'))).marks;
+    const brush = render(dipInWater(selectTool(emptySelection(), 'round'))).marks;
+    expect(sponge.filter(mark => mark.method === 'arc').length).toBeGreaterThan(brush.filter(mark => mark.method === 'arc').length);
+    expect(JSON.stringify(sponge)).not.toEqual(JSON.stringify(brush));
   });
 
   it('eraser lifts paint without sampling or filling new pigment', () => {

@@ -73,9 +73,16 @@ export function drawMark(
     ctx.restore();
     return;
   }
-  if (selection.wet || tool === 'sponge') {
-    disturbPaint(ctx, point, width, angle, stampIndex, tool === 'sponge');
-    if (!selection.load || tool === 'sponge') {
+  if (tool === 'sponge') {
+    // Dry, the sponge lifts and textures paint. Wet, it pushes runny pigment around through its pores.
+    if (selection.wet) wetPaint(ctx, point, width, angle, stampIndex, true);
+    else disturbPaint(ctx, point, width, angle, stampIndex, true);
+    ctx.restore();
+    return;
+  }
+  if (selection.wet) {
+    wetPaint(ctx, point, width, angle, stampIndex, false);
+    if (!selection.load) {
       ctx.restore();
       return;
     }
@@ -225,6 +232,95 @@ function disturbPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: 
     speckles(ctx, radius, '#000000', 30, seed, 0.12, Math.max(1, width * 0.05));
   } else {
     softDab(ctx, point.x, point.y, radius, radius, '#000000', 0.018, 0.2);
+  }
+  ctx.restore();
+}
+
+/**
+ * Water: pigment runs rather than washing out. Paint is pulled along the
+ * stroke and a little downhill, spreads into bare or thin spots next to it,
+ * now and then drips, and thins only slightly, so acrylic smears and runs
+ * instead of fading. The wet sponge does the same through its pores.
+ * Spreading uses destination-over: it only fills where paint is missing or
+ * thin, so it never darkens what's already there.
+ */
+function wetPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: number, angle: number, seed: number, textured: boolean) {
+  const radius = width * 0.6;
+  const pull = width * (textured ? 0.16 : 0.22);
+  const drip = width * 0.06;
+  const fromX = -Math.cos(angle) * pull;
+  const fromY = -Math.sin(angle) * pull - drip;
+  const copy = (dx: number, dy: number, size = radius) =>
+    ctx.drawImage(ctx.canvas, point.x - size + dx, point.y - size + dy, size * 2, size * 2, point.x - size, point.y - size, size * 2, size * 2);
+  const pores = () => {
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const x = point.x + (noise(seed, i) - 0.5) * radius * 1.8;
+      const y = point.y + (noise(seed, i + 40) - 0.5) * radius * 1.8;
+      const r = radius * (0.07 + noise(seed, i + 80) * 0.15);
+      ctx.moveTo(x + r, y);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+    ctx.clip();
+  };
+  ctx.save();
+  // 1. Flow: existing pigment slides along (source-atop keeps it on the paint that is there).
+  ctx.globalCompositeOperation = 'source-atop';
+  if (textured) {
+    ctx.save(); pores(); ctx.globalAlpha = 0.34; copy(fromX, fromY); ctx.restore();
+  } else {
+    for (let ring = 0; ring < 6; ring++) {
+      const inner = radius * ring / 6;
+      const outer = radius * (ring + 1) / 6;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, outer, 0, Math.PI * 2);
+      if (inner > 0) {
+        ctx.moveTo(point.x + inner, point.y);
+        ctx.arc(point.x, point.y, inner, 0, Math.PI * 2);
+      }
+      ctx.clip('evenodd');
+      ctx.globalAlpha = 0.2 * (1 - ring / 6);
+      copy(fromX, fromY);
+      ctx.restore();
+    }
+  }
+  // 2. Run: color spreads into the bare or thin spots it's pushed toward.
+  ctx.globalCompositeOperation = 'destination-over';
+  // Only around the rim of the brush: the middle of a wash shouldn't fill back in
+  // (that would deepen see-through watercolor instead of thinning it).
+  ctx.save();
+  if (textured) pores();
+  else {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius * 0.95, 0, Math.PI * 2);
+    ctx.moveTo(point.x + radius * 0.55, point.y);
+    ctx.arc(point.x, point.y, radius * 0.55, 0, Math.PI * 2);
+    ctx.clip('evenodd');
+  }
+  ctx.globalAlpha = textured ? 0.12 : 0.09;
+  copy(fromX * 1.4, fromY * 1.4);
+  ctx.restore();
+  // 3. Now and then a little run drips straight down from the stroke.
+  if (!textured && noise(seed, 7) > 0.9) {
+    const runWidth = Math.max(1, width * 0.08);
+    const offset = (noise(seed, 9) - 0.5) * radius;
+    const length = radius * (0.8 + noise(seed, 11) * 0.8);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(point.x + offset - runWidth / 2, point.y, runWidth, length);
+    ctx.clip();
+    ctx.globalAlpha = 0.24;
+    ctx.drawImage(ctx.canvas, point.x + offset - runWidth, point.y - length * 0.5, runWidth * 2, length, point.x + offset - runWidth, point.y, runWidth * 2, length);
+    ctx.restore();
+  }
+  // 4. Thin it only slightly.
+  ctx.globalCompositeOperation = 'destination-out';
+  if (textured) {
+    ctx.translate(point.x, point.y);
+    speckles(ctx, radius, '#000000', 18, seed, 0.05, Math.max(1, width * 0.05));
+  } else {
+    softDab(ctx, point.x, point.y, radius, radius, '#000000', 0.008, 0.2);
   }
   ctx.restore();
 }

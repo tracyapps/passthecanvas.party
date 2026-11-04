@@ -19,7 +19,7 @@
   import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './workspaces';
   import burnishingPad from './burnishing-pad.svg?url';
   import { constrainSupply, type SupplyRect } from './placement';
-  import { emptySelection, selectTool, loadPaint, dipInWater, isBrush, unavailability,
+  import { emptySelection, selectTool, loadPaint, dipInWater, isBrush, takesWater, unavailability,
     TOOL_NAMES, MEDIUM_NAMES, type PaintingTool, type PaintingMedium, type PaintLoad } from './painting-selection';
   const images = import.meta.glob('./supplies/study-*.{svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
   interface Props {
@@ -129,9 +129,10 @@
     : !canDraw ? `${waitingNote} Get your tools ready while you wait.`
     : !selection.tool ? 'Choose a tool to begin. Drag the canvas (or hold Space) to move around.'
     : selection.tool === 'burnisher' ? 'Smudge & intensify. Only your own turn will change.'
+    : selection.tool === 'sponge' && selection.wet ? 'Wet sponge: pushes paint around in runny, textured patches.'
     : selection.tool === 'eraser' || selection.tool === 'sponge' ? 'Ready. Only your own turn will change.'
     : selection.load ? `${selection.load.name}${selection.wet ? ', with water' : ''}. Ready to paint.`
-    : selection.wet ? 'Water only. Only your own turn will change.' : 'Choose a compatible paint to load your tool.');
+    : selection.wet ? 'Water only: paint you brush over runs and smears. Only your own turn will change.' : 'Choose a compatible paint to load your tool.');
   let trayReason = $derived(unavailability(selection.tool, trayMedium));
   let solidColor = $derived(mixColor(recipe));
   let availableColors = $derived(PALETTES[trayOpen ? trayMedium : paletteMedium]);
@@ -304,7 +305,8 @@
     announcement = `${TOOL_NAMES[tool]}. ${status}`;
   }
   function active(id: string): boolean {
-    if (id === 'water') return selection.wet;
+    // Water lights up only while the tool carries just water (after a rinse), never alongside a paint box.
+    if (id === 'water') return selection.wet && !selection.load;
     // The paint boxes light up for the palette you're looking at, not only the paint already on the brush.
     if (id === 'acrylic' || id === 'watercolor') return paletteOpen && !trayOpen ? paletteMedium === id : selection.load?.medium === id;
     if (id === 'tray' && paletteOpen && trayOpen) return true;
@@ -320,7 +322,7 @@
   }
   async function openSupply(supply: typeof supplies[number]) {
     if (mode === 'arrange') { target = supply.id; return; }
-    if (supply.id === 'water') { selection = dipInWater(selection); announcement = `${toolName} dipped in water.`; return; }
+    if (supply.id === 'water') { rinse(); return; }
     if (supply.id === 'tray') { trayOpen = true; paletteOpen = true; await revealPalette(); return; }
     if (supply.tool) select(supply.tool);
     if (!supply.medium) { if (compact) await showSettings(); return; }
@@ -365,7 +367,12 @@
     trayMode = mix.mode;
     announcement = `Tray refilled: ${recipeText(recipe)}.`;
   }
-  function rinse() { selection = { ...selection, load: null, wet: true }; announcement = `${toolName} rinsed. Water only.`; }
+  function rinse() {
+    if (!takesWater(selection.tool)) return;
+    selection = dipInWater(selection);
+    announcement = selection.tool === 'sponge' ? 'Sponge wet. It pushes paint around in runny, textured patches.' : `${toolName} rinsed. Water only.`;
+  }
+  function wringOut() { selection = { ...selection, wet: false }; announcement = 'Sponge wrung out. It works dry again.'; }
   async function showSettings() { settingsOpen = true; await tick(); document.getElementById('brush-size')?.focus(); }
   function supplyBox(supply: typeof supplies[number]): SupplyRect {
     const scale = Math.min(board.width / 1440, board.height / 1024);
@@ -499,7 +506,7 @@
           <label class="exact-field">Exact size<input aria-label="Exact size" type="number" min="2" max="80" value={size} oninput={(event) => { const value = event.currentTarget.valueAsNumber; if (value >= 2 && value <= 80) size = value; }} onchange={(event) => size = Math.round(Math.max(2, Math.min(80, Number(event.currentTarget.value) || 24)))} /></label>
           </div>
           {#if hasIntensity}<div class="intensity-field"><label for="tool-intensity">Intensity <output>{intensity}%</output></label><input id="tool-intensity" type="range" min="0" max="100" step="1" value={intensity} aria-valuetext={`${intensity}%`} oninput={(event) => { if (selection.tool === 'airbrush' || selection.tool === 'burnisher') intensities[selection.tool] = event.currentTarget.valueAsNumber; }} /></div>{/if}
-          <div class="load-field"><span>{selection.load ? 'Loaded color' : 'Tool shape'}</span><div class="loaded-row"><div class="brush-preview" aria-hidden="true">{#each selection.load?.colors ?? ['#eee9dc'] as color}<span style:background={color}></span>{/each}</div>{#if isBrush(selection.tool)}<button type="button" class="secondary" onclick={rinse}>Rinse brush</button>{/if}</div></div>
+          <div class="load-field"><span>{selection.load ? 'Loaded color' : 'Tool shape'}</span><div class="loaded-row"><div class="brush-preview" aria-hidden="true">{#each selection.load?.colors ?? ['#eee9dc'] as color}<span style:background={color}></span>{/each}</div>{#if isBrush(selection.tool)}<button type="button" class="secondary" onclick={rinse}>Rinse brush</button>{:else if selection.tool === 'sponge'}<button type="button" class="secondary" onclick={selection.wet ? wringOut : rinse}>{selection.wet ? 'Wring out sponge' : 'Wet the sponge'}</button>{/if}</div></div>
         </div>
       </StudioPanel>
     {/if}
@@ -541,7 +548,7 @@
     {#each order as id, index (id)}
       {@const supply = supplies.find(supply => supply.id === id)!}
       {@const box = supplyBox(supply)}
-      {@const reason = mode === 'arrange' ? '' : supply.id === 'water' ? isBrush(selection.tool) ? '' : 'Choose a brush to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
+      {@const reason = mode === 'arrange' ? '' : supply.id === 'water' ? takesWater(selection.tool) ? '' : 'Choose a brush or the sponge to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
       <div class="supply" data-tool={supply.tool} data-supply={supply.id} class:chosen={active(supply.id)}
         style:--dock-column={index < Math.ceil(order.length / 2) ? index % 2 + 1 : (index - Math.ceil(order.length / 2)) % 2 + 4} style:--dock-row={index < Math.ceil(order.length / 2) ? Math.floor(index / 2) + 1 : Math.floor((index - Math.ceil(order.length / 2)) / 2) + 1} style:left={`${box.x}px`} style:top={`${box.y}px`} style:width={`${box.width}px`} style:height={`${box.height}px`}>
         <PhotoSupply compact={compact || dock !== 'surround'} moving={mode === 'arrange' && !compact && dock === 'surround'} image={supply.id === 'burnisher' ? burnishingPad : asset(supply.id)} label={mode === 'arrange' ? `Move ${supply.name}` : supply.name} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}

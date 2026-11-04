@@ -30,6 +30,11 @@ export function isBrush(tool: ToolId | null): boolean {
   return tool !== null && ['round', 'flat', 'detail', 'fan', 'foam'].includes(tool);
 }
 
+/** What can be dipped in the water cup: the brushes, and the texture sponge. */
+export function takesWater(tool: ToolId | null): boolean {
+  return isBrush(tool) || tool === 'sponge';
+}
+
 /** Tools that work without any paint loaded. */
 export function worksDry(tool: ToolId | null): boolean {
   return tool === 'sponge' || tool === 'burnisher' || tool === 'eraser';
@@ -100,7 +105,7 @@ export interface PaintedStroke extends Stroke {
 
 /** Could a real table produce this? Used by the server before relaying. */
 export function strokeIsPossible(stroke: Pick<Stroke, 'tool' | 'load' | 'wet'>): boolean {
-  if (stroke.wet && !isBrush(stroke.tool)) return false;
+  if (stroke.wet && !takesWater(stroke.tool)) return false;
   if (stroke.load && unavailability(stroke.tool, stroke.load.medium)) return false;
   return Boolean(stroke.load) || stroke.wet || worksDry(stroke.tool);
 }

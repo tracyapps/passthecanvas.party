@@ -43,4 +43,13 @@ describe('photographic workspace selection', () => {
     expect(loadPaint(brush, striped).load).toEqual(striped);
     expect(dipInWater(selectTool(emptySelection(), 'knife')).wet).toBe(false);
   });
+
+  it('rinses at the water cup: the paint comes off, and the sponge can be wet too', () => {
+    const painted = loadPaint(selectTool(emptySelection(), 'round'), acrylic);
+    const rinsed = dipInWater(painted);
+    expect(rinsed.wet).toBe(true);
+    expect(rinsed.load).toBeNull();
+    expect(dipInWater(selectTool(emptySelection(), 'sponge')).wet).toBe(true);
+    expect(dipInWater(selectTool(emptySelection(), 'eraser')).wet).toBe(false);
+  });
 });
