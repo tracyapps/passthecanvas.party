@@ -17,6 +17,15 @@ html.scaled-page body {
   zoom: var(--ui-scale, 1);
 }
 
+// Pictures and drawing surfaces are never picked up as a selection or a
+// draggable image when you press and drag on a touch screen.
+img, svg, canvas {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;

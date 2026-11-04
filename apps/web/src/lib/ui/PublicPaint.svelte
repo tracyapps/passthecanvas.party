@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { holdStill } from '../holdStill';
   import { onMount } from 'svelte';
   import { drawMark, stampSpacing } from '../canvas/brushes';
   import type { PaintingSelection, PaintingTool } from '../canvas/painting-selection';
@@ -125,7 +126,7 @@
     <button class:chosen={tool === 'eraser'} aria-pressed={tool === 'eraser'} onclick={() => changeTool('eraser')}><img src="/site/eraser-photo.webp" alt="" /><span>Eraser</span></button>
   </div>
   <div class="paper-wrap">
-    <div class="paper" role="application" aria-label="Painting practice">
+    <div class="paper" use:holdStill role="application" aria-label="Painting practice">
       <canvas bind:this={canvas} width="1000" height="650" tabindex="0" aria-roledescription="painting surface" aria-label="Practice canvas" aria-describedby={helpId} onpointerdown={start} onpointermove={move} onpointerup={stop} onpointercancel={stop} onkeydown={key} onblur={() => { keyboardMarking = false; previous = null; }}></canvas>
       <span class="keyboard-cursor" class:down={keyboardMarking} style:left={`${cursor.x / 10}%`} style:top={`${cursor.y / 6.5}%`} aria-hidden="true"></span>
     </div>
@@ -155,7 +156,7 @@
   .paper-wrap { position: relative; margin: 65px auto 32px; width: min(100%, 900px); }
   .paper { position: relative; background: #fbf7ee; box-shadow: -6px 4px 0 #cbc3b2, -9px 8px 0 #999181, -12px 18px 20px #0008; }
   .paper::after { content: ''; position: absolute; pointer-events: none; inset: 0; opacity: .12; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%236e624c' filter='url(%23n)' d='M0 0h180v180H0z'/%3E%3C/svg%3E"); }
-  canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .keyboard-cursor { display: none; position: absolute; width: 18px; height: 18px; border: 2px solid #111; outline: 2px solid white; border-radius: 50%; transform: translate(-50%,-50%); pointer-events: none; }
   .paper:focus-within .keyboard-cursor { display: block; } .keyboard-cursor.down { background: #1117; }
   .paper-caption { display: block; margin: 20px 0 0; text-align: center; font: 1.4rem 'Square Peg', cursive; color: #fff4df; }

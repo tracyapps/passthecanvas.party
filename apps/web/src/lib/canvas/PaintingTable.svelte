@@ -45,10 +45,12 @@
     notice?: string;
     /** A tiny save state shown by the menu ("Unsaved changes", "Auto-saved 10:42"). */
     saveStatus?: string;
+    /** clean | unsaved | saving | autosaving | error: colors the indicator's dot. */
+    saveState?: string;
     /** Cmd/Ctrl+S. */
     onsave?: () => void;
   }
-  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '', saveStatus = '', onsave }: Props = $props();
+  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '', saveStatus = '', saveState = 'clean', onsave }: Props = $props();
   let canvas = $state<PartyCanvas>();
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
   export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null, ownBase = false) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl, ownBase); }
@@ -492,7 +494,11 @@
     <!-- Messages live up here, never on the table where you paint. -->
     <p class="header-note" class:fresh={!!notice}>{notice || status}</p>
     <div class="party-bar">{@render partyBar?.()}</div>
-    {#if saveStatus}<p class="save-status" role="status">{saveStatus}</p>{/if}
+    {#if saveStatus}
+      <!-- Tap to save now. The dot: amber = unsaved, pulsing = saving, green = saved, red = not saved. -->
+      <button type="button" class={`save-status ${saveState}`} disabled={!onsave || saveState === 'saving' || saveState === 'autosaving'} onclick={() => onsave?.()} aria-label={`${saveStatus}. Save now.`}><span class="dot" aria-hidden="true"></span>{saveStatus}</button>
+      <span class="sr-only" role="status">{saveState === 'unsaved' ? '' : saveStatus}</span>
+    {/if}
     <button type="button" class="menu-button" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
   </header>
 
@@ -617,7 +623,8 @@
   @use '../../styles/tokens' as *;
   .filter-defs { position: absolute; pointer-events: none; }
   /* manipulation: no double-tap-to-zoom, so quick taps between tools are never swallowed on a tablet. */
-  .workbench { touch-action: manipulation; position: relative; width: 100%; height: 100svh; overflow: clip; isolation: isolate; background-image: linear-gradient(#1e0f0599, #1e0f0599), var(--wood); background-size: auto, 1000px; }
+  /* The table is an app surface: no text selection or iOS callouts while you reach for tools (form fields still select). */
+  .workbench { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; position: relative; width: 100%; height: 100svh; overflow: clip; isolation: isolate; background-image: linear-gradient(#1e0f0599, #1e0f0599), var(--wood); background-size: auto, 1000px; }
   .status-strip { position: absolute; inset: 0 0 auto; min-height: calc(72px * var(--ui-scale, 1)); display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 20px; background: #0c0806ed; z-index: 40; }
   .mode { display: flex; gap: 4px; }
   .mode button { border: 1px solid #81704f; }
@@ -703,7 +710,14 @@
   .party-bar:empty { display: none; }
   .header-note { flex: 1 1 12rem; min-width: 0; margin: 0; font-size: 13px; line-height: 1.4; color: #e8ddcc; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
   .header-note.fresh { color: #fff6e5; font-weight: 700; }
-  .save-status { flex: none; margin: 0 0 0 auto; font-size: 11px; color: #d8ccb6; white-space: nowrap; }
+  .save-status { flex: none; display: inline-flex; align-items: center; gap: 6px; margin: 0 0 0 auto; min-height: 32px; padding: 4px 10px; font-size: 12px; color: #e8ddcc; white-space: nowrap; border-color: #5d4d35; border-radius: 999px; background: #1c150fcc; }
+  .save-status:disabled { opacity: 1; }
+  .save-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #7fc27f; }
+  .save-status.unsaved .dot { background: #e6b23c; }
+  .save-status.error .dot { background: #e0604f; }
+  .save-status.saving .dot, .save-status.autosaving .dot { background: #e8ddcc; animation: save-pulse 1s ease-in-out infinite alternate; }
+  @keyframes save-pulse { from { opacity: .3; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .save-status .dot { animation: none !important; } }
   .save-status + .menu-button { margin-left: 0; }
   /* Interface size (Settings) scales the controls, not the table. */
   .status-strip > *, .table-menu > * { zoom: var(--ui-scale, 1); }
@@ -718,6 +732,7 @@
   .arrange-hint { margin: 0; font-size: 12px; line-height: 1.45; }
   .arrange-actions { display: flex; gap: 8px; justify-content: space-between; }
   .workspace-menu > div { display: grid; gap: 8px; padding-top: 8px; }
+  .workbench :global(input), .workbench :global(textarea) { -webkit-user-select: text; user-select: text; }
   .table-menu { position: fixed; inset: 96px 16px auto auto; width: min(calc(280px * var(--ui-scale, 1)), calc(100vw - 32px)); max-height: calc(100svh - 112px); overflow: auto; margin: 0; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; border-radius: 6px; padding: 14px 16px 16px; box-shadow: 0 10px 28px #000a; }
   .table-menu h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #e8ddcc; margin: 0 0 6px; }
   .menu-group + .menu-group { margin-top: 14px; padding-top: 14px; border-top: 1px solid #5d4d35; }

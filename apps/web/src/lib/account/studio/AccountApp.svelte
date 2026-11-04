@@ -7,7 +7,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { accountState, initializeAccount, manageAccount, openAccountSignIn, signOutAccount } from '../account.svelte';
-  import { clearStudio, go, refresh, route, studio } from './studio.svelte';
+  import { clearStudio, go, refresh, route, startLiveUpdates, studio } from './studio.svelte';
   import PersonBadge from './PersonBadge.svelte';
   import Dashboard from './Dashboard.svelte';
   import ProfileView from './ProfileView.svelte';
@@ -38,7 +38,7 @@
   /** Pages that work without signing in. */
   const OPEN = ['/account/devices', '/account/avatars/new'];
 
-  onMount(() => void initializeAccount());
+  onMount(() => { void initializeAccount(); return startLiveUpdates(); });
 
   // Load (or forget) the studio whenever the signed-in person changes.
   let loadedFor: string | null = null;

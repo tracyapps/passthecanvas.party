@@ -3,6 +3,15 @@
   import TiltLogo from './TiltLogo.svelte';
   import { site, navigation, pages, partySteps, workbench } from './public-site-content';
   import '../../styles/public-site.scss';
+  import PersonBadge from '../account/studio/PersonBadge.svelte';
+  import { accountState, initializeAccount } from '../account/account.svelte';
+  import { refresh, studio } from '../account/studio/studio.svelte';
+  // The header shows who's signed in ("Tapps' studio" with their picture) or a sign-in link.
+  $effect(() => { const id = setTimeout(() => void initializeAccount(), 300); return () => clearTimeout(id); });
+  $effect(() => { if (accountState.userId && !studio.home && !studio.loading) void refresh(); });
+  let me = $derived(accountState.userId ? studio.home?.profile ?? null : null);
+  const possessive = (name: string) => (/s$/i.test(name) ? `${name}’` : `${name}’s`);
+  let studioLabel = $derived(me ? `${possessive(me.name)} studio` : accountState.userId ? 'Your studio' : 'Log in to your studio');
   let { path = '/' }: { path?: string } = $props();
   let page = $derived(pages[path] ?? (path.startsWith('/account') ? pages['/account'] : pages['/']));
   let roomDialog: HTMLDialogElement;
@@ -28,9 +37,9 @@
   <a class="public-skip" href="#main-content">Skip to content</a>
   <header class="site-header">
     <TiltLogo />
-    <nav class="desktop-nav" aria-label="Main navigation">{#each navigation as link}<a href={link.href} aria-current={path === link.href ? 'page' : undefined}>{link.label}</a>{/each}</nav>
-    <div class="header-actions"><button class="theme-toggle" type="button" aria-label="Dark appearance" aria-pressed={dark} onclick={toggleTheme}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg><span>{dark ? 'Dark' : 'Light'}</span></button><a href="/account" class="account-link">Your studio</a><a href="/try" class="paint-link">Try the paints <span aria-hidden="true">↗</span></a></div>
-    <details class="mobile-nav"><summary>Explore</summary><nav aria-label="Mobile navigation">{#each navigation as link}<a href={link.href} aria-current={path === link.href ? 'page' : undefined}>{link.label}</a>{/each}<a href="/account">Your studio</a><a href="/support">Support the studio</a></nav></details>
+    <nav class="desktop-nav" aria-label="Main navigation">{#each navigation as link}<a href={link.href} aria-current={path === link.href ? 'page' : undefined}>{link.label}</a>{/each}<a href="/try" aria-current={path === '/try' ? 'page' : undefined}>Try the paints</a></nav>
+    <div class="header-actions"><button class="theme-toggle" type="button" aria-label="Dark appearance" title={dark ? 'Dark appearance (on)' : 'Dark appearance (off)'} aria-pressed={dark} onclick={toggleTheme}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg></button><a href="/account" class="account-link" class:signed-in={!!me} aria-label={studioLabel}>{#if me}<PersonBadge person={me} size={32} />{/if}<span>{studioLabel}</span></a></div>
+    <details class="mobile-nav"><summary>Explore</summary><nav aria-label="Mobile navigation">{#each navigation as link}<a href={link.href} aria-current={path === link.href ? 'page' : undefined}>{link.label}</a>{/each}<a href="/try">Try the paints</a><a href="/account">{studioLabel}</a><a href="/support">Support the studio</a></nav></details>
   </header>
 
   <main id="main-content">

@@ -3,10 +3,10 @@
   Private to you. Keep painting any piece, download it full size, or delete it.
 -->
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { CANVAS_SHAPES, type CanvasShape, type PracticePiece } from '@ptc/shared';
   import { accountRequest, accountToken } from '../account.svelte';
-  import { go, studio, when } from './studio.svelte';
+  import { go, live, studio, when } from './studio.svelte';
   import { fileSlug, saveFile } from '../../download';
 
   let pieces = $state<PracticePiece[] | null>(null);
@@ -14,20 +14,30 @@
   let deleting = $state<string | null>(null);
   const base = (import.meta.env.VITE_ACCOUNT_API_URL ?? '').replace(/\/$/, '');
 
-  async function file(id: string, kind: 'thumb' | 'image'): Promise<Blob> {
-    const response = await fetch(`${base}/api/account/community/practice/file?id=${encodeURIComponent(id)}&kind=${kind}`, { headers: { Authorization: `Bearer ${await accountToken()}` } });
+  async function file(id: string, kind: 'thumb' | 'image', version = ''): Promise<Blob> {
+    const response = await fetch(`${base}/api/account/community/practice/file?id=${encodeURIComponent(id)}&kind=${kind}&v=${encodeURIComponent(version)}`, { headers: { Authorization: `Bearer ${await accountToken()}` }, cache: 'no-store' });
     if (!response.ok) throw new Error('That piece could not be loaded.');
     return response.blob();
   }
 
-  async function load() {
+  /** Which version of each thumbnail is showing (so a newer save elsewhere refreshes it). */
+  const thumbVersion: Record<string, string> = {};
+  async function load(quiet = false) {
     try {
-      pieces = await accountRequest<PracticePiece[]>('community/practice');
-      for (const piece of pieces) {
-        if (thumbs[piece.id]) continue;
-        file(piece.id, 'thumb').then((blob) => (thumbs[piece.id] = URL.createObjectURL(blob)), () => {});
+      const next = await accountRequest<PracticePiece[]>('community/practice');
+      if (!quiet || JSON.stringify(next) !== JSON.stringify($state.snapshot(pieces))) pieces = next;
+      for (const piece of next) {
+        if (thumbVersion[piece.id] === piece.updatedAt) continue;
+        thumbVersion[piece.id] = piece.updatedAt;
+        file(piece.id, 'thumb', piece.updatedAt).then((blob) => {
+          const old = thumbs[piece.id];
+          thumbs[piece.id] = URL.createObjectURL(blob);
+          if (old) URL.revokeObjectURL(old);
+        }, () => {});
       }
+      for (const id of Object.keys(thumbs)) if (!next.some((p) => p.id === id)) { URL.revokeObjectURL(thumbs[id]!); delete thumbs[id]; delete thumbVersion[id]; }
     } catch (cause) {
+      if (quiet) return; // a missed live check just waits for the next one
       studio.error = cause instanceof Error ? cause.message : 'Your practice pieces could not load.';
       pieces = [];
     }
@@ -35,6 +45,8 @@
   $effect(() => {
     if (studio.home?.profile && pieces === null) void load();
   });
+  // Pieces saved on another device appear here (and changed ones refresh) on each live check.
+  $effect(() => { const tick = live.tick; untrack(() => { if (tick && pieces !== null) void load(true); }); });
   onDestroy(() => Object.values(thumbs).forEach((url) => URL.revokeObjectURL(url)));
 
   async function download(piece: PracticePiece) {

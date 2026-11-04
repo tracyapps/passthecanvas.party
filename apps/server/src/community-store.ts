@@ -21,7 +21,7 @@ export interface CommunityStore {
   saveGallery(user: string, archiveId: string, title: string): Promise<void>;
   practice(user: string): Promise<PracticePiece[]>;
   practiceFile(user: string, id: string, kind: 'image' | 'thumb' | 'strokes'): Promise<{ contentType: string; bytes: Buffer; gzip: boolean }>;
-  savePractice(user: string, input: { id: string | null; title: string; shape: CanvasShape; image: Buffer; thumb: { contentType: string; bytes: Buffer }; strokes: Buffer | null; autosave?: boolean; draftOf?: string | null }): Promise<{ id: string }>;
+  savePractice(user: string, input: { id: string | null; title: string; shape: CanvasShape; image: Buffer; thumb: { contentType: string; bytes: Buffer }; strokes: Buffer | null; autosave?: boolean; draftOf?: string | null }): Promise<{ id: string; updatedAt: string }>;
   preferences(user: string): Promise<StudioPreferences>;
   savePreferences(user: string, prefs: StudioPreferences): Promise<StudioPreferences>;
   deletePractice(user: string, id: string): Promise<void>;
@@ -158,18 +158,18 @@ export function postgresCommunityStore(db: pg.Pool): CommunityStore {
       }
       if (input.id) {
         // Saves only update their own kind: a manual save never overwrites an auto-save row, and vice versa.
-        const result = await db.query('UPDATE studio_practice_pieces SET title=$3, shape=$4, width=$5, height=$6, image=$7, thumb=$8, thumb_type=$9, strokes=$10, draft_of=CASE WHEN autosave THEN $12 ELSE draft_of END, updated_at=now() WHERE id=$2 AND user_id=$1 AND autosave=$11 RETURNING id', [user, input.id, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes, autosave, draftOf]);
-        if (result.rowCount) return { id: input.id };
+        const result = await db.query('UPDATE studio_practice_pieces SET title=$3, shape=$4, width=$5, height=$6, image=$7, thumb=$8, thumb_type=$9, strokes=$10, draft_of=CASE WHEN autosave THEN $12 ELSE draft_of END, updated_at=now() WHERE id=$2 AND user_id=$1 AND autosave=$11 RETURNING id, updated_at AS "updatedAt"', [user, input.id, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes, autosave, draftOf]);
+        if (result.rowCount) return { id: input.id, updatedAt: new Date(result.rows[0].updatedAt).toISOString() };
         if (!autosave) throw new CommunityError(404, 'This piece is unavailable.');
         // The auto-save it pointed at was deleted: start a new one below.
       }
       const id = randomUUID();
       const limit = autosave ? 'TRUE' : '(SELECT count(*) FROM studio_practice_pieces WHERE user_id=$2 AND NOT autosave)<100';
-      const result = await db.query(`INSERT INTO studio_practice_pieces(id,user_id,title,shape,width,height,image,thumb,thumb_type,strokes,autosave,draft_of) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12 WHERE EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$2) AND ${limit} RETURNING id`, [id, user, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes, autosave, draftOf]);
+      const result = await db.query(`INSERT INTO studio_practice_pieces(id,user_id,title,shape,width,height,image,thumb,thumb_type,strokes,autosave,draft_of) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12 WHERE EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$2) AND ${limit} RETURNING id, updated_at AS "updatedAt"`, [id, user, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes, autosave, draftOf]);
       if (!result.rowCount) throw new CommunityError(409, 'Save your profile first. You can keep up to 100 practice pieces.');
       // Keep the 20 newest auto-saves; older ones go (saved pieces are never touched).
       if (autosave) await db.query('DELETE FROM studio_practice_pieces WHERE user_id=$1 AND autosave AND id NOT IN (SELECT id FROM studio_practice_pieces WHERE user_id=$1 AND autosave ORDER BY updated_at DESC LIMIT 20)', [user]);
-      return { id };
+      return { id, updatedAt: new Date(result.rows[0].updatedAt).toISOString() };
     },
     async preferences(user) {
       const result = await db.query('SELECT prefs FROM studio_preferences WHERE user_id=$1', [user]);

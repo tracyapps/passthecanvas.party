@@ -35,6 +35,35 @@ export async function refresh(): Promise<void> {
   }
 }
 
+/**
+ * Live updates: while a studio page is open and visible, check for changes made
+ * elsewhere (your other devices, friends, invitations) every 15 seconds, and
+ * straight away when you come back to the tab. Only what changed is replaced,
+ * so nothing flickers and forms you're filling in are left alone.
+ * `live.tick` goes up on every check, for pages with their own data (practice pieces).
+ */
+export const live = $state({ tick: 0, checkedAt: 0 });
+let checking = false;
+async function quietRefresh(): Promise<void> {
+  if (checking || !accountState.userId || studio.loading) return;
+  checking = true;
+  try {
+    const [home, avatars] = await Promise.all([accountRequest<CommunityHome>('community'), accountRequest<SavedAvatar[]>('community/avatars')]);
+    if (JSON.stringify(home) !== JSON.stringify($state.snapshot(studio.home))) studio.home = home;
+    const clean = avatars.flatMap((a) => { const design = sanitizeAvatarDesign(a.design); return design ? [{ ...a, design }] : []; });
+    if (JSON.stringify(clean) !== JSON.stringify($state.snapshot(studio.avatars))) studio.avatars = clean;
+  } catch { /* offline for a moment: try again next time */ }
+  finally { checking = false; live.tick += 1; live.checkedAt = Date.now(); }
+}
+export function startLiveUpdates(every = 15_000): () => void {
+  const check = () => { if (document.visibilityState === 'visible') void quietRefresh(); };
+  const timer = setInterval(check, every);
+  document.addEventListener('visibilitychange', check);
+  window.addEventListener('focus', check);
+  window.addEventListener('online', check);
+  return () => { clearInterval(timer); document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); window.removeEventListener('online', check); };
+}
+
 export function clearStudio() {
   studio.home = null;
   studio.avatars = [];

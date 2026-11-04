@@ -12,6 +12,7 @@
   import type { PaintedStroke, Stamp, Stroke } from '@ptc/shared';
   import { partyUrl } from '../party/origin';
   import { saveFile } from '../download';
+  import { holdStill } from '../holdStill';
   import { canPaint, TOOL_NAMES, type PaintingSelection } from './painting-selection';
   import { stampSpacing, type StrokePoint } from './brushes';
   import { TurnLayers } from './layers';
@@ -521,7 +522,7 @@
 
 <svelte:window onkeydown={spaceDown} onkeyup={spaceUp} onpointerdowncapture={notePointer} onblur={() => (spaceHeld = false)} />
 <div class="surface" onpointerup={noteViewChange} onwheel={noteViewChange} onkeyup={noteViewChange} onchange={noteViewChange} oninput={noteViewChange} onclick={noteViewChange} role="presentation">
-  <div class="viewport" bind:this={viewport} class:pans={dragPans} class:panning role="application" aria-label="Shared canvas and view controls"
+  <div class="viewport" use:holdStill bind:this={viewport} class:pans={dragPans} class:panning role="application" aria-label="Shared canvas and view controls"
     onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onlostpointercapture={up}
     oncontextmenu={(event) => event.preventDefault()} onwheel={wheel}>
     <div class="paper" style:width={`${documentWidth * frame.scale * view.zoom}px`} style:height={`${documentHeight * frame.scale * view.zoom}px`} style:--edge={`${9 * view.zoom}px`} style:transform={`translate(-50%, -50%) translate(${view.x}px, ${view.y}px) rotate(${rotation * 90}deg)`}><div class="artwork">

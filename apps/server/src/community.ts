@@ -113,7 +113,7 @@ export function createCommunityHandler(deps: Dependencies) {
         if (route === '/preferences') return send(res, 200, await db.preferences(user));
         if (route === '/practice/file' && ID.test(url.searchParams.get('id') ?? '') && ['image', 'thumb', 'strokes'].includes(url.searchParams.get('kind') ?? '')) {
           const file = await db.practiceFile(user, url.searchParams.get('id')!, url.searchParams.get('kind') as 'image' | 'thumb' | 'strokes');
-          res.writeHead(200, { 'Content-Type': file.contentType, 'Cache-Control': 'private, max-age=60', ...(file.gzip ? { 'Content-Encoding': 'gzip' } : {}) }).end(file.bytes);
+          res.writeHead(200, { 'Content-Type': file.contentType, 'Cache-Control': 'private, no-cache', ...(file.gzip ? { 'Content-Encoding': 'gzip' } : {}) }).end(file.bytes);
           return;
         }
         if (route === '/calendar') return send(res, 200, await db.calendarToken(user, false));

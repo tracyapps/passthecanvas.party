@@ -42,6 +42,9 @@
   let knownTitle = 'Practice piece';
   $effect(() => { if (title !== knownTitle) { knownTitle = title; markChanged(); } });
   const clock = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  // A clock for "saved 3 min ago", so the indicator stays current on its own.
+  let now = $state(Date.now());
+  const ago = (date: Date) => { const s = Math.max(0, (now - date.getTime()) / 1000); return s < 45 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : clock(date); };
   /** Where saving stands, for the page and for the small indicator by the menu. */
   let saveState = $derived(saveKind ?? (saveError ? 'error' : unsaved ? 'unsaved' : 'clean'));
   let saveStatus = $derived(
@@ -50,8 +53,8 @@
     : !signedIn ? (unsaved ? 'Not saved (sign in to save)' : '')
     : saveError && unsaved ? 'Not saved: check your connection'
     : unsaved ? 'Unsaved changes'
-    : lastAutosavedAt && (!lastSavedAt || lastAutosavedAt > lastSavedAt) ? `Auto-saved ${clock(lastAutosavedAt)}`
-    : lastSavedAt ? `Saved ${clock(lastSavedAt)}` : '');
+    : lastAutosavedAt && (!lastSavedAt || lastAutosavedAt > lastSavedAt) ? `Auto-saved ${ago(lastAutosavedAt)}`
+    : lastSavedAt ? `Saved ${ago(lastSavedAt)}` : '');
   /** True when this piece is kept as a picture only (its strokes were too much to keep). Saves stay picture-only. */
   let pictureOnly = false;
   let canvasSize = $derived({ width: CANVAS_SHAPES[shape].width, height: CANVAS_SHAPES[shape].height });
@@ -78,9 +81,13 @@
       if (Date.now() - lastSaveAttempt >= minutes * 60_000) void autosave();
     }, 5_000);
     // Leaving the tab (or the iPad putting it away) is a good moment too: iOS may reload it later.
+    const follow = setInterval(() => void followOtherDevices(), 15_000);
+    const ticking = setInterval(() => (now = Date.now()), 15_000);
+    const back = () => { if (document.visibilityState === 'visible') void followOtherDevices(); };
+    document.addEventListener('visibilitychange', back);
     const hidden = () => { if (document.visibilityState === 'hidden' && prefs.autosaveMinutes && signedIn && unsaved && !saveKind && !table?.busy()) void autosave(); };
     document.addEventListener('visibilitychange', hidden);
-    return () => { removeEventListener('beforeunload', warn); clearInterval(timer); document.removeEventListener('visibilitychange', hidden); };
+    return () => { removeEventListener('beforeunload', warn); clearInterval(timer); clearInterval(follow); clearInterval(ticking); document.removeEventListener('visibilitychange', back); document.removeEventListener('visibilitychange', hidden); };
   });
 
   // Opening: anything slower than a moment gets a full-screen progress card.
@@ -95,7 +102,7 @@
 
   /** Fetch with a progress report (bytes so far, and the total when the server says). */
   async function fetchProgress(url: string, headers: HeadersInit, onProgress: (loaded: number, total: number | null) => void): Promise<Response> {
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, { headers, cache: 'no-store' });
     if (!response.ok || !response.body) return response;
     const total = Number(response.headers.get('Content-Length')) || null;
     const encoded = !!response.headers.get('Content-Encoding'); // then the length is the compressed size
@@ -126,8 +133,25 @@
       autosaveId = piece.autosave ? piece.id : null;
       savedId = piece.autosave ? piece.draftOf : piece.id;
       await tick();
+      await showVersion(piece);
+      lastSavedAt = piece.autosave ? null : new Date(piece.updatedAt);
+      lastAutosavedAt = piece.autosave ? new Date(piece.updatedAt) : null;
+      stopLoading();
+      say(`Opened “${piece.title}”. Keep painting.`);
+    } catch (cause) {
+      stopLoading();
+      say(cause instanceof Error ? cause.message : 'That piece could not be opened.');
+    }
+  }
+
+  /** The newest version of this work shown on the table (server time), to spot saves from other devices. */
+  let shownAt = '';
+  /** Download one saved version (picture + strokes) and lay it on the table. */
+  async function showVersion(piece: PracticePiece) {
+    {
       const headers = { Authorization: `Bearer ${await accountToken()}` };
-      const url = (kind: string) => `${base()}/api/account/community/practice/file?id=${encodeURIComponent(id)}&kind=${kind}`;
+      // The version is in the address so a newer save is never answered from the browser's cache.
+      const url = (kind: string) => `${base()}/api/account/community/practice/file?id=${encodeURIComponent(piece.id)}&kind=${kind}&v=${encodeURIComponent(piece.updatedAt)}`;
       // 1. The picture: reopening from it is instant, however much was painted.
       const imageResponse = await fetchProgress(url('image'), headers, (loaded, total) => {
         if (loading) { loading.step = `Downloading the picture… ${megabytes(loaded)}${total ? ` of ${megabytes(total)}` : ''}`; loading.progress = total ? loaded / total : null; }
@@ -147,14 +171,34 @@
       picture.close();
       pictureOnly = !strokes.length;
       revision = capturedRevision = 0; unsaved = false; saveError = false;
-      lastSavedAt = piece.autosave ? null : new Date(piece.updatedAt);
-      lastAutosavedAt = piece.autosave ? new Date(piece.updatedAt) : null;
-      stopLoading();
-      say(`Opened “${piece.title}”. Keep painting.`);
-    } catch (cause) {
-      stopLoading();
-      say(cause instanceof Error ? cause.message : 'That piece could not be opened.');
+      shownAt = piece.updatedAt;
     }
+  }
+
+  /**
+   * Saved on your other device? Every 15 seconds (while this tab is showing),
+   * look for a newer version of the work on the table: the saved piece, this
+   * table's auto-save, or another device's auto-save of the same piece.
+   * With no unsaved marks here, the newer version simply appears. With unsaved
+   * marks, nothing is replaced; you're told once, and your next save wins.
+   */
+  let warnedAbout = '';
+  async function followOtherDevices() {
+    if (document.visibilityState !== 'visible' || !signedIn || (!savedId && !autosaveId) || saveKind || loading || starting || table?.busy()) return;
+    try {
+      const pieces = await accountRequest<PracticePiece[]>('community/practice');
+      const related = pieces.filter((p) => p.id === savedId || p.id === autosaveId || (savedId && p.autosave && p.draftOf === savedId));
+      const newest = related.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      if (!newest || !shownAt || newest.updatedAt <= shownAt || saveKind || table?.busy()) return;
+      if (unsaved) {
+        if (warnedAbout !== newest.updatedAt) { warnedAbout = newest.updatedAt; say(`A newer version was saved on another device at ${clock(new Date(newest.updatedAt))}. Your next save here replaces it.`); }
+        return;
+      }
+      if (newest.title !== title) { knownTitle = newest.title; title = newest.title; }
+      await showVersion(newest);
+      if (newest.autosave) lastAutosavedAt = new Date(newest.updatedAt); else lastSavedAt = new Date(newest.updatedAt);
+      say(`Updated with the version saved on your other device at ${clock(new Date(newest.updatedAt))}.`);
+    } catch { /* offline for a moment: try again next time */ }
   }
 
   /** A smaller copy for the practice pieces grid. */
@@ -208,8 +252,9 @@
     status = 'Saving…';
     try {
       const piece = await capture();
-      const result = await accountRequest<{ id: string; strokesKept: boolean | null }>('community/practice', 'PUT', { id: savedId, title: title.trim() || 'Practice piece', shape, image: piece.image, thumb: piece.thumb, strokes: piece.strokes });
+      const result = await accountRequest<{ id: string; updatedAt: string; strokesKept: boolean | null }>('community/practice', 'PUT', { id: savedId, title: title.trim() || 'Practice piece', shape, image: piece.image, thumb: piece.thumb, strokes: piece.strokes });
       savedId = result.id;
+      shownAt = result.updatedAt ?? shownAt;
       captured(piece.at);
       lastSavedAt = new Date();
       history.replaceState(null, '', `/?practice&piece=${result.id}`);
@@ -232,8 +277,9 @@
     lastSaveAttempt = Date.now();
     try {
       const piece = await capture();
-      const result = await accountRequest<{ id: string }>('community/practice', 'PUT', { id: autosaveId, title: title.trim() || 'Practice piece', shape, image: piece.image, thumb: piece.thumb, strokes: piece.strokes, autosave: true, draftOf: savedId });
+      const result = await accountRequest<{ id: string; updatedAt: string }>('community/practice', 'PUT', { id: autosaveId, title: title.trim() || 'Practice piece', shape, image: piece.image, thumb: piece.thumb, strokes: piece.strokes, autosave: true, draftOf: savedId });
       autosaveId = result.id;
+      shownAt = result.updatedAt ?? shownAt;
       captured(piece.at);
       lastAutosavedAt = new Date();
       // If the page reloads (iPad Safari does under memory pressure), this brings you back to the newest copy.
@@ -260,7 +306,7 @@
     title = knownTitle = name.trim() || 'Practice piece';
     await tick();
     await table.loadHistory('c1', CANVAS_SHAPES[next].width, CANVAS_SHAPES[next].height, [], true, null);
-    revision = capturedRevision = 0; unsaved = false; saveError = false; lastSavedAt = lastAutosavedAt = null; lastSaveAttempt = Date.now();
+    revision = capturedRevision = 0; unsaved = false; saveError = false; lastSavedAt = lastAutosavedAt = null; lastSaveAttempt = Date.now(); shownAt = '';
     history.replaceState(null, '', '/?practice');
     say(`A fresh ${CANVAS_SHAPES[next].name.toLowerCase()} canvas.`);
   }
@@ -312,6 +358,7 @@
   onstroke={markChanged}
   notice={status}
   {saveStatus}
+  {saveState}
   onsave={() => void save()}
 >
   {#snippet menu()}

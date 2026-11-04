@@ -6,6 +6,7 @@
   (shape, paper, color, undo, saving) works from the keyboard.
 -->
 <script lang="ts">
+  import { holdStill } from '../../holdStill';
   import { blankDesign, CUTOUT_CATEGORIES, CUTOUT_INKS, CUTOUT_MEDIA, CUTOUT_SHAPES, PAPER_COLORS, PAPER_PATTERNS, SHEET, strokePath, type AvatarDesign, type CutoutCategory, type CutoutMedium, type CutoutStroke, type PaperColor, type PaperPattern, type SavedAvatar } from '@ptc/shared';
   import CutoutPreview from './CutoutPreview.svelte';
 
@@ -109,7 +110,7 @@
 <form class="editor" onsubmit={save}>
   <section class="card canvas-card" aria-labelledby="draw-title">
     <h2 id="draw-title" class="sr">Draw on your cutout</h2>
-    <div class="sheet">
+    <div class="sheet" use:holdStill>
       <CutoutPreview {design} label={`Your ${shape.label} avatar, ${design.strokes.length} marks`} />
       <!-- The drawing layer: a transparent sheet on top, plus the mark being drawn. -->
       <svg bind:this={surface} class="draw" viewBox={`0 0 ${SHEET.width} ${SHEET.height}`} aria-hidden="true"
@@ -208,7 +209,7 @@
   @media (max-width: 900px) { .editor { grid-template-columns: minmax(0, 1fr); } }
   .canvas-card { position: sticky; top: 16px; }
   @media (max-width: 900px) { .canvas-card { position: static; } }
-  .sheet { position: relative; width: min(100%, 22rem); margin: 0 auto; background: #ece3cf; background-image: radial-gradient(#d6c9ad 1px, transparent 1px); background-size: 12px 12px; padding: 8px; }
+  .sheet { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; position: relative; width: min(100%, 22rem); margin: 0 auto; background: #ece3cf; background-image: radial-gradient(#d6c9ad 1px, transparent 1px); background-size: 12px 12px; padding: 8px; }
   .draw { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); touch-action: none; cursor: crosshair; }
   .tools-row { justify-content: center; margin-top: 12px; }
   .panels { display: grid; gap: 24px; min-width: 0; }

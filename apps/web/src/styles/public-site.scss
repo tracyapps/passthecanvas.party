@@ -48,7 +48,12 @@
   .desktop-nav a, .account-link { font-size: 13px; text-decoration: none; font-weight: 700; min-height: 44px; display: inline-flex; align-items: center; }
   [aria-current=page] { text-decoration: underline !important; }
   .header-actions { display: flex; align-items: center; gap: 28px; }
-  .theme-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 44px; min-height: 44px; padding: 8px 10px; color: inherit; background: transparent; border: 1px solid #897452; font-size: 12px; }
+  // Small and quiet: an icon button (still a 36px target), not a labelled control.
+  .theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; color: inherit; background: transparent; border: 1px solid #89745288; border-radius: 50%; cursor: pointer; }
+  .theme-toggle[aria-pressed=true] { background: #35332a; }
+  .account-link { gap: 8px; padding: 2px 12px 2px 2px; border: 1px solid #89745266; border-radius: 999px; }
+  .account-link:not(.signed-in) { padding-left: 12px; }
+  .account-link:hover { border-color: currentColor; }
   .paint-link { background: #b01d59; border-color: #b01d59; }
   .mobile-nav { display: none; }
   .studio-hero { position: relative; min-height: 700px; padding: 48px clamp(28px, 6vw, 96px) 100px; isolation: isolate; background: #48372c; }
@@ -166,7 +171,8 @@
     .site-header { padding: 18px 24px; gap: 20px; }
     .desktop-nav { gap: 18px; }
     .header-actions { gap: 16px; }
-    .account-link { display: none; }
+    .account-link span { display: none; }
+    .account-link:not(.signed-in) span { display: inline; }
     .hero-poster { padding: 30px 26px 24px; width: 440px; max-width: 57%; }
     .hero-poster h1 { font-size: 56px; }
     .manifesto { gap: 35px; padding: 90px 40px 70px; }
