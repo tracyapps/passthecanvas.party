@@ -217,15 +217,48 @@ function speckles(ctx: CanvasRenderingContext2D, radius: number, color: string, 
   }
 }
 
+/**
+ * The paint under the brush, copied once per dab into a small scratch canvas.
+ * Tools that sample the layer they paint on (water, sponge, burnisher) used to
+ * draw the layer onto itself several times per dab. Browsers copy the WHOLE
+ * canvas for that, every time, which swamped tablet GPUs (the screen stopped
+ * updating while you painted). Now each dab copies only the patch it needs.
+ * Returns a drawImage-like function that reads layer coordinates from the copy.
+ */
+let scratch: HTMLCanvasElement | OffscreenCanvas | null = null;
+function underBrush(ctx: CanvasRenderingContext2D, cx: number, cy: number, reach: number) {
+  const layer = ctx.canvas;
+  const direct = (sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number) => ctx.drawImage(layer, sx, sy, sw, sh, dx, dy, dw, dh);
+  if (!scratch) {
+    if (typeof OffscreenCanvas !== 'undefined') scratch = new OffscreenCanvas(1, 1);
+    else if (typeof document !== 'undefined') scratch = document.createElement('canvas');
+    else return direct; // tests (no canvas): sample the layer itself
+  }
+  const x = Math.max(0, Math.floor(cx - reach));
+  const y = Math.max(0, Math.floor(cy - reach));
+  const w = Math.min(layer.width, Math.ceil(cx + reach)) - x;
+  const h = Math.min(layer.height, Math.ceil(cy + reach)) - y;
+  if (w <= 0 || h <= 0) return direct;
+  if (scratch.width < w || scratch.height < h) { scratch.width = Math.max(scratch.width, w); scratch.height = Math.max(scratch.height, h); }
+  const copy = scratch.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!copy) return direct;
+  copy.globalCompositeOperation = 'copy';
+  copy.globalAlpha = 1;
+  copy.drawImage(layer, x, y, w, h, 0, 0, w, h);
+  const image = scratch;
+  return (sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number) => ctx.drawImage(image, sx - x, sy - y, sw, sh, dx, dy, dw, dh);
+}
+
 function disturbPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: number, angle: number, seed: number, dry: boolean) {
   const radius = width * 0.6;
   const step = width * 0.08;
+  const from = underBrush(ctx, point.x, point.y, radius + step + 2);
   ctx.save();
   // Source-atop blends pigment colors while keeping the existing alpha. A
   // source-over copy would add opacity faster than the water could remove it.
   ctx.globalCompositeOperation = 'source-atop';
   // Concentric bands taper the disturbance instead of leaving a hard circular
-  // boundary. They reuse the active layer without allocating scratch canvases.
+  // boundary.
   for (let ring = 0; ring < 6; ring++) {
     const inner = radius * ring / 6;
     const outer = radius * (ring + 1) / 6;
@@ -238,7 +271,7 @@ function disturbPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: 
     }
     ctx.clip('evenodd');
     ctx.globalAlpha = (dry ? 0.18 : 0.12) * (1 - ring / 6);
-    ctx.drawImage(ctx.canvas, point.x - radius - Math.cos(angle) * step, point.y - radius - Math.sin(angle) * step,
+    from(point.x - radius - Math.cos(angle) * step, point.y - radius - Math.sin(angle) * step,
       radius * 2, radius * 2, point.x - radius, point.y - radius, radius * 2, radius * 2);
     ctx.restore();
   }
@@ -266,8 +299,10 @@ function wetPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: numb
   const drip = width * 0.06;
   const fromX = -Math.cos(angle) * pull;
   const fromY = -Math.sin(angle) * pull - drip;
+  // Everything below reads within about two brush widths of the dab.
+  const from = underBrush(ctx, point.x, point.y, radius * 2 + pull * 1.5 + drip * 2 + 2);
   const copy = (dx: number, dy: number, size = radius) =>
-    ctx.drawImage(ctx.canvas, point.x - size + dx, point.y - size + dy, size * 2, size * 2, point.x - size, point.y - size, size * 2, size * 2);
+    from(point.x - size + dx, point.y - size + dy, size * 2, size * 2, point.x - size, point.y - size, size * 2, size * 2);
   const pores = () => {
     ctx.beginPath();
     for (let i = 0; i < 16; i++) {
@@ -327,7 +362,7 @@ function wetPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: numb
     ctx.rect(point.x + offset - runWidth / 2, point.y, runWidth, length);
     ctx.clip();
     ctx.globalAlpha = 0.24;
-    ctx.drawImage(ctx.canvas, point.x + offset - runWidth, point.y - length * 0.5, runWidth * 2, length, point.x + offset - runWidth, point.y, runWidth * 2, length);
+    from(point.x + offset - runWidth, point.y - length * 0.5, runWidth * 2, length, point.x + offset - runWidth, point.y, runWidth * 2, length);
     ctx.restore();
   }
   // 4. Thin it only slightly.
@@ -344,6 +379,7 @@ function wetPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: numb
 function burnishPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: number, angle: number, strength: number) {
   const radius = width * 0.6;
   const step = width * 0.08;
+  const from = underBrush(ctx, point.x, point.y, radius + step + 2);
   // Repeated source-over copies deliberately deepen the existing pigment while
   // pulling it along the stroke. This is the old sponge's intensifying effect,
   // isolated from water/texture and restricted to the supplied owned layer.
@@ -360,7 +396,7 @@ function burnishPaint(ctx: CanvasRenderingContext2D, point: StrokePoint, width: 
     }
     ctx.clip('evenodd');
     ctx.globalAlpha = 0.22 * strength * (1 - ring / 6);
-    ctx.drawImage(ctx.canvas, point.x - radius - Math.cos(angle) * step, point.y - radius - Math.sin(angle) * step,
+    from(point.x - radius - Math.cos(angle) * step, point.y - radius - Math.sin(angle) * step,
       radius * 2, radius * 2, point.x - radius, point.y - radius, radius * 2, radius * 2);
     ctx.restore();
   }
