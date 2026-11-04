@@ -2,7 +2,17 @@
 // Cards are paper; buttons are ink; every control is at least 44px tall.
 
 .studio-app {
+  // Colors that follow the site theme on the wall, and stay paper-light inside cards.
+  --btn-bg: var(--ink, #2a261e);
+  --btn-text: #fff6e5;
+  --muted: #5b5141;
+  color: var(--ink);
+
   .card {
+    --ink: #2a261e;
+    --btn-bg: #2a261e;
+    --btn-text: #fff6e5;
+    --muted: #5b5141;
     position: relative;
     padding: 28px;
     color: #2a261e;
@@ -26,7 +36,7 @@
   h2 { font-size: clamp(24px, 2.6vw, 32px); margin-bottom: 12px; }
   h3 { font-size: 20px; letter-spacing: -0.02em; margin-bottom: 6px; }
   .eyebrow { margin-bottom: 6px; }
-  .muted { color: #5b5141; font-size: 15px; }
+  .muted { color: var(--muted); font-size: 15px; }
 
   // Columns that never leave holes: each column stacks its own cards.
   .columns {
@@ -47,7 +57,7 @@
   .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
   .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 18px; }
   label.field, .field { display: grid; gap: 6px; font-weight: 700; font-size: 15px; }
-  .field .hint, .hint { font-weight: 400; font-size: 14px; color: #5b5141; margin: 0; }
+  .field .hint, .hint { font-weight: 400; font-size: 14px; color: var(--muted); margin: 0; }
   input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, select {
     width: 100%;
     min-width: 0;
@@ -104,13 +114,13 @@
     font: inherit;
     font-size: 14px;
     font-weight: 700;
-    color: #fff6e5;
-    background: #2a261e;
-    border: 2px solid #2a261e;
+    color: var(--btn-text);
+    background: var(--btn-bg);
+    border: 2px solid var(--btn-bg);
     text-decoration: none;
     cursor: pointer;
     &:disabled { opacity: 0.55; cursor: default; }
-    &.quiet { color: #2a261e; background: transparent; }
+    &.quiet { color: var(--btn-bg); background: transparent; }
     &.danger { color: #8f1238; background: transparent; border-color: #8f1238; }
     &.small { min-height: 36px; padding: 0 12px; }
   }
@@ -145,5 +155,11 @@
   .tag.going { background: #07616a; color: #fff; border-color: #07616a; }
   .tag.invited { background: #ffda57; color: #2a261e; border-color: #8a5a00; }
   .tag.declined, .tag.cancelled { color: #5b5141; text-decoration: line-through; }
-  .empty { padding: 16px; border: 1px dashed #8d7858; color: #5b5141; }
+  .empty { padding: 16px; border: 1px dashed #8d7858; color: var(--muted); }
+}
+
+// Dark site theme: the wall is dark, so ink buttons become cream ones.
+html[data-site-theme='dark'] .studio-app {
+  --btn-text: #172932;
+  --muted: #d6cab3;
 }

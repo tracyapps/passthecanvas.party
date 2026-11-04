@@ -347,6 +347,8 @@ export interface ScheduledParty {
   roomId: string;
 }
 export interface PartyHistory { id: string; title: string; endedAt: string; artworkCount: number }
+/** A solo piece from the practice table (never shown to anyone else). */
+export interface PracticePiece { id: string; title: string; shape: string; width: number; height: number; hasStrokes: boolean; createdAt: string; updatedAt: string }
 /** A party gallery (archive) the person saved or was part of. */
 export interface SavedGallery { archiveId: string; title: string; savedAt: string }
 export interface CommunityHome {

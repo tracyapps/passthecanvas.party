@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { cleanPartySettings, DEFAULT_PARTY_SETTINGS, INITIALS_COLOR_KEYS, roomIdFor, sanitizeAvatarDesign, type CalendarEvent, type CommunityHome, type InitialsColor, type ProfileInput, type SavedAvatar, type ScheduleInput, type ScheduledParty, type StudioProfile, type SharedParty } from '@ptc/shared';
+import { CANVAS_SHAPES, cleanPartySettings, type CanvasShape, type PracticePiece, DEFAULT_PARTY_SETTINGS, INITIALS_COLOR_KEYS, roomIdFor, sanitizeAvatarDesign, type CalendarEvent, type CommunityHome, type InitialsColor, type ProfileInput, type SavedAvatar, type ScheduleInput, type ScheduledParty, type StudioProfile, type SharedParty } from '@ptc/shared';
 
 export class CommunityError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -19,6 +19,10 @@ export interface CommunityStore {
   calendarToken(user: string, rotate: boolean): Promise<{ token: string }>;
   calendarFeed(token: string): Promise<{ events: CalendarEvent[] }>;
   saveGallery(user: string, archiveId: string, title: string): Promise<void>;
+  practice(user: string): Promise<PracticePiece[]>;
+  practiceFile(user: string, id: string, kind: 'image' | 'thumb' | 'strokes'): Promise<{ contentType: string; bytes: Buffer; gzip: boolean }>;
+  savePractice(user: string, input: { id: string | null; title: string; shape: CanvasShape; image: Buffer; thumb: { contentType: string; bytes: Buffer }; strokes: Buffer | null }): Promise<{ id: string }>;
+  deletePractice(user: string, id: string): Promise<void>;
   profile(user: string, id: string): Promise<StudioProfile>;
   requestFriend(user: string, id: string): Promise<void>;
   respondFriend(user: string, id: string, action: 'accept' | 'decline' | 'remove'): Promise<void>;
@@ -130,6 +134,33 @@ export function postgresCommunityStore(db: pg.Pool): CommunityStore {
       const parties = await db.query(`SELECT ${partyColumns}, s.cancelled FROM studio_scheduled_parties s JOIN studio_profiles p ON p.user_id=s.host_id LEFT JOIN studio_party_invites i ON i.party_id=s.id AND i.user_id=$1 WHERE (s.host_id=$1 OR i.response IN ('yes','pending')) AND s.starts_at > now() - interval '60 days' ORDER BY s.starts_at LIMIT 200`, [user]);
       return { events: parties.rows.map((row) => { const party = partyRow(row); return { id: party.id, title: party.title, startsAt: new Date(party.startsAt).toISOString(), durationMinutes: party.durationMinutes, description: `Art party hosted by ${party.hostName}. ${party.settings.description}`.trim(), cancelled: party.cancelled }; }) };
     },
+    async practice(user) {
+      const result = await db.query('SELECT id, title, shape, width, height, strokes IS NOT NULL AS "hasStrokes", created_at AS "createdAt", updated_at AS "updatedAt" FROM studio_practice_pieces WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 200', [user]);
+      return result.rows;
+    },
+    async practiceFile(user, id, kind) {
+      const column = kind === 'image' ? "image, 'image/png' AS type" : kind === 'thumb' ? 'thumb AS image, thumb_type AS type' : "strokes AS image, 'application/json' AS type";
+      const result = await db.query(`SELECT ${column} FROM studio_practice_pieces WHERE id=$2 AND user_id=$1`, [user, id]);
+      const row = requireRow(result.rows[0]);
+      if (!row.image) throw new CommunityError(404, 'This piece has no painting data.');
+      return { contentType: row.type, bytes: row.image, gzip: kind === 'strokes' };
+    },
+    async savePractice(user, input) {
+      const { width, height } = CANVAS_SHAPES[input.shape];
+      if (input.id) {
+        const result = await db.query('UPDATE studio_practice_pieces SET title=$3, shape=$4, width=$5, height=$6, image=$7, thumb=$8, thumb_type=$9, strokes=$10, updated_at=now() WHERE id=$2 AND user_id=$1 RETURNING id', [user, input.id, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes]);
+        if (!result.rowCount) throw new CommunityError(404, 'This piece is unavailable.');
+        return { id: input.id };
+      }
+      const id = randomUUID();
+      const result = await db.query(`INSERT INTO studio_practice_pieces(id,user_id,title,shape,width,height,image,thumb,thumb_type,strokes) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 WHERE EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$2) AND (SELECT count(*) FROM studio_practice_pieces WHERE user_id=$2)<100 RETURNING id`, [id, user, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes]);
+      if (!result.rowCount) throw new CommunityError(409, 'Save your profile first. You can keep up to 100 practice pieces.');
+      return { id };
+    },
+    async deletePractice(user, id) {
+      const result = await db.query('DELETE FROM studio_practice_pieces WHERE id=$2 AND user_id=$1 RETURNING id', [user, id]);
+      if (!result.rowCount) throw new CommunityError(404, 'This piece is unavailable.');
+    },
     async saveGallery(user, archiveId, title) {
       // Only galleries that exist (the archive table appears with the first saved party).
       const table = await db.query("SELECT to_regclass('party_archives') IS NOT NULL AS ok");
@@ -157,22 +188,22 @@ export function postgresCommunityStore(db: pg.Pool): CommunityStore {
       return { id, token };
     },
     async invite(user, party, friend) {
-      const result = await db.query(`INSERT INTO studio_party_invites(party_id,user_id) SELECT s.id,p.user_id FROM studio_scheduled_parties s JOIN studio_profiles p ON p.id=$3 WHERE s.id=$2 AND s.host_id=$1 AND p.user_id<>$1 AND NOT s.cancelled AND s.starts_at>now() AND EXISTS(SELECT 1 FROM studio_friendships f WHERE f.state='accepted' AND $1 IN(f.low_id,f.high_id) AND p.user_id IN(f.low_id,f.high_id)) AND (SELECT count(*) FROM studio_party_invites WHERE party_id=s.id)<50 ON CONFLICT DO NOTHING RETURNING user_id`, [user, party, friend]);
+      const result = await db.query(`INSERT INTO studio_party_invites(party_id,user_id) SELECT s.id,p.user_id FROM studio_scheduled_parties s JOIN studio_profiles p ON p.id=$3 WHERE s.id=$2 AND s.host_id=$1 AND p.user_id<>$1 AND NOT s.cancelled AND s.starts_at+make_interval(mins=>s.duration_minutes)>now() AND EXISTS(SELECT 1 FROM studio_friendships f WHERE f.state='accepted' AND $1 IN(f.low_id,f.high_id) AND p.user_id IN(f.low_id,f.high_id)) AND (SELECT count(*) FROM studio_party_invites WHERE party_id=s.id)<50 ON CONFLICT DO NOTHING RETURNING user_id`, [user, party, friend]);
       if (!result.rowCount) throw new CommunityError(409, 'Invite unavailable. Choose a connected friend who has not already been invited.');
     },
     async respondParty(user, party, response) {
-      const result = await db.query(`UPDATE studio_party_invites i SET response=$3 FROM studio_scheduled_parties s WHERE i.party_id=s.id AND s.id=$2 AND i.user_id=$1 AND NOT s.cancelled AND s.starts_at>now() RETURNING i.user_id`, [user, party, response]);
+      const result = await db.query(`UPDATE studio_party_invites i SET response=$3 FROM studio_scheduled_parties s WHERE i.party_id=s.id AND s.id=$2 AND i.user_id=$1 AND NOT s.cancelled AND s.starts_at+make_interval(mins=>s.duration_minutes)>now() RETURNING i.user_id`, [user, party, response]);
       if (!result.rowCount) throw new CommunityError(404, 'This invitation is unavailable.');
     },
     async sharedParty(token) {
-      const result = await db.query(`SELECT ${partyColumns} FROM studio_scheduled_parties s JOIN studio_profiles p ON p.user_id=s.host_id WHERE share_digest=$1 AND NOT cancelled AND starts_at>now()`, [digest(token)]);
+      const result = await db.query(`SELECT ${partyColumns} FROM studio_scheduled_parties s JOIN studio_profiles p ON p.user_id=s.host_id WHERE share_digest=$1 AND NOT cancelled AND starts_at+make_interval(mins=>duration_minutes)>now()`, [digest(token)]);
       // A shared link reveals the invitation, never the guest list or account identifiers.
       const row = requireRow(result.rows[0], 'This invitation has expired or was replaced.');
       const { title, startsAt, timeZone, durationMinutes, hostName } = row;
       return { title, startsAt, timeZone, durationMinutes, hostName, description: cleanPartySettings(row.settings)?.description ?? '' };
     },
     async joinShared(user, token) {
-      const result = await db.query(`INSERT INTO studio_party_invites(party_id,user_id,response) SELECT s.id,$1,'yes' FROM studio_scheduled_parties s WHERE share_digest=$2 AND NOT cancelled AND starts_at>now() AND host_id<>$1 AND EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$1) AND (SELECT count(*) FROM studio_party_invites WHERE party_id=s.id)<50 ON CONFLICT(party_id,user_id) DO UPDATE SET response='yes' RETURNING user_id`, [user, digest(token)]);
+      const result = await db.query(`INSERT INTO studio_party_invites(party_id,user_id,response) SELECT s.id,$1,'yes' FROM studio_scheduled_parties s WHERE share_digest=$2 AND NOT cancelled AND starts_at+make_interval(mins=>duration_minutes)>now() AND host_id<>$1 AND EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$1) AND (SELECT count(*) FROM studio_party_invites WHERE party_id=s.id)<50 ON CONFLICT(party_id,user_id) DO UPDATE SET response='yes' RETURNING user_id`, [user, digest(token)]);
       if (!result.rowCount) throw new CommunityError(409, 'Save your profile first. This invitation may also have expired or reached its guest limit.');
     },
     async cancel(user, party) {
@@ -181,7 +212,7 @@ export function postgresCommunityStore(db: pg.Pool): CommunityStore {
     },
     async rotateLink(user, party) {
       const token = randomBytes(32).toString('base64url');
-      const result = await db.query('UPDATE studio_scheduled_parties SET share_digest=$3 WHERE id=$2 AND host_id=$1 AND NOT cancelled AND starts_at>now() RETURNING id', [user, party, digest(token)]);
+      const result = await db.query('UPDATE studio_scheduled_parties SET share_digest=$3 WHERE id=$2 AND host_id=$1 AND NOT cancelled AND starts_at+make_interval(mins=>duration_minutes)>now() RETURNING id', [user, party, digest(token)]);
       if (!result.rowCount) throw new CommunityError(404, 'This party is unavailable.');
       return { token };
     },

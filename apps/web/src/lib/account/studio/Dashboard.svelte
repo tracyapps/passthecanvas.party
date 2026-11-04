@@ -10,7 +10,7 @@
   import PersonBadge from './PersonBadge.svelte';
   import CutoutPreview from './CutoutPreview.svelte';
   import PartyCard from './PartyCard.svelte';
-  import { isPast, statusOf } from './parties';
+  import { isLive, isPast, statusOf } from './parties';
 
   const inviteToken = new URLSearchParams(location.hash.slice(1)).get('invite') ?? '';
   let shared = $state<SharedParty | null>(null);
@@ -23,8 +23,9 @@
   let home = $derived(studio.home);
   let profile = $derived(home?.profile ?? null);
   let upcoming = $derived((home?.parties ?? []).filter((p) => !isPast(p) && !p.cancelled).sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
-  let needsReply = $derived(upcoming.filter((p) => statusOf(p) === 'invited'));
-  let next = $derived(upcoming.filter((p) => statusOf(p) !== 'invited' && statusOf(p) !== 'declined').slice(0, 4));
+  let live = $derived(upcoming.filter((p) => isLive(p) && statusOf(p) !== 'declined'));
+  let needsReply = $derived(upcoming.filter((p) => statusOf(p) === 'invited' && !isLive(p)));
+  let next = $derived(upcoming.filter((p) => !isLive(p) && statusOf(p) !== 'invited' && statusOf(p) !== 'declined').slice(0, 4));
   let defaultAvatar = $derived(studio.avatars.find((a) => a.id === profile?.defaultAvatarId) ?? studio.avatars[0] ?? null);
   const nav = (path: string) => (event: MouseEvent) => go(path, event);
 </script>
@@ -35,8 +36,9 @@
     <h1 tabindex="-1">{profile ? `Hi, ${profile.name}.` : 'Your studio.'}</h1>
   </div>
   <div class="row">
-    <a class="btn" href="/account/parties/new" onclick={nav('/account/parties/new')}>Plan a party</a>
-    <a class="btn quiet" href="/account/avatars/new" onclick={nav('/account/avatars/new')}>Make an avatar</a>
+    <a class="btn" href="/account/parties/now" onclick={nav('/account/parties/now')}>Start a party now</a>
+    <a class="btn quiet" href="/account/parties/new" onclick={nav('/account/parties/new')}>Plan a party</a>
+    <a class="btn quiet" href="/?practice">Practice table</a>
   </div>
 </header>
 
@@ -59,6 +61,12 @@
 
 <div class="columns">
   <div>
+    {#if live.length}
+      <section class="card live" aria-labelledby="live-title">
+        <h2 id="live-title">Happening now</h2>
+        <div class="stack">{#each live as party (party.id)}<PartyCard {party} compact />{/each}</div>
+      </section>
+    {/if}
     {#if needsReply.length || home?.incoming.length}
       <section class="card" aria-labelledby="needs-title">
         <h2 id="needs-title">Waiting on you</h2>
@@ -149,6 +157,7 @@
   .head h2 { margin: 0; }
   .head a { min-height: 44px; display: inline-flex; align-items: center; font-weight: 700; }
   .invite { border-left: 8px double #c98a00; }
+  .live { border-left: 8px solid #2f6b2f; }
   .description { white-space: pre-line; }
   .me .row { margin-top: 16px; }
   .me h2 { margin: 0; overflow-wrap: anywhere; }

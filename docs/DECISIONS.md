@@ -25,6 +25,18 @@ A running log. Newest first. One line for small calls, a short paragraph for big
 | 2026-10-25 | Video via LiveKit (Cloud first, self-host later) | Open source (Apache 2.0); free tier to start |
 | 2026-10-25 | Radio: Radio Browser directory, each client streams directly | Avoids rebroadcasting music (licensing) |
 
+- **Start a party now** (Nov 3, 2026): an instant party is a scheduled party
+  that starts now, so invitations, RSVP, calendar and history all reuse one
+  model. Invites and joins stay open until start + duration, not just start.
+- **Practice table** (Nov 3, 2026): reuses the full party `PaintingTable` (the
+  public "try" page has fewer tools). Pieces are private: never in a gallery,
+  never shown to others, no replay video. Stored in `studio_practice_pieces`
+  (PNG up to 8 MB, small thumbnail, gzipped strokes re-checked by the server),
+  100 pieces per person.
+- **Account dark mode buttons** (Nov 3, 2026): buttons use `--btn-bg` and
+  `--btn-text`; cards reset them to ink so buttons stay readable on both the
+  dark wall and the light cards.
+
 ## Open questions
 
 ### Painting workspace direction — 2026-10-29

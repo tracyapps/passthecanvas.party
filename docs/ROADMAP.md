@@ -197,3 +197,9 @@ Replace placeholders with the real Blender studio.
   artwork/avatars, attendee profile/friend actions and authorized shared-art links.
 - [ ] Guest/nonmember RSVP, rescheduling with updated calendar/email jobs, reporting,
   account deletion/retention and real-device avatar/call checks before broad launch.
+- [x] Start a party now (instant room, invite friends or send a link from inside
+  the room); "Happening now" on dashboards. Invites/RSVP/join work until it ends.
+- [x] Practice table at `/?practice`: the full party painting table, solo, no
+  timer. Download a full-size PNG; signed in, save private practice pieces
+  (image + strokes) and keep painting later from `/account/practice`.
+- [ ] Practice pieces: replay video, sharing to a gallery (both off for now).

@@ -96,3 +96,19 @@ CREATE TABLE IF NOT EXISTS studio_saved_galleries (
   saved_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, archive_id)
 );
+-- Solo practice pieces: painted at the practice table, kept only for their owner.
+CREATE TABLE IF NOT EXISTS studio_practice_pieces (
+  id uuid PRIMARY KEY,
+  user_id text NOT NULL REFERENCES studio_profiles(user_id) ON DELETE CASCADE,
+  title text NOT NULL,
+  shape text NOT NULL,
+  width integer NOT NULL,
+  height integer NOT NULL,
+  image bytea NOT NULL CHECK (octet_length(image) <= 8000000),
+  thumb bytea NOT NULL CHECK (octet_length(thumb) <= 300000),
+  thumb_type text NOT NULL,
+  strokes bytea CHECK (strokes IS NULL OR octet_length(strokes) <= 12000000),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS studio_practice_user ON studio_practice_pieces(user_id, updated_at);

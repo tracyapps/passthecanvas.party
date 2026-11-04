@@ -13,11 +13,13 @@
   const developmentRoute = import.meta.env.DEV && ['demo', 'spots', 'art', 'seats'].some(key => params.has(key));
   // Painting, the gallery and host tools all live inside the party now
   // (?party=…). The dev-only routes below are room-authoring tools only.
-  const showPublicSite = !params.has('party') && !params.has('gallery') && !params.has('archive') && !developmentRoute;
+  const showPublicSite = !params.has('party') && !params.has('gallery') && !params.has('archive') && !params.has('practice') && !developmentRoute;
   const editRoom = import.meta.env.DEV ? params.get('spots') : null; // "?spots=cream-city" opens the spot editor
   const artRoom = import.meta.env.DEV ? params.get('art') : null; // "?art=cream-city" opens the wall art editor
   // "?seats=cream-city" opens the room tool: every viewpoint, every seat filled, place markers. (?demo=seats is the old name.)
   const seatRoom = import.meta.env.DEV ? (params.get('seats') ?? (params.get('demo') === 'seats' ? 'cream-city' : null)) : null;
+  const practice = params.has('practice'); // "?practice" opens the solo practice table ("&piece=<id>" reopens a saved piece)
+  const practicePiece = params.get('piece');
   const archiveId = params.get('archive'); // "?archive=<id>" opens a saved party gallery
   const galleryRoom = params.get('gallery'); // "?gallery=cream-city#g=…" opens a shared gallery room
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
@@ -58,6 +60,12 @@
     <main class="loading">Filling the seats…</main>
   {:then { default: SeatTool }}
     <SeatTool room={seatRoom} />
+  {/await}
+{:else if practice}
+  {#await import('./lib/practice/PracticeTable.svelte')}
+    <main class="loading">Setting out the paints…</main>
+  {:then { default: PracticeTable }}
+    <PracticeTable pieceId={practicePiece && /^[0-9a-f-]{36}$/.test(practicePiece) ? practicePiece : null} />
   {/await}
 {:else if archiveId}
   <!-- A saved party gallery, from the host's share link. -->

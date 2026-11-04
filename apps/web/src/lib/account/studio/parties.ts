@@ -4,6 +4,12 @@ import { partyCalendar } from '../calendar';
 
 export type PartyStatus = 'hosting' | 'going' | 'invited' | 'declined' | 'cancelled';
 
+/** Started and not over yet. */
+export const isLive = (party: ScheduledParty) => {
+  const start = new Date(party.startsAt).getTime();
+  return !party.cancelled && start <= Date.now() && Date.now() < start + party.durationMinutes * 60_000;
+};
+
 export function statusOf(party: ScheduledParty): PartyStatus {
   if (party.cancelled) return 'cancelled';
   if (party.hosting) return 'hosting';

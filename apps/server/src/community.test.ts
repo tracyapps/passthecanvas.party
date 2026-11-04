@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import pg from 'pg';
+import { gzipSync } from 'node:zlib';
 import { queueAccountMail, deliverAccountMail, type MailProvider } from './account-mail';
 import { createCalendarFeedHandler, createCommunityHandler, decodePhoto, initializeCommunitySchema, validProfile, validSchedule } from './community';
 import { blankDesign, DEFAULT_PARTY_SETTINGS } from '@ptc/shared';
@@ -49,7 +50,7 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     origin = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/account/community`;
   });
   beforeEach(async () => {
-    await db.query('TRUNCATE studio_profiles,studio_friendships,studio_scheduled_parties,studio_party_invites,studio_party_history,studio_avatars,studio_profile_photos,studio_calendar_feeds,studio_saved_galleries CASCADE');
+    await db.query('TRUNCATE studio_profiles,studio_friendships,studio_scheduled_parties,studio_party_invites,studio_party_history,studio_avatars,studio_profile_photos,studio_calendar_feeds,studio_saved_galleries,studio_practice_pieces CASCADE');
     for (const user of ['alice','bob','eve']) await store.saveProfile(`user_${user}`, { ...profile, name: user });
   });
   afterAll(async () => {
@@ -221,6 +222,34 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     await store.calendarToken('user_bob', true);
     expect((await fetch(`${base}${token}.ics`)).status).toBe(404); // replaced links stop working
     calendar.closeAllConnections(); await new Promise<void>((resolve) => calendar.close(() => resolve()));
+  });
+  it('starts a party now that friends can still be invited to and join', async () => {
+    await connect();
+    const now = await (await fetch(origin + '/parties/now', { method: 'POST', headers, body: JSON.stringify({ title: 'Right now', timeZone: 'America/Chicago', durationMinutes: 60, settings: DEFAULT_PARTY_SETTINGS }) })).json();
+    expect(now.id).toBeTruthy();
+    await store.invite('user_alice', now.id, await id('bob')); // the party has started, but hasn't ended
+    await store.respondParty('user_bob', now.id, 'yes');
+    expect((await store.sharedParty(now.token)).title).toBe('Right now');
+    await db.query("UPDATE studio_scheduled_parties SET starts_at=now()-interval '2 hours' WHERE id=$1", [now.id]);
+    await expect(store.respondParty('user_bob', now.id, 'no')).rejects.toThrow(); // over now
+  });
+  it('keeps practice pieces private to their painter, with checked strokes', async () => {
+    const png = 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a0000000d4948445200000001', 'hex').toString('base64');
+    const stroke = { id: 's1', canvasId: 'c1', tool: 'round', load: { medium: 'acrylic', name: 'Blue', colors: ['#1234ab'] }, wet: false, size: 24, intensity: 0.5, first: 0, done: true, stamps: [{ x: 10, y: 20, pressure: 0.5, angle: 0 }] };
+    const gz = (v: unknown) => gzipSync(JSON.stringify(v)).toString('base64');
+    const put = (body: unknown) => fetch(origin + '/practice', { method: 'PUT', headers, body: JSON.stringify(body) });
+    const ok = await put({ id: null, title: 'Doodle', shape: 'classic', image: png, thumb: png, strokes: gz([stroke]) });
+    expect(ok.status).toBe(200);
+    const { id: pieceId } = await ok.json();
+    expect((await put({ id: null, title: 'Bad', shape: 'classic', image: png, thumb: png, strokes: gz([{ ...stroke, stamps: 'nope' }]) })).status).toBe(400);
+    expect((await put({ id: null, title: 'Bad', shape: 'classic', image: 'data:image/svg+xml;base64,PHN2Zy8+', thumb: png, strokes: null })).status).toBe(400);
+    expect((await store.practice('user_alice')).map((p) => p.title)).toEqual(['Doodle']);
+    await expect(store.practiceFile('user_eve', pieceId, 'image')).rejects.toThrow();
+    const strokes = await fetch(`${origin}/practice/file?id=${pieceId}&kind=strokes`, { headers });
+    expect((await strokes.json())[0]).toMatchObject({ id: 's1', painterId: 'me', round: 1 });
+    await expect(store.deletePractice('user_eve', pieceId)).rejects.toThrow();
+    await store.deletePractice('user_alice', pieceId);
+    expect(await store.practice('user_alice')).toEqual([]);
   });
   it('only records galleries that exist', async () => {
     await expect(store.saveGallery('user_alice', 'A'.repeat(22), 'Nope')).rejects.toThrow();

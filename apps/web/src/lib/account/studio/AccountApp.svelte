@@ -18,6 +18,8 @@
   import CalendarPage from './CalendarPage.svelte';
   import HistoryPage from './HistoryPage.svelte';
   import DevicesPage from './DevicesPage.svelte';
+  import StartNow from './StartNow.svelte';
+  import PracticePage from './PracticePage.svelte';
   import './studio.scss';
 
   const NAV = [
@@ -26,7 +28,9 @@
     { href: '/account/avatars', label: 'Avatars', match: (p: string) => p.startsWith('/account/avatars') },
     { href: '/account/friends', label: 'Friends', match: (p: string) => p === '/account/friends' },
     { href: '/account/calendar', label: 'Calendar', match: (p: string) => p === '/account/calendar' },
-    { href: '/account/parties/new', label: 'Plan a party', match: (p: string) => p.startsWith('/account/parties') },
+    { href: '/account/parties/now', label: 'Start a party now', match: (p: string) => p === '/account/parties/now' },
+    { href: '/account/parties/new', label: 'Plan a party', match: (p: string) => p.startsWith('/account/parties') && p !== '/account/parties/now' },
+    { href: '/account/practice', label: 'Practice table', match: (p: string) => p === '/account/practice' },
     { href: '/account/history', label: 'History & art', match: (p: string) => p === '/account/history' },
     { href: '/account/devices', label: 'Camera & mic check', match: (p: string) => p === '/account/devices' },
     { href: '/account/settings', label: 'Settings', match: (p: string) => p === '/account/settings' }
@@ -118,6 +122,10 @@
           <FriendsPage />
         {:else if path === '/account/calendar'}
           <CalendarPage />
+        {:else if path === '/account/parties/now'}
+          <StartNow />
+        {:else if path === '/account/practice'}
+          <PracticePage />
         {:else if path === '/account/parties/new' || partyId}
           {#key partyId}<PartyForm {partyId} />{/key}
         {:else if path === '/account/history'}
@@ -187,7 +195,7 @@
     }
     &[aria-current='page'] {
       border-left-color: var(--rust);
-      background: #2a261e14;
+      background: color-mix(in srgb, currentColor 10%, transparent);
     }
   }
   .account-actions {
@@ -252,8 +260,8 @@
       align-items: center;
       min-height: 44px;
       padding: 0 16px;
-      background: #2a261e;
-      color: #fff6e5;
+      background: var(--btn-bg);
+      color: var(--btn-text);
       border: 0;
       font-weight: 700;
       justify-self: start;

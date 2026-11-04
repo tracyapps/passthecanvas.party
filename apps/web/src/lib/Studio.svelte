@@ -47,6 +47,20 @@
   let game = $derived(party.state);
   let room = $derived(game?.room ?? 'cream-city');
   let isHost = $derived(party.me?.isHost ?? false);
+  let inviteOpen = $state(false);
+  let invitedHere = $state<string[]>([]);
+  /** This room's party in your studio, when you host it (started or planned there). */
+  let plannedHere = $derived(game && isHost ? studio.home?.parties.find((p) => p.roomId === game.partyId && p.hosting) ?? null : null);
+  async function inviteFriend(friend: string) {
+    if (!plannedHere) return;
+    try {
+      await accountRequest('community/parties/invite', 'POST', { party: plannedHere.id, friend });
+      invitedHere = [...invitedHere, friend];
+      party.announcement = 'Invitation sent to their studio.';
+    } catch (cause) {
+      party.announcement = cause instanceof Error ? cause.message : 'That invitation could not be sent.';
+    }
+  }
   let me = $derived(party.me);
 
   // Seat views: the room as seen from your own seat, when one has been rendered
@@ -368,12 +382,40 @@
         {/snippet}
         {#snippet menu()}
           <button type="button" aria-pressed={guestsOpen} onclick={() => { guestsOpen = !guestsOpen; closeMenu(); }}>{guestsOpen ? 'Hide guests' : 'Show guests'}</button>
-          <button type="button" onclick={() => { void copyInvite(); closeMenu(); }}>Copy invite link</button>
+          <button type="button" aria-pressed={inviteOpen} onclick={() => { inviteOpen = !inviteOpen; closeMenu(); }}>Invite people</button>
           <button type="button" onclick={() => { view = 'room'; closeMenu(); }}>{game.phase === 'lobby' ? 'Pick a seat in the room' : 'Go to the room'}</button>
           {#if artwork.length}<button type="button" onclick={() => { view = 'gallery'; closeMenu(); }}>Open the gallery</button>{/if}
           <button type="button" onclick={leave}>Leave the party</button>
         {/snippet}
       </PaintingTable>
+
+      {#if inviteOpen}
+        <!-- Invite people, any time: the room link for anyone, and (for a signed-in host) friends' studios. -->
+        <StudioPanel title="Invite people" label="invite people" dock="palette" flow={innerWidth <= 1100} onclose={() => (inviteOpen = false)}>
+          <div class="setup">
+            <label>Party link
+              <input type="text" readonly value={inviteUrl} onfocus={(event) => event.currentTarget.select()} />
+            </label>
+            <button type="button" onclick={copyInvite}>Copy link</button>
+            {#if inviteStatus}<p class="hint" role="status">{inviteStatus}</p>{/if}
+            <p class="hint">Send it any way you like: text, email, chat. Anyone with the link can join.</p>
+            {#if plannedHere && studio.home?.friends.length}
+              <fieldset class="modes">
+                <legend>Invite friends to their studio</legend>
+                {#each studio.home.friends as friend (friend.id)}
+                  <label class="friend">
+                    <span>{friend.name}</span>
+                    {#if invitedHere.includes(friend.id)}<span class="hint">Invited</span>
+                    {:else}<button type="button" onclick={() => inviteFriend(friend.id)}>Invite</button>{/if}
+                  </label>
+                {/each}
+              </fieldset>
+            {:else if accountState.userId && !plannedHere && isHost}
+              <p class="hint">Started from your studio (Start a party now), you can also send invitations straight to friends.</p>
+            {/if}
+          </div>
+        </StudioPanel>
+      {/if}
 
       {#if isHost && timingOpen && (game.phase === 'painting' || game.phase === 'passing')}
         <StudioPanel title="Timing" label="party timing" dock="palette" flow={innerWidth <= 1100} onclose={() => (timingOpen = false)}>

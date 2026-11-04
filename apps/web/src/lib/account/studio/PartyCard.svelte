@@ -5,11 +5,12 @@
 <script lang="ts">
   import type { ScheduledParty } from '@ptc/shared';
   import { act, go, when } from './studio.svelte';
-  import { calendarLinks, downloadIcs, isPast, roomLink, statusOf, STATUS_TEXT, timingSummary } from './parties';
+  import { calendarLinks, downloadIcs, isLive, isPast, roomLink, statusOf, STATUS_TEXT, timingSummary } from './parties';
 
   let { party, compact = false }: { party: ScheduledParty; compact?: boolean } = $props();
   let status = $derived(statusOf(party));
   let past = $derived(isPast(party));
+  let live = $derived(isLive(party));
   let soon = $derived(new Date(party.startsAt).getTime() - Date.now() < 60 * 60_000 && !past);
 </script>
 
@@ -21,7 +22,7 @@
   <div class="body">
     <h3>{party.title}</h3>
     <p class="meta">{when(party.startsAt)} · {party.hosting ? 'Hosted by you' : `Hosted by ${party.hostName}`}</p>
-    <p><span class="tag {status}">{STATUS_TEXT[status]}</span></p>
+    <p><span class="tag {status}">{STATUS_TEXT[status]}</span>{#if live} <span class="tag live">Happening now</span>{/if}</p>
     {#if !compact}
       {#if party.settings.description}<p class="description">{party.settings.description}</p>{/if}
       <p class="muted">{timingSummary(party)}</p>
@@ -33,7 +34,7 @@
           {#if status !== 'declined'}<button type="button" class="btn small quiet" onclick={() => void act('parties/respond', { party: party.id, response: 'no' }, `RSVP saved: not going to ${party.title}.`)}>Can't make it</button>{/if}
         {/if}
         {#if party.hosting}<a class="btn small quiet" href={`/account/parties/${party.id}`} onclick={(e) => go(`/account/parties/${party.id}`, e)}>Edit & invite</a>{/if}
-        {#if status !== 'declined'}<a class="btn small" class:quiet={!soon} href={roomLink(party)}>{soon ? 'Join the party room' : 'Party room link'}</a>{/if}
+        {#if status !== 'declined'}<a class="btn small" class:quiet={!soon && !live} href={roomLink(party)}>{live ? 'Join the party now' : soon ? 'Join the party room' : 'Party room link'}</a>{/if}
         <details class="add">
           <summary class="btn small quiet">Add to calendar</summary>
           <ul class="list menu">
@@ -61,6 +62,7 @@
   [data-status='going'] { border-left-color: #07616a; }
   [data-status='invited'] { border-left-color: #c98a00; background: #fff4cf; border-left-style: double; border-left-width: 8px; }
   [data-status='cancelled'], [data-status='declined'] { opacity: 0.8; border-left-style: dashed; }
+  .tag.live { background: #2f6b2f; color: #fff; border-color: #2f6b2f; }
   .date {
     display: grid;
     place-content: center;
