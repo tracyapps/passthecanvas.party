@@ -121,7 +121,9 @@ function drawTip(ctx: CanvasRenderingContext2D, tool: PaintingTool, width: numbe
       for (let i = 0; i < 13; i++) {
         const reach = (i / 12 - 0.5) * width * 1.4;
         const depth = Math.abs(reach) * 0.16;
-        softDab(ctx, depth, reach, width * 0.12, width * 0.035, color, alpha * 0.8, 0.15);
+        // Thin bristles barely overlap, so a watercolor wash needs more per bristle
+        // to read at all (about the same build-up as a round brush).
+        softDab(ctx, depth, reach, width * 0.12, width * 0.035, color, alpha * (wash ? 4.5 : 0.8), 0.15);
       }
       break;
     }

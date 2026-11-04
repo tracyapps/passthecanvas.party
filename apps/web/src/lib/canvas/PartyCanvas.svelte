@@ -70,6 +70,8 @@
   });
   let cursor = $state({ x: 800, y: 425 });
   let focused = $state(false);
+  // The keyboard cursor (a small ring) only shows once you paint with the keyboard, not after a mouse click.
+  let keyboardPainting = $state(false);
   let announcement = $state('');
   let context: CanvasRenderingContext2D;
   // svelte-ignore state_referenced_locally — the engine is rebuilt below when the shape changes
@@ -297,6 +299,7 @@
 
   function down(event: PointerEvent) {
     if (event.pointerType === 'mouse' && ![0, 2].includes(event.button)) return;
+    keyboardPainting = false;
     viewport.setPointerCapture(event.pointerId);
     touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (touches.size >= 2) {
@@ -363,6 +366,7 @@
     const direction = directions[event.key];
     if (!direction && event.key !== ' ') return;
     event.preventDefault();
+    keyboardPainting = true;
     if (!painting || event.altKey) {
       if (direction) view = panView(view, direction[0] * 0.1, direction[1] * 0.1);
       return;
@@ -410,8 +414,8 @@
       <canvas bind:this={element} width={documentWidth} height={documentHeight} tabindex="0" aria-roledescription="painting surface"
         aria-label={`${label} ${painting ? (selection.tool ? TOOL_NAMES[selection.tool] : 'No tool') + ' in hand.' : mode === 'arrange' ? 'Canvas locked while arranging.' : 'View only.'}`}
         aria-describedby="painting-keyboard-help" class:ready={painting && canPaint(selection)}
-        onkeydown={keyboard} onfocus={() => focused = true} onblur={() => focused = false}></canvas>
-      {#if focused && painting}<span class="cursor" aria-hidden="true" style:left={`${cursor.x / documentWidth * 100}%`} style:top={`${cursor.y / documentHeight * 100}%`}></span>{/if}
+        onkeydown={keyboard} onfocus={() => { focused = true; keyboardPainting = element.matches(':focus-visible'); }} onblur={() => focused = false}></canvas>
+      {#if focused && painting && keyboardPainting}<span class="cursor" aria-hidden="true" style:left={`${cursor.x / documentWidth * 100}%`} style:top={`${cursor.y / documentHeight * 100}%`}></span>{/if}
     </div></div>
   </div>
   <div bind:this={toolbar} class="view-controls" aria-label="Canvas view">

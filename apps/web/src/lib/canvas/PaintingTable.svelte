@@ -39,8 +39,10 @@
     partyBar?: Snippet;
     /** Extra items for the table menu (host tools, guests, room). */
     menu?: Snippet;
+    /** Account and site links (my studio, practice pieces), kept apart from the tools. */
+    utility?: Snippet;
   }
-  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu }: Props = $props();
+  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility }: Props = $props();
   let canvas = $state<PartyCanvas>();
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
   export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl); }
@@ -133,8 +135,10 @@
   let availableColors = $derived(PALETTES[trayOpen ? trayMedium : paletteMedium]);
   let canvasBox = $derived.by(() => {
     const top = headerHeight + toolbarHeight + 32;
-    const left = dock === 'right' ? 24 : dock === 'left' || dock === 'both' ? Math.min(360, board.width * .3) : paletteOpen ? 456 : board.width * 0.18;
     const scale = Math.min(board.width / 1440, board.height / 1024);
+    // Leave room for the acrylic rack (the widest supply on the left) beside the canvas,
+    // so a wide canvas never pushes it out of its corner.
+    const left = dock === 'right' ? 24 : dock === 'left' || dock === 'both' ? Math.min(360, board.width * .3) : paletteOpen ? 456 : Math.max(board.width * 0.18, 352 * scale);
     const rightRail = dock === 'right' || dock === 'both' ? Math.min(360, board.width * .3) : dock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
     const available = Math.max(300, board.width - left - rightRail);
     const settingsSpace = dock !== 'surround' ? 90 : hasIntensity && settingsOpen ? 360 : 270;
@@ -255,6 +259,14 @@
   function select(tool: PaintingTool) {
     selection = selectTool(selection, tool);
     settingsOpen = true;
+    // An open palette stays open between tools. If the new tool can't use it
+    // (airbrush with watercolor, say), switch to a set it can use instead of
+    // showing a grid of colors that can't be picked.
+    if (paletteOpen && !trayOpen && unavailability(tool, paletteMedium)) {
+      const usable = (['acrylic', 'watercolor', 'pastel', 'charcoal', 'pencil'] as PaintingMedium[]).find(medium => !unavailability(tool, medium));
+      if (usable) paletteMedium = usable;
+    }
+    if (paletteOpen && trayOpen && unavailability(tool, trayMedium) && !unavailability(tool, trayMedium === 'acrylic' ? 'watercolor' : 'acrylic')) trayMedium = trayMedium === 'acrylic' ? 'watercolor' : 'acrylic';
     announcement = `${TOOL_NAMES[tool]}. ${status}`;
   }
   function active(id: string): boolean {
@@ -386,20 +398,14 @@
       <button type="button" aria-pressed={mode === 'paint'} onclick={() => mode = 'paint'}>Paint</button>
       <button type="button" aria-pressed={mode === 'arrange'} onclick={() => { mode = 'arrange'; paletteOpen = false; }}>Arrange &amp; view</button>
     </div>
-    {#if mode === 'arrange'}
-      <section class="arrange-controls" aria-label="Arrange supplies">
-        <label>Move supply<select bind:value={target}>{#each supplies as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
-        <div><button type="button" onclick={() => nudge(-32, 0)}>Left</button><button type="button" onclick={() => nudge(32, 0)}>Right</button><button type="button" onclick={() => nudge(0, -32)}>Up</button><button type="button" onclick={() => nudge(0, 32)}>Down</button><button type="button" onclick={() => { applyLayout(defaultLayout(supplies.map(supply => supply.id))); selectedView = '';  }}>Reset layout</button></div>
-        <label class="dock-choice">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
-        <details class="workspace-menu"><summary>Saved views</summary><div><p>{accountState.userId ? 'Views are linked to your signed-in account.' : 'Saved on this browser. Sign in through Menu for account saving.'}</p><label>Saved view<select aria-label="Saved view" value={activeViewValue} onchange={(event) => loadView(event.currentTarget.value)}><option value="">Current arrangement</option>{#each savedViews as saved}<option value={saved.id}>{saved.name}</option>{/each}</select></label><label>View name<input aria-label="View name" maxlength="80" bind:value={viewName} /></label><button type="button" onclick={saveView}>Save as new view</button><button type="button" disabled={!selectedView} onclick={() => { savedViews = savedViews.map(view => view.id === selectedView ? { ...view, layout: currentLayout() } : view); announcement = 'Saved view updated.'; }}>Update saved view</button><button type="button" disabled={!selectedView} onclick={() => { savedViews = savedViews.filter(view => view.id !== selectedView); selectedView = ''; }}>Delete saved view</button>{#if accountState.userId}<button type="button" disabled={accountSyncing || !cloudLoaded} onclick={() => void saveCloud()}>Save views to account</button><button type="button" disabled={accountSyncing} onclick={() => void restoreAccount(accountState.userId)}>Reload account views</button><button type="button" disabled={accountSyncing || !cloudLoaded} onclick={importBrowserViews}>Import browser views to account</button>{/if}<p role="status">{storageError || accountMessage || 'Your latest arrangement is restored automatically.'}</p></div></details>
-        <small>{compact || dock !== 'surround' ? 'Use the buttons to reorder supplies.' : 'Drag supplies, or move them with these buttons.'} Painting is locked.</small>
-      </section>
-    {:else}
     <div class="selected-tool"><span>Tool selected</span><strong>{toolName}</strong></div>
     <div class="selected-color"><span>Current color</span><div class="load-line"><span class="load-swatch" class:empty={!selection.load} aria-hidden="true">{#each selection.load?.colors ?? [] as color}<i style:background={color}></i>{/each}</span><strong>{selection.load ? MEDIUM_NAMES[selection.load.medium] : selection.wet ? 'Water only' : selection.tool === 'eraser' || selection.tool === 'sponge' || selection.tool === 'burnisher' ? 'Not needed' : 'Unloaded'}</strong></div></div>
-    {/if}
-    {@render partyBar?.()}
-    <button type="button" class="secondary" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
+    <div class="party-bar">{@render partyBar?.()}</div>
+    <div class="menus">
+      <button type="button" class="secondary" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
+      <!-- Account and site links live apart from the creative tools, so they're hard to hit by accident. -->
+      <button type="button" class="secondary utility" popovertarget="table-account" aria-label="Account and site menu">Account</button>
+    </div>
   </header>
 
   <section bind:this={canvasFrame} class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
@@ -409,6 +415,27 @@
   </section>
 
   <div class="panels">
+    {#if mode === 'arrange'}
+      <!-- Floats over the (locked) canvas so the header and the supplies never shift while you arrange them. -->
+      <StudioPanel title="Arrange table" label="arrange table" dock="arrange" flow={compact} onclose={() => mode = 'paint'}>
+        <div class="arrange-controls">
+          <label class="arrange-field">Supply<select bind:value={target}>{#each supplies as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
+          <div class="nudge-pad" role="group" aria-label={compact || dock !== 'surround' ? 'Reorder the chosen supply' : 'Move the chosen supply'}>
+            <button type="button" class="up" aria-label="Up" onclick={() => nudge(0, -32)}>↑</button>
+            <button type="button" class="left" aria-label="Left" onclick={() => nudge(-32, 0)}>←</button>
+            <button type="button" class="down" aria-label="Down" onclick={() => nudge(0, 32)}>↓</button>
+            <button type="button" class="right" aria-label="Right" onclick={() => nudge(32, 0)}>→</button>
+          </div>
+          <label class="arrange-field">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
+          <p class="arrange-hint">{compact || dock !== 'surround' ? 'Pick a supply, then use the arrows to reorder it.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>
+          <div class="arrange-actions">
+            <button type="button" onclick={() => { applyLayout(defaultLayout(supplies.map(supply => supply.id))); selectedView = ''; announcement = 'Layout reset.'; }}>Reset layout</button>
+            <button type="button" class="primary" onclick={() => mode = 'paint'}>Done</button>
+          </div>
+          <details class="workspace-menu"><summary>Saved views</summary><div><p>{accountState.userId ? 'Views are linked to your signed-in account.' : 'Saved on this browser. Sign in from Account to save them to your account.'}</p><label>Saved view<select aria-label="Saved view" value={activeViewValue} onchange={(event) => loadView(event.currentTarget.value)}><option value="">Current arrangement</option>{#each savedViews as saved}<option value={saved.id}>{saved.name}</option>{/each}</select></label><label>View name<input aria-label="View name" maxlength="80" bind:value={viewName} /></label><button type="button" onclick={saveView}>Save as new view</button><button type="button" disabled={!selectedView} onclick={() => { savedViews = savedViews.map(view => view.id === selectedView ? { ...view, layout: currentLayout() } : view); announcement = 'Saved view updated.'; }}>Update saved view</button><button type="button" disabled={!selectedView} onclick={() => { savedViews = savedViews.filter(view => view.id !== selectedView); selectedView = ''; }}>Delete saved view</button>{#if accountState.userId}<button type="button" disabled={accountSyncing || !cloudLoaded} onclick={() => void saveCloud()}>Save views to account</button><button type="button" disabled={accountSyncing} onclick={() => void restoreAccount(accountState.userId)}>Reload account views</button><button type="button" disabled={accountSyncing || !cloudLoaded} onclick={importBrowserViews}>Import browser views to account</button>{/if}<p role="status">{storageError || accountMessage || 'Your latest arrangement is restored automatically.'}</p></div></details>
+        </div>
+      </StudioPanel>
+    {/if}
     {#if mode === 'paint' && selection.tool && settingsOpen}
       <StudioPanel title={toolName} label="brush settings" flow={compact} onclose={() => settingsOpen = false}>
         {#if selection.tool === 'burnisher'}<p class="palette-caption">Smudge &amp; intensify existing color with a dry polishing pad. Works only on your marks; no paint loading needed.</p>{/if}
@@ -473,12 +500,20 @@
   <div class="sr-only" role="status">{announcement}</div>
 </main>
 
-<div id="table-actions" popover><h2>Painting table</h2><AccountControls />
-  <button type="button" disabled={!selection.tool} onclick={() => { document.getElementById('table-actions')?.hidePopover(); void showSettings(); }}>Tool settings</button>
-  <button type="button" onclick={() => { putDown(); document.getElementById('table-actions')?.hidePopover(); }}>Put tool down</button>
-  <button type="button" onclick={() => { canvas?.downloadStrokes(); document.getElementById('table-actions')?.hidePopover(); }}>Export painting data</button>
-  <label class="wheel-option"><input type="checkbox" bind:checked={wheelZoom} /> Scroll wheel zooms canvas</label>
-  {@render menu?.()}
+<div id="table-actions" class="table-menu" popover aria-label="Painting table menu">
+  {#if menu}<div class="menu-group">{@render menu()}</div>{/if}
+  <div class="menu-group">
+    <h2>Painting</h2>
+    <button type="button" disabled={!selection.tool} onclick={() => { document.getElementById('table-actions')?.hidePopover(); void showSettings(); }}>Tool settings</button>
+    <button type="button" disabled={!selection.tool} onclick={() => { putDown(); document.getElementById('table-actions')?.hidePopover(); }}>Put tool down</button>
+    <label class="wheel-option"><input type="checkbox" bind:checked={wheelZoom} /> Scroll wheel zooms canvas</label>
+    <button type="button" onclick={() => { canvas?.downloadStrokes(); document.getElementById('table-actions')?.hidePopover(); }}>Export painting data</button>
+  </div>
+</div>
+<div id="table-account" class="table-menu" popover aria-label="Account and site menu">
+  <h2>Account</h2>
+  <AccountControls />
+  {#if utility}<div class="menu-group">{@render utility()}</div>{/if}
 </div>
 
 <style lang="scss">
@@ -545,33 +580,40 @@
   .tray-options input { width: 18px; height: 18px; accent-color: #e6df54; }
   .medium-choice { font-size: 12px; margin-top: 6px; }
   .tray-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-  .arrange-controls { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
-  .arrange-controls label { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-  .arrange-controls > div { display: flex; flex-wrap: wrap; gap: 4px; }
-  .arrange-controls button { min-width: 44px; }
-  .workspace-menu { position: relative; }
   .workspace-menu summary { min-height: 44px; display: flex; align-items: center; padding: 8px 12px; border: 1px solid #9d8c67; border-radius: 4px; cursor: pointer; }
-  .workspace-menu > div { position: absolute; top: 48px; right: 0; width: min(330px, calc(100vw - 24px)); padding: 12px; display: grid; gap: 8px; background: #21180f; border: 1px solid #9d8c67; box-shadow: 0 8px 20px #0009; z-index: 45; }
   .workspace-menu label { display: grid; gap: 4px; }
   .workspace-menu p { font-size: 12px; margin: 0; }
   .workspace-menu input { min-height: 44px; width: 100%; background: #17100c; color: #fff5e5; border: 1px solid #9d8c67; }
-  .dock-choice select { max-width: 170px; }
   .docked:not(.compact) .supplies { position: absolute; top: calc(var(--header-height) + 12px); bottom: 48px; width: min(320px, 27vw); overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; }
   .dock-left:not(.compact) .supplies { left: 12px; }
   .dock-right:not(.compact) .supplies { right: 12px; }
   .dock-both:not(.compact) .supplies { left: 12px; right: 12px; width: auto; grid-template-columns: repeat(2, min(140px, 12vw)) 1fr repeat(2, min(140px, 12vw)); pointer-events: none; }
   .dock-both:not(.compact) .supply { grid-column: var(--dock-column); grid-row: var(--dock-row); }
   .docked:not(.compact) .supply { position: relative; inset: auto !important; width: 100% !important; height: 128px !important; }
-  .arrange-controls small { flex-basis: 100%; font-size: 12px; }
+  .party-bar { flex: 1; min-width: 0; display: flex; justify-content: flex-end; }
+  .party-bar:empty { display: none; }
+  .menus { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+  .arrange-controls { display: grid; gap: 10px; }
+  .arrange-field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; font-size: 13px; }
+  .arrange-field select { width: 100%; }
+  .nudge-pad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-areas: '. up .' 'left down right'; gap: 4px; justify-content: center; }
+  .nudge-pad button { padding: 0; font-size: 20px; line-height: 1; }
+  .nudge-pad .up { grid-area: up; } .nudge-pad .left { grid-area: left; } .nudge-pad .down { grid-area: down; } .nudge-pad .right { grid-area: right; }
+  .arrange-hint { margin: 0; font-size: 12px; line-height: 1.45; }
+  .arrange-actions { display: flex; gap: 8px; justify-content: space-between; }
+  .workspace-menu > div { display: grid; gap: 8px; padding-top: 8px; }
+  .table-menu { position: fixed; inset: 96px 16px auto auto; width: 280px; max-height: calc(100svh - 112px); overflow: auto; margin: 0; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; border-radius: 6px; padding: 14px 16px 16px; box-shadow: 0 10px 28px #000a; }
+  .table-menu h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #e8ddcc; margin: 0 0 6px; }
+  .menu-group + .menu-group { margin-top: 14px; padding-top: 14px; border-top: 1px solid #5d4d35; }
+  .table-menu :global(.menu-group > button), .table-menu :global(.menu-group > a) { display: flex; align-items: center; width: 100%; min-height: 44px; margin: 4px 0; padding: 8px 12px; text-align: left; font: inherit; color: #fff5e5; background: #1c150fe8; border: 1px solid #9d8c67; border-radius: 4px; text-decoration: none; box-sizing: border-box; cursor: pointer; }
+  .table-menu :global(.menu-group > button:disabled) { opacity: .5; cursor: default; }
+  .table-menu :global(.menu-group > a:hover), .table-menu :global(.menu-group > button:not(:disabled):hover) { background: #2e2316; }
+  .table-menu :global(:focus-visible) { outline: 3px solid #f5ed37; outline-offset: 2px; }
   .skip { position: absolute; left: 16px; top: -100px; z-index: 50; padding: 12px; background: #fff5e4; color: #21160d; }
   .skip:focus { top: 100px; }
-  #table-actions { position: fixed; inset: 96px 16px auto auto; width: 270px; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; padding: 16px; }
-  #table-actions h2 { font-size: 20px; margin: 0 0 12px; }
-  #table-actions button { display: block; width: 100%; text-align: left; margin: 4px 0; }
   .wheel-option { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; }
   .compact { height: auto; min-height: 100svh; overflow: visible; padding: 0 12px 16px; }
   .compact .status-strip { position: relative; margin: 0 -12px; min-height: 88px; gap: 12px; flex-wrap: wrap; padding: 12px; }
-  .compact .workspace-menu > div { position: fixed; top: calc(var(--header-height) + 8px); left: 12px; right: 12px; width: auto; max-height: 65svh; overflow: auto; }
   .compact .mode { flex: 1 0 auto; }
   .compact .selected-tool { flex: 1; min-width: 120px; }
   .compact .selected-color { flex: 1; }
@@ -580,6 +622,5 @@
   .compact .panels:empty { display: none; }
   .compact .supplies { display: grid; grid-template-columns: repeat(auto-fit, minmax(clamp(100px, 13vw, 168px), 1fr)); gap: 12px 8px; }
   .compact .supply { position: relative; inset: auto !important; width: 100% !important; height: clamp(122px, 12vw, 170px) !important; }
-  .compact .arrange-controls { flex-basis: 100%; order: 1; }
   @media (max-width: 600px) { .paint-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } .status-strip { font-size: 12px; } .selected-tool strong { font-size: 18px; } .load-swatch { width: 60px; } }
 </style>

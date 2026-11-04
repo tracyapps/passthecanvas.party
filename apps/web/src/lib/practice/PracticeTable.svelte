@@ -21,7 +21,6 @@
   let savedId = $state<string | null>(pieceId);
   let status = $state('');
   let saving = $state(false);
-  let confirmNew = $state(false);
   let savedCount = 0; // strokes in the last saved (or loaded) version
   let canvasSize = $derived({ width: CANVAS_SHAPES[shape].width, height: CANVAS_SHAPES[shape].height });
   const canvasKey = 'c1'; // practice strokes use the party's canvas id rules
@@ -33,6 +32,8 @@
     void initializeAccount().then(async () => {
       if (pieceId && accountState.userId) await open(pieceId);
     });
+    if (pieceId) starting = false;
+    else openChooser(true);
     // Leaving with unsaved marks asks first (the browser's own prompt).
     const warn = (event: BeforeUnloadEvent) => {
       if (table && table.strokes().length !== savedCount) event.preventDefault();
@@ -57,9 +58,9 @@
       }
       await table.loadHistory('c1', canvasSize.width, canvasSize.height, strokes, true, null);
       savedCount = table.strokes().length;
-      status = `Opened “${piece.title}”. Keep painting.`;
+      say(`Opened “${piece.title}”. Keep painting.`);
     } catch (cause) {
-      status = cause instanceof Error ? cause.message : 'That piece could not be opened.';
+      say(cause instanceof Error ? cause.message : 'That piece could not be opened.');
     }
   }
 
@@ -99,9 +100,9 @@
       savedId = result.id;
       savedCount = strokes.length;
       history.replaceState(null, '', `/?practice&piece=${result.id}`);
-      status = 'Saved to your practice pieces.';
+      say('Saved to your practice pieces.');
     } catch (cause) {
-      status = cause instanceof Error ? cause.message : 'That piece could not be saved. Try downloading it instead.';
+      say(cause instanceof Error ? cause.message : 'That piece could not be saved. Try downloading it instead.');
     } finally {
       saving = false;
     }
@@ -113,38 +114,52 @@
     link.href = table.snapshot();
     link.download = `${(title.trim() || 'practice-piece').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
     link.click();
-    status = `Downloaded a full-size PNG (${canvasSize.width} × ${canvasSize.height}).`;
+    say(`Downloaded a full-size PNG (${canvasSize.width} × ${canvasSize.height}).`);
   }
 
-  /** A fresh canvas (and shape). Asks first if there are unsaved marks. */
-  async function fresh(next: CanvasShape = shape) {
-    confirmNew = false;
+  /** A fresh canvas in the chosen shape. Callers confirm first when there are unsaved marks. */
+  async function fresh(next: CanvasShape, name = 'Practice piece') {
     shape = next;
     savedId = null;
-    title = 'Practice piece';
+    title = name.trim() || 'Practice piece';
     await tick();
     await table.loadHistory('c1', CANVAS_SHAPES[next].width, CANVAS_SHAPES[next].height, [], true, null);
     savedCount = 0;
     history.replaceState(null, '', '/?practice');
-    status = `A fresh ${CANVAS_SHAPES[next].name.toLowerCase()} canvas.`;
+    say(`A fresh ${CANVAS_SHAPES[next].name.toLowerCase()} canvas.`);
   }
-  function changeShape(next: CanvasShape) {
-    if (table.strokes().length && table.strokes().length !== savedCount) {
-      status = 'Changing the shape starts a new canvas. Save or download first, or choose “Start fresh”.';
-      pendingShape = next;
-      confirmNew = true;
-      return;
-    }
-    void fresh(next);
+
+  // Choosing the canvas happens once, up front. Changing it later is a deliberate
+  // "New canvas" from the menu, because it starts the work over.
+  let chooser: HTMLDialogElement;
+  let pickShape = $state<CanvasShape>('classic');
+  let pickTitle = $state('');
+  let starting = $state(true); // the first choice, before any painting
+  let dirty = $state(false);
+  function openChooser(first = false) {
+    starting = first;
+    pickShape = shape;
+    pickTitle = '';
+    dirty = !first && !!table && table.strokes().length !== savedCount;
+    document.getElementById('table-actions')?.hidePopover();
+    chooser.showModal();
   }
-  let pendingShape = $state<CanvasShape>('classic');
-  function newCanvas() {
-    pendingShape = shape;
-    if (table.strokes().length !== savedCount) {
-      confirmNew = true;
-      status = 'Start a new canvas? Unsaved marks will be lost. Save or download first.';
-    } else void fresh();
+  async function confirmChooser(event: SubmitEvent) {
+    event.preventDefault();
+    chooser.close();
+    if (starting && pickShape === shape) { title = pickTitle.trim() || title; starting = false; say(`${CANVAS_SHAPES[shape].name} canvas. Just you and the paints.`); return; }
+    starting = false;
+    await fresh(pickShape, pickTitle);
   }
+
+  // Short-lived notices (saved, downloaded…), read out politely.
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  function say(message: string) {
+    status = message;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (status = ''), 5000);
+  }
+  const closeMenu = () => document.getElementById('table-actions')?.hidePopover();
 </script>
 
 <svelte:head><title>Practice table — Pass the Canvas</title></svelte:head>
@@ -160,59 +175,81 @@
   waitingNote=""
   onstroke={() => {}}
 >
-  {#snippet partyBar()}
-    <div class="practice-bar">
-      <p class="tape">Practice table</p>
-      <label class="inline">Title <input maxlength="80" bind:value={title} /></label>
-      <label class="inline">Canvas
-        <select value={shape} onchange={(e) => changeShape(e.currentTarget.value as CanvasShape)}>
-          {#each Object.entries(CANVAS_SHAPES) as [id, s] (id)}<option value={id}>{s.name}</option>{/each}
-        </select>
-      </label>
-      {#if confirmNew}
-        <button type="button" class="primary" onclick={() => fresh(pendingShape)}>Start fresh</button>
-        <button type="button" onclick={() => { confirmNew = false; status = ''; }}>Keep painting</button>
-      {/if}
-      {#if signedIn}
-        <button type="button" class="primary" disabled={saving} onclick={save}>{saving ? 'Saving…' : savedId ? 'Save' : 'Save to my pieces'}</button>
-      {/if}
-      <button type="button" onclick={download}>Download PNG</button>
-      <p class="note" role="status">{status || (signedIn ? 'Just you and the paints. Nothing here is shared.' : 'Just you and the paints. Sign in to save pieces; you can always download.')}</p>
-    </div>
-  {/snippet}
   {#snippet menu()}
-    <button type="button" onclick={newCanvas}>New canvas</button>
+    <h2>This piece</h2>
+    <label class="menu-title">Title <input maxlength="80" bind:value={title} /></label>
+    {#if signedIn}
+      <button type="button" disabled={saving} onclick={() => { closeMenu(); void save(); }}>{saving ? 'Saving…' : savedId ? 'Save' : 'Save to my pieces'}</button>
+    {/if}
+    <button type="button" onclick={() => { closeMenu(); download(); }}>Download PNG</button>
+    <button type="button" onclick={() => openChooser()}>New canvas…</button>
+    {#if !signedIn}<p class="menu-note">Sign in from Account to save pieces. You can always download.</p>{/if}
+  {/snippet}
+  {#snippet utility()}
     {#if signedIn}<a href="/account/practice">My practice pieces</a>{/if}
     <a href="/account">My studio</a>
   {/snippet}
 </PaintingTable>
 
+<dialog bind:this={chooser} class="chooser" aria-labelledby="chooser-title" oncancel={() => { if (starting) { starting = false; say(`${CANVAS_SHAPES[shape].name} canvas. Just you and the paints.`); } }}>
+  <form method="dialog" onsubmit={confirmChooser}>
+    <h2 id="chooser-title">{starting ? 'Choose your canvas' : 'Start a new canvas'}</h2>
+    {#if starting}<p>Just you and the paints: every tool from the party, no timer. Nothing here is shared.</p>{/if}
+    {#if dirty}<p class="warn"><strong>This clears the canvas.</strong> Unsaved marks will be lost, so save or download first if you want to keep them.</p>{/if}
+    <fieldset>
+      <legend>Canvas shape</legend>
+      <div class="shapes">
+        {#each Object.entries(CANVAS_SHAPES) as [id, s] (id)}
+          <label class="shape">
+            <input type="radio" name="shape" value={id} bind:group={pickShape} />
+            <span class="preview" aria-hidden="true"><i style:aspect-ratio={`${s.width} / ${s.height}`} style:width={s.width >= s.height ? '100%' : 'auto'} style:height={s.width >= s.height ? 'auto' : '100%'}></i></span>
+            <span class="shape-name">{s.name}</span>
+          </label>
+        {/each}
+      </div>
+    </fieldset>
+    <label class="field">Title <span class="hint">(optional)</span><input maxlength="80" placeholder="Practice piece" bind:value={pickTitle} /></label>
+    <div class="actions">
+      {#if !starting}<button type="button" onclick={() => chooser.close()}>Keep this canvas</button>{/if}
+      {#if dirty && signedIn}<button type="button" onclick={() => { chooser.close(); void save(); }}>Save first</button>{/if}
+      <button type="submit" class="primary">{starting ? 'Start painting' : dirty ? 'Clear and start new' : 'Start new canvas'}</button>
+    </div>
+  </form>
+</dialog>
+
+<p class="toast" class:shown={!!status} role="status">{status}</p>
+
 <style lang="scss">
   @use '../../styles/tokens' as *;
-  @use '../../styles/mixins' as *;
 
-  .practice-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.75rem 1rem;
+  .menu-title { display: grid; gap: 4px; margin: 4px 0 8px; font-size: 0.8125rem; }
+  .menu-title input { min-height: $tap-min; padding: 0 0.5rem; border-radius: 4px; border: 1px solid #9d8c67; background: #17100c; color: $cream; font: inherit; }
+  .menu-note { margin: 6px 0 0; font-size: 0.75rem; line-height: 1.45; color: $cream-muted; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #e8ddcc; margin: 0 0 6px; }
 
-    > button:not(.primary) {
-      min-height: $tap-min;
-      padding: 0 0.875rem;
-      border: 1px solid #9d8c67;
-      border-radius: 4px;
-      background: #1c150fe8;
-      color: $cream;
-    }
-  }
-  .tape { @include tape-label; margin: 0; font-size: 1.25rem; }
-  .note { margin: 0; font-size: 0.875rem; color: $cream-muted; }
-  .inline { display: inline-flex; align-items: center; gap: 0.5rem; color: $cream; font-size: 0.875rem; }
-  .inline input,
-  .inline select { min-height: $tap-min; padding: 0 0.5rem; border-radius: 4px; border: 1px solid #9d8c67; background: #1c150fe8; color: $cream; }
-  .inline input { width: 12rem; }
-  .primary { min-height: $tap-min; padding: 0 1.125rem; border: 0; border-radius: $radius-pill; background: $cream; color: $walnut-900; font-weight: 700; }
-  .primary:disabled { opacity: 0.6; }
-  button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid $focus; outline-offset: 2px; }
+  .chooser { width: min(36rem, calc(100vw - 32px)); padding: 1.5rem; border: 1px solid #aa976a; border-radius: 8px; background: #21180f; color: $cream; box-shadow: 0 16px 40px #000c; }
+  .chooser::backdrop { background: #0c0806b8; }
+  .chooser h2 { font-size: 1.375rem; text-transform: none; letter-spacing: 0; color: $cream; margin: 0 0 0.5rem; }
+  .chooser p { margin: 0 0 1rem; line-height: 1.5; color: $cream-muted; }
+  .chooser .warn { padding: 0.75rem; border-left: 4px solid #e6a23c; background: #2e2316; color: $cream; }
+  fieldset { border: 0; margin: 0 0 1rem; padding: 0; }
+  legend { font-weight: 700; margin-bottom: 0.5rem; }
+  .shapes { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 0.5rem; }
+  .shape { position: relative; display: grid; justify-items: center; gap: 0.5rem; padding: 0.75rem 0.5rem; border: 1px solid #9d8c67; border-radius: 6px; cursor: pointer; text-align: center; font-size: 0.875rem; }
+  .shape input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .shape:has(input:checked) { border: 2px solid $cream; background: #2e2316; font-weight: 700; padding: calc(0.75rem - 1px) calc(0.5rem - 1px); }
+  .shape:has(input:focus-visible) { outline: 3px solid $focus; outline-offset: 2px; }
+  .preview { display: grid; place-items: center; width: 4.5rem; height: 4.5rem; }
+  .preview i { display: block; background: #e1dfda; box-shadow: 2px 3px 0 #0007; }
+  .field { display: grid; gap: 4px; margin-bottom: 1.25rem; font-weight: 700; }
+  .field .hint { font-weight: 400; color: $cream-muted; }
+  .field input { min-height: $tap-min; padding: 0 0.625rem; border-radius: 4px; border: 1px solid #9d8c67; background: #17100c; color: $cream; font: inherit; font-weight: 400; }
+  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+  .actions button { min-height: $tap-min; padding: 0 1rem; border: 1px solid #9d8c67; border-radius: 4px; background: #1c150f; color: $cream; font: inherit; cursor: pointer; }
+  .actions .primary { border: 0; border-radius: $radius-pill; background: $cream; color: $walnut-900; font-weight: 700; padding: 0 1.25rem; }
+  .chooser :focus-visible { outline: 3px solid $focus; outline-offset: 2px; }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; z-index: 60; margin: 0; max-width: min(32rem, calc(100vw - 32px)); padding: 0.625rem 1rem; border-radius: 6px; background: #0c0806f0; border: 1px solid #9d8c67; color: $cream; font-size: 0.875rem; transform: translate(-50%, 0); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .toast.shown { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 </style>

@@ -37,6 +37,15 @@ A running log. Newest first. One line for small calls, a short paragraph for big
   `--btn-text`; cards reset them to ink so buttons stay readable on both the
   dark wall and the light cards.
 
+- **Painting table header** (Nov 4, 2026): the header never changes height.
+  Arrange controls float in a movable "Arrange table" panel; piece and party
+  actions live in Menu; sign-in/out and site links live in a separate Account
+  menu, away from the tools. The practice table asks for the canvas shape once
+  at the start; changing it later is "New canvas…" and clears the work.
+- **Palettes follow the tool** (Nov 4, 2026): an open palette stays open when
+  you switch tools, but switches to a paint set the new tool can use (airbrush
+  and palette knife go to acrylic) instead of showing colors you can't pick.
+
 ## Open questions
 
 ### Painting workspace direction — 2026-10-29
