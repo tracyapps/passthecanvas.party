@@ -62,6 +62,19 @@ export async function openAccountSignIn(): Promise<void> {
     accountState.ready = true;
   }
 }
+/** Straight to "create an account" (the sign-up form links to sign-in for people who have one). */
+export async function openAccountSignUp(): Promise<void> {
+  accountState.ready = false;
+  try {
+    await initializeAccount();
+    if (!clerk || accountState.error) return;
+    clerk.openSignUp({ fallbackRedirectUrl: window.location.href, signInFallbackRedirectUrl: window.location.href });
+  } catch {
+    accountState.error = 'Account sign-up could not open. Please try again.';
+  } finally {
+    accountState.ready = true;
+  }
+}
 export async function signOutAccount(): Promise<void> {
   if (devUser) return void (accountState.userId = null);
   try {

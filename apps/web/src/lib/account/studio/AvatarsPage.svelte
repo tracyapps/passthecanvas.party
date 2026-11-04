@@ -17,6 +17,7 @@
   let editing = $derived(editingId ? studio.avatars.find((a) => a.id === editingId) ?? null : null);
   let defaultId = $derived(studio.home?.profile?.defaultAvatarId ?? null);
   let canSave = $derived(!!accountState.userId && !!studio.home?.profile);
+  let blocked = $derived<'signed-out' | 'no-profile' | null>(!accountState.userId ? 'signed-out' : studio.home && !studio.home.profile ? 'no-profile' : null);
   let renaming = $state<string | null>(null);
   let renameText = $state('');
   let deleting = $state<string | null>(null);
@@ -46,7 +47,7 @@
     <p class="card">{studio.loading ? 'Opening your avatar…' : "This avatar isn't in your studio."}</p>
   {:else}
     {#key editingId}
-      <AvatarEditor avatar={editing} {canSave} onsave={save} oncancel={() => go(accountState.userId ? '/account/avatars' : '/account')} />
+      <AvatarEditor avatar={editing} {canSave} {blocked} onsave={save} oncancel={() => go(accountState.userId ? '/account/avatars' : '/account')} />
     {/key}
   {/if}
 {:else}

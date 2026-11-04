@@ -7,21 +7,71 @@
 -->
 <script lang="ts">
   import { holdStill } from '../../holdStill';
-  import { blankDesign, CUTOUT_CATEGORIES, CUTOUT_INKS, CUTOUT_MEDIA, CUTOUT_SHAPES, PAPER_COLORS, PAPER_PATTERNS, SHEET, strokePath, type AvatarDesign, type CutoutCategory, type CutoutMedium, type CutoutStroke, type PaperColor, type PaperPattern, type SavedAvatar } from '@ptc/shared';
+  import { blankDesign, CUTOUT_CATEGORIES, CUTOUT_INKS, CUTOUT_MEDIA, CUTOUT_SHAPES, PAPER_COLORS, PAPER_PATTERNS, SHEET, sanitizeAvatarDesign, strokePath, type AvatarDesign, type CutoutCategory, type CutoutMedium, type CutoutStroke, type PaperColor, type PaperPattern, type SavedAvatar } from '@ptc/shared';
   import CutoutPreview from './CutoutPreview.svelte';
+  import { openAccountSignIn } from '../account.svelte';
 
   interface Props {
     avatar: SavedAvatar | null;
     canSave: boolean;
+    /** Why saving isn't possible yet: signed out, or signed in without a profile. */
+    blocked?: 'signed-out' | 'no-profile' | null;
     onsave: (name: string, design: AvatarDesign) => Promise<void>;
     oncancel: () => void;
   }
-  let { avatar, canSave, onsave, oncancel }: Props = $props();
+  let { avatar, canSave, blocked = null, onsave, oncancel }: Props = $props();
+
+  // ---- Your drawing is never lost ----
+  // Every change is kept on this device (per avatar) until it's saved to your
+  // studio, so a sign-in, an expired session or a closed tab doesn't lose it.
+  // svelte-ignore state_referenced_locally — the editor re-mounts per avatar
+  const draftKey = `ptc:avatar-draft:${avatar?.id ?? 'new'}`;
+  function readDraft(): { name: string; design: AvatarDesign; at: number } | null {
+    try {
+      const raw = JSON.parse(localStorage.getItem(draftKey) ?? 'null');
+      const clean = raw && sanitizeAvatarDesign(raw.design);
+      return clean && typeof raw.name === 'string' && typeof raw.at === 'number' ? { name: raw.name.slice(0, 40), design: clean, at: raw.at } : null;
+    } catch { return null; }
+  }
+  const draft = readDraft();
 
   // svelte-ignore state_referenced_locally — the editor re-mounts per avatar
-  let design = $state<AvatarDesign>(structuredClone($state.snapshot(avatar?.design) ?? blankDesign()));
+  let design = $state<AvatarDesign>(draft?.design ?? structuredClone($state.snapshot(avatar?.design) ?? blankDesign()));
   // svelte-ignore state_referenced_locally
-  let name = $state(avatar?.name ?? 'My avatar');
+  let name = $state(draft?.name ?? avatar?.name ?? 'My avatar');
+  let restoredNote = $state(draft ? `Your drawing from ${new Date(draft.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} is back. It's kept on this device until you save it.` : '');
+  let changed = false;
+  $effect(() => {
+    const snapshot = JSON.stringify({ name, design: $state.snapshot(design), at: 0 });
+    if (!changed) { changed = true; return; } // the first run is just loading
+    try { localStorage.setItem(draftKey, snapshot.replace('"at":0', `"at":${Date.now()}`)); } catch { /* private mode: still works for this visit */ }
+  });
+  function forgetDraft() { try { localStorage.removeItem(draftKey); } catch { /* nothing kept */ } }
+  function startOver() {
+    forgetDraft();
+    design = structuredClone($state.snapshot(avatar?.design) ?? blankDesign());
+    name = avatar?.name ?? 'My avatar';
+    restoredNote = '';
+    redo = [];
+  }
+
+  // ---- Not signed in? Say so early, and once more before too much work ----
+  // After 5 marks or a minute of drawing (whichever comes first), a one-time
+  // prompt offers a free account so the avatar can be saved.
+  let prompt: HTMLDialogElement;
+  let prompted = false;
+  let firstMarkAt = 0;
+  function maybePrompt() {
+    if (!blocked || prompted || !prompt) return;
+    if (!firstMarkAt) firstMarkAt = Date.now();
+    if (design.strokes.length >= 5 || Date.now() - firstMarkAt > 60_000) { prompted = true; prompt.showModal(); }
+  }
+  $effect(() => {
+    if (!blocked) return;
+    const id = setInterval(() => { if (firstMarkAt) maybePrompt(); }, 10_000);
+    return () => clearInterval(id);
+  });
+  function signIn() { prompt?.close(); void openAccountSignIn(); }
   let medium = $state<CutoutMedium>('pastel');
   let width = $state<number>(CUTOUT_MEDIA.pastel.widths[1]);
   let color = $state<string>(CUTOUT_INKS[4].color);
@@ -70,6 +120,7 @@
     design.strokes = [...design.strokes, { medium, color, width, points: current }];
     redo = [];
     current = null;
+    maybePrompt();
   }
   function undo() {
     const last = design.strokes.at(-1);
@@ -97,8 +148,10 @@
   async function save(event: SubmitEvent) {
     event.preventDefault();
     saving = true;
+    if (!canSave) { if (blocked === 'signed-out') void openAccountSignIn(); return; }
     try {
       await onsave(name.trim() || 'My avatar', $state.snapshot(design));
+      forgetDraft();
     } finally {
       saving = false;
     }
@@ -106,6 +159,30 @@
 </script>
 
 <svelte:window onkeydown={keys} />
+
+{#if blocked}
+  <!-- Impossible to miss: nothing saves to your studio until you're signed in. -->
+  <div class="save-banner" role="status">
+    {#if blocked === 'signed-out'}
+      <p><strong>You're not signed in, so this can't be saved to your studio yet.</strong> Your drawing is kept on this device in the meantime. Create a free account (or log in) and it'll be right here, ready to save.</p>
+      <button type="button" class="btn" onclick={signIn}>Create a free account or log in</button>
+    {:else}
+      <p><strong>Set up your profile to save avatars.</strong> Your drawing is kept on this device until then.</p>
+      <a class="btn" href="/account/profile/edit">Set up my profile</a>
+    {/if}
+  </div>
+{/if}
+{#if restoredNote}<p class="restored" role="status">{restoredNote} <button type="button" class="link" onclick={startOver}>Start over instead</button></p>{/if}
+
+<dialog bind:this={prompt} class="signup-prompt" aria-labelledby="signup-title">
+  <h2 id="signup-title">Keep this avatar?</h2>
+  <p>You're not signed in, so it can't be saved to your studio yet. A free account keeps your avatars, practice pieces and parties in one place, on every device.</p>
+  <p class="hint">Your drawing stays on this device while you sign up.</p>
+  <div class="row">
+    <button type="button" class="btn" onclick={signIn}>Create a free account or log in</button>
+    <button type="button" class="btn quiet" onclick={() => prompt.close()}>Keep drawing</button>
+  </div>
+</dialog>
 
 <form class="editor" onsubmit={save}>
   <section class="card canvas-card" aria-labelledby="draw-title">
@@ -196,15 +273,22 @@
       <h2 id="name-title">Name it</h2>
       <label class="field">Avatar name<input maxlength="40" required bind:value={name} /></label>
       <div class="row">
-        <button type="submit" class="btn" disabled={!canSave || saving}>{saving ? 'Saving…' : avatar ? 'Save changes' : 'Save avatar'}</button>
+        <button type="submit" class="btn" disabled={saving || blocked === 'no-profile'}>{saving ? 'Saving…' : blocked === 'signed-out' ? 'Sign in to save' : avatar ? 'Save changes' : 'Save avatar'}</button>
         <button type="button" class="btn quiet" onclick={oncancel}>{avatar ? 'Back to avatars' : 'Cancel'}</button>
       </div>
-      {#if !canSave}<p class="hint">This is a preview. Sign in (and set up your profile) to save avatars.</p>{/if}
+      {#if blocked}<p class="hint">Kept on this device until you {blocked === 'signed-out' ? 'sign in' : 'set up your profile'}.</p>{/if}
     </section>
   </div>
 </form>
 
 <style>
+  .save-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin: 0 0 20px; padding: 16px 20px; border: 2px solid #2a261e; border-left-width: 10px; border-left-color: #b01d59; background: #fff6e5; color: #2a261e; }
+  .save-banner p { margin: 0; flex: 1 1 24rem; line-height: 1.5; }
+  .restored { margin: 0 0 16px; }
+  .link { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; min-height: 24px; }
+  .signup-prompt { width: min(32rem, calc(100vw - 32px)); padding: 24px; border: 2px solid #2a261e; background: #fff6e5; color: #2a261e; }
+  .signup-prompt::backdrop { background: #0008; }
+  .signup-prompt h2 { margin: 0 0 8px; }
   .editor { display: grid; grid-template-columns: minmax(16rem, 26rem) minmax(0, 1fr); gap: 24px; align-items: start; }
   @media (max-width: 900px) { .editor { grid-template-columns: minmax(0, 1fr); } }
   .canvas-card { position: sticky; top: 16px; }
