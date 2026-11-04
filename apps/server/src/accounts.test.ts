@@ -71,5 +71,9 @@ describe('account workspace boundary', () => {
     expect(validAccountWorkspaces({ ...views, views: [views.views[0], views.views[0]] })).toBe(false);
     expect(validAccountWorkspaces({ ...views, selected: 'missing' })).toBe(false);
     expect(validAccountWorkspaces({ ...views, current: { ...layout, frame: { width: 10, height: 1 } } })).toBe(false);
+    // A canvas window you moved keeps its place; toolboxes travel with your views.
+    expect(validAccountWorkspaces({ ...views, current: { ...layout, frame: { x: 0.2, y: 0.1, width: 0.5, height: 0.6 }, toolbox: 'mine' }, toolboxes: [{ id: 'mine', name: 'Mine', supplies: ['pencil'] }] })).toBe(true);
+    expect(validAccountWorkspaces({ ...views, current: { ...layout, frame: { x: 9, y: 0, width: 0.5, height: 0.6 } } })).toBe(false);
+    expect(validAccountWorkspaces({ ...views, toolboxes: [{ id: 'a', name: '', supplies: [] }] })).toBe(false);
   });
 });

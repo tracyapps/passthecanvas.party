@@ -16,6 +16,7 @@
   import PartyCanvas from './PartyCanvas.svelte';
   import { addPart, decodeMixes, expand, mixColor, recipeText, rememberMix, removeColor, removePart, totalParts, MAX_PARTS, SAVED_MIXES_KEY, type Recipe, type SavedMix } from './recipes';
   import { PALETTES } from './palettes';
+  import { allToolboxes, EVERYTHING, findToolbox, freshName, isBuiltIn, makeToolbox, MAX_TOOLBOXES, shownSupplies, type Toolbox } from './toolboxes';
   import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './workspaces';
   import burnishingPad from './burnishing-pad.svg?url';
   import { constrainSupply, type SupplyRect } from './placement';
@@ -93,6 +94,16 @@
   let frameOverride = $state<{ x: number; y: number; width: number; height: number } | null>(null);
   let documentSize = $derived(canvasSize);
   let savedViews = $state<SavedWorkspace[]>([]);
+  // Toolboxes: which supplies are on the table (see toolboxes.ts). Saved with your views.
+  let customToolboxes = $state<Toolbox[]>([]);
+  let toolbox = $state(EVERYTHING);
+  let activeBox = $derived(findToolbox(toolbox, customToolboxes));
+  let toolboxesOpen = $state(false);
+  let viewsOpen = $state(false);
+  let deletingBox = $state(false);
+  let deletingView = $state<string | null>(null);
+  let renamingView = $state<string | null>(null);
+  let renameText = $state('');
   let selectedView = $state('');
   let viewName = $state('');
   let activeViewValue = $derived.by(() => {
@@ -206,33 +217,33 @@
     const unlockZoom = lockPageZoom();
     try {
       const raw = localStorage.getItem(WORKSPACE_KEY);
-      if (raw) { const stored = decodeWorkspaces(raw, supplies.map(item => item.id)); savedViews = stored.views; selectedView = stored.selected; applyLayout(stored.current); }
+      if (raw) { const stored = decodeWorkspaces(raw, supplies.map(item => item.id)); savedViews = stored.views; selectedView = stored.selected; customToolboxes = stored.toolboxes ?? []; applyLayout(stored.current); }
     } catch { storageError = 'Saved views could not be read. Existing browser data has been kept.'; }
     storageReady = true;
     return () => { observer.disconnect(); headerObserver.disconnect(); unlockZoom(); };
   });
-  function currentLayout(): WorkspaceLayout { return { positions: $state.snapshot(positions), order: [...order], dock, frame: frameOverride ? { x: frameOverride.x / windowWidth, y: frameOverride.y / windowHeight, width: frameOverride.width / windowWidth, height: frameOverride.height / windowHeight } : null, rotation }; }
+  function currentLayout(): WorkspaceLayout { return { positions: $state.snapshot(positions), order: [...order], dock, frame: frameOverride ? { x: frameOverride.x / windowWidth, y: frameOverride.y / windowHeight, width: frameOverride.width / windowWidth, height: frameOverride.height / windowHeight } : null, rotation, toolbox }; }
   function applyLayout(layout: WorkspaceLayout) {
-    positions = $state.snapshot(layout.positions); order = [...layout.order]; dock = layout.dock; rotation = layout.rotation;
+    positions = $state.snapshot(layout.positions); order = [...layout.order]; dock = layout.dock; rotation = layout.rotation; toolbox = layout.toolbox ?? EVERYTHING;
     // Older saved views only kept a size; they reopen at the default spot.
     frameOverride = layout.frame && typeof layout.frame.x === 'number' && typeof layout.frame.y === 'number' ? { x: layout.frame.x * windowWidth, y: layout.frame.y * windowHeight, width: layout.frame.width * windowWidth, height: layout.frame.height * windowHeight } : null;
     viewReset += 1;
   }
   $effect(() => {
-    const state = { version: 1, current: currentLayout(), views: $state.snapshot(savedViews), selected: selectedView };
+    const state = { version: 1, current: currentLayout(), views: $state.snapshot(savedViews), selected: selectedView, toolboxes: $state.snapshot(customToolboxes) };
     if (!storageReady || storageError || !accountState.ready || accountSyncing || accountLoadedFor !== accountState.userId) return;
     try { localStorage.setItem(browserKey(accountState.userId), JSON.stringify(state)); }
     catch { storageError = 'This browser could not save the layout. Your current view is still usable.'; }
   });
   function browserKey(userId: string | null) { return userId ? `${WORKSPACE_KEY}:${userId}` : WORKSPACE_KEY; }
-  function workspaceState() { return { version: 1, current: currentLayout(), views: $state.snapshot(savedViews), selected: selectedView }; }
+  function workspaceState() { return { version: 1, current: currentLayout(), views: $state.snapshot(savedViews), selected: selectedView, toolboxes: $state.snapshot(customToolboxes) }; }
   function restoreWorkspace(value: unknown) {
     const stored = decodeWorkspaces(JSON.stringify(value), supplies.map(item => item.id));
-    savedViews = stored.views; selectedView = stored.selected; applyLayout(stored.current);
+    savedViews = stored.views; selectedView = stored.selected; customToolboxes = stored.toolboxes ?? []; applyLayout(stored.current);
   }
   async function restoreAccount(userId: string | null) {
     accountSyncing = true; cloudEnabled = false; cloudLoaded = false; storageError = ''; accountMessage = '';
-    savedViews = []; selectedView = ''; applyLayout(defaultLayout(supplies.map(item => item.id)));
+    savedViews = []; selectedView = ''; customToolboxes = []; applyLayout(defaultLayout(supplies.map(item => item.id)));
     try {
       const raw = localStorage.getItem(browserKey(userId));
       if (raw) restoreWorkspace(JSON.parse(raw));
@@ -279,6 +290,8 @@
       const ids = new Set(savedViews.map(view => view.id));
       if (savedViews.length + guest.views.filter(view => !ids.has(view.id)).length > 30) { accountMessage = 'Import would exceed the 30-view limit.'; return; }
       savedViews = [...savedViews, ...guest.views.filter(view => !ids.has(view.id))];
+      const boxes = new Set(customToolboxes.map(box => box.id));
+      customToolboxes = [...customToolboxes, ...(guest.toolboxes ?? []).filter(box => !boxes.has(box.id))].slice(0, MAX_TOOLBOXES);
       void saveCloud();
     } catch { accountMessage = 'Browser views could not be imported. The original data has been kept.'; }
   }
@@ -288,6 +301,59 @@
     if (!name) { announcement = 'Give this view a name first.'; return; }
     if (savedViews.length >= 30) { announcement = 'Up to 30 views can be saved in this browser.'; return; }
     const id = crypto.randomUUID(); savedViews = [...savedViews, { id, name, layout: currentLayout() }]; selectedView = id; viewName = ''; announcement = `${name} saved on this browser.`; if (accountState.userId) void saveCloud();
+  }
+  // ---- toolboxes ----
+  function chooseToolbox(id: string) {
+    toolbox = id;
+    const box = findToolbox(id, customToolboxes);
+    announcement = `${box.name} toolbox: ${shownSupplies(order, box).length} supplies on the table.`;
+  }
+  function newToolbox(from: Toolbox = activeBox) {
+    if (customToolboxes.length >= MAX_TOOLBOXES) { announcement = `Up to ${MAX_TOOLBOXES} toolboxes.`; return; }
+    const box = makeToolbox(freshName(from.id === EVERYTHING ? 'My toolbox' : `${from.name} copy`, customToolboxes), from, supplies.map(item => item.id));
+    customToolboxes = [...customToolboxes, box];
+    toolbox = box.id;
+    deletingBox = false;
+    announcement = `${box.name} made. Choose which supplies it shows.`;
+  }
+  function editToolbox(change: Partial<Toolbox>) {
+    customToolboxes = customToolboxes.map(box => box.id === toolbox ? { ...box, ...change } : box);
+  }
+  function toggleSupply(id: string, on: boolean) {
+    const now = new Set(activeBox.supplies);
+    if (on) now.add(id); else now.delete(id);
+    editToolbox({ supplies: supplies.map(item => item.id).filter(item => now.has(item)) });
+  }
+  function deleteToolbox() {
+    const gone = activeBox.name;
+    customToolboxes = customToolboxes.filter(box => box.id !== toolbox);
+    // Views that used it show everything from now on.
+    savedViews = savedViews.map(view => view.layout.toolbox === toolbox ? { ...view, layout: { ...view.layout, toolbox: EVERYTHING } } : view);
+    toolbox = EVERYTHING;
+    deletingBox = false;
+    announcement = `${gone} deleted. Showing everything.`;
+  }
+
+  // ---- saved views ----
+  function updateView(id: string) {
+    savedViews = savedViews.map(view => view.id === id ? { ...view, layout: currentLayout() } : view);
+    selectedView = id;
+    announcement = 'Saved view updated with this arrangement.';
+  }
+  function renameView(id: string) {
+    const name = renameText.trim().slice(0, 80);
+    if (name) savedViews = savedViews.map(view => view.id === id ? { ...view, name } : view);
+    renamingView = null;
+  }
+  function deleteView(id: string) {
+    savedViews = savedViews.filter(view => view.id !== id);
+    if (selectedView === id) selectedView = '';
+    deletingView = null;
+    announcement = 'Saved view deleted.';
+  }
+  function openPanel(which: 'toolboxes' | 'views') {
+    document.getElementById('table-actions')?.hidePopover();
+    if (which === 'toolboxes') toolboxesOpen = true; else viewsOpen = true;
   }
   function loadView(id: string) { const view = savedViews.find(item => item.id === id); if (view) { applyLayout(view.layout); selectedView = id; announcement = `${view.name} restored.`; } }
   function putDown() {
@@ -453,19 +519,24 @@
     const supply = supplies.find(supply => supply.id === target)!;
     if (compact || dock !== 'surround') {
       // On the flowing layout, reorder rather than pushing controls offscreen.
-      const index = order.indexOf(target);
+      // Reorder among the supplies this toolbox shows; hidden ones keep their place after them.
+      const list = [...shown];
+      const index = list.indexOf(target);
+      if (index < 0) return;
       const columns = dock === 'both' && !compact ? 2 : Math.max(1, getComputedStyle(supplyGrid).gridTemplateColumns.split(' ').length);
-      const split = Math.ceil(order.length / 2);
+      const split = Math.ceil(list.length / 2);
       const offset = dock === 'both' && !compact && index >= split ? split : 0;
-      const count = dock === 'both' && !compact ? offset ? order.length - split : split : order.length;
+      const count = dock === 'both' && !compact ? offset ? list.length - split : split : list.length;
       const next = gridDestination(index - offset, count, columns, dx, dy) + offset;
-      const copy = [...order]; copy.splice(index, 1); copy.splice(next, 0, target); order = copy;
+      list.splice(index, 1); list.splice(next, 0, target);
+      order = [...list, ...order.filter(id => !list.includes(id))];
     } else {
       const box = supplyBox(supply);
       positions[target] = { x: (box.x + dx) / board.width, y: (box.y + dy) / board.height };
     }
   }
   let order = $state(supplies.map(supply => supply.id));
+  let shown = $derived(shownSupplies(order, activeBox));
   function supplyKey(event: KeyboardEvent, id: string) {
     if (mode !== 'arrange') return;
     const moves: Record<string, [number, number]> = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] };
@@ -489,6 +560,7 @@
       <button type="button" aria-pressed={mode === 'paint'} onclick={() => mode = 'paint'}>Paint</button>
       <button type="button" aria-pressed={mode === 'arrange'} onclick={() => { mode = 'arrange'; paletteOpen = false; }}>Arrange &amp; view</button>
     </div>
+    <label class="toolbox-pick"><span>Toolbox</span><select value={activeBox.id} onchange={(event) => chooseToolbox(event.currentTarget.value)}>{#each allToolboxes(customToolboxes) as box (box.id)}<option value={box.id}>{box.name}</option>{/each}</select></label>
     <div class="selected-tool"><span>Tool selected</span><strong>{toolName}</strong></div>
     <div class="selected-color"><span>Current color</span><div class="load-line"><span class="load-swatch" class:empty={!selection.load} aria-hidden="true">{#each selection.load?.colors ?? [] as color}<i style:background={color}></i>{/each}</span><strong>{selection.load ? MEDIUM_NAMES[selection.load.medium] : selection.wet ? 'Water only' : selection.tool === 'eraser' || selection.tool === 'sponge' || selection.tool === 'burnisher' ? 'Not needed' : 'Unloaded'}</strong></div></div>
     <!-- Messages live up here, never on the table where you paint. -->
@@ -521,7 +593,7 @@
       <!-- Floats over the (locked) canvas so the header and the supplies never shift while you arrange them. -->
       <StudioPanel title="Arrange table" label="arrange table" dock="arrange" flow={compact} onclose={() => mode = 'paint'}>
         <div class="arrange-controls">
-          <label class="arrange-field">Supply<select bind:value={target}>{#each supplies as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
+          <label class="arrange-field">Supply<select bind:value={target}>{#each supplies.filter(item => shown.includes(item.id)) as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
           <div class="nudge-pad" role="group" aria-label={compact || dock !== 'surround' ? 'Reorder the chosen supply' : 'Move the chosen supply'}>
             <button type="button" class="up" aria-label="Up" onclick={() => nudge(0, -32)}>↑</button>
             <button type="button" class="left" aria-label="Left" onclick={() => nudge(-32, 0)}>←</button>
@@ -534,7 +606,74 @@
             <button type="button" onclick={() => { applyLayout(defaultLayout(supplies.map(supply => supply.id))); selectedView = ''; announcement = 'Layout reset.'; }}>Reset layout</button>
             <button type="button" class="primary" onclick={() => mode = 'paint'}>Done</button>
           </div>
-          <details class="workspace-menu"><summary>Saved views</summary><div><p>{accountState.userId ? 'Views are linked to your signed-in account.' : 'Saved on this browser. Sign in from Account to save them to your account.'}</p><label>Saved view<select aria-label="Saved view" value={activeViewValue} onchange={(event) => loadView(event.currentTarget.value)}><option value="">Current arrangement</option>{#each savedViews as saved}<option value={saved.id}>{saved.name}</option>{/each}</select></label><label>View name<input aria-label="View name" maxlength="80" bind:value={viewName} /></label><button type="button" onclick={saveView}>Save as new view</button><button type="button" disabled={!selectedView} onclick={() => { savedViews = savedViews.map(view => view.id === selectedView ? { ...view, layout: currentLayout() } : view); announcement = 'Saved view updated.'; }}>Update saved view</button><button type="button" disabled={!selectedView} onclick={() => { savedViews = savedViews.filter(view => view.id !== selectedView); selectedView = ''; }}>Delete saved view</button>{#if accountState.userId}<button type="button" disabled={accountSyncing || !cloudLoaded} onclick={() => void saveCloud()}>Save views to account</button><button type="button" disabled={accountSyncing} onclick={() => void restoreAccount(accountState.userId)}>Reload account views</button><button type="button" disabled={accountSyncing || !cloudLoaded} onclick={importBrowserViews}>Import browser views to account</button>{/if}<p role="status">{storageError || accountMessage || 'Your latest arrangement is restored automatically.'}</p></div></details>
+          <div class="arrange-actions"><button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button><button type="button" onclick={() => openPanel('views')}>Saved views…</button></div>
+        </div>
+      </StudioPanel>
+    {/if}
+    {#if toolboxesOpen}
+      <StudioPanel title="Toolboxes" label="toolboxes" dock="arrange" flow={compact} onclose={() => { toolboxesOpen = false; deletingBox = false; }}>
+        <div class="stack-panel">
+          <label class="arrange-field">Toolbox<select value={activeBox.id} onchange={(event) => { chooseToolbox(event.currentTarget.value); deletingBox = false; }}>{#each allToolboxes(customToolboxes) as box (box.id)}<option value={box.id}>{box.name}</option>{/each}</select></label>
+          {#if isBuiltIn(activeBox.id)}
+            <p class="arrange-hint">“{activeBox.name}” is built in{activeBox.id === EVERYTHING ? ' and shows every supply' : ''}. Make a copy to choose your own supplies.</p>
+            <div class="arrange-actions"><button type="button" class="primary" onclick={() => newToolbox()}>Make a copy to customize</button></div>
+          {:else}
+            <label class="arrange-field">Name<input maxlength="40" value={activeBox.name} oninput={(event) => editToolbox({ name: event.currentTarget.value.slice(0, 40) || 'My toolbox' })} /></label>
+            <fieldset class="supply-checks">
+              <legend>On the table <span class="arrange-hint">({activeBox.supplies.length} of {supplies.length})</span></legend>
+              {#each supplies as supply (supply.id)}
+                <label><input type="checkbox" checked={activeBox.supplies.includes(supply.id)} onchange={(event) => toggleSupply(supply.id, event.currentTarget.checked)} /> {supply.name}</label>
+              {/each}
+            </fieldset>
+            {#if !activeBox.supplies.length}<p class="arrange-hint">Nothing ticked: this toolbox shows every supply until you pick some.</p>{/if}
+            <div class="arrange-actions">
+              <button type="button" onclick={() => newToolbox()}>Duplicate</button>
+              {#if deletingBox}
+                <button type="button" class="danger" onclick={deleteToolbox}>Yes, delete {activeBox.name}</button>
+                <button type="button" onclick={() => (deletingBox = false)}>Keep it</button>
+              {:else}
+                <button type="button" onclick={() => (deletingBox = true)}>Delete…</button>
+              {/if}
+            </div>
+          {/if}
+          <div class="arrange-actions"><button type="button" onclick={() => newToolbox(findToolbox(EVERYTHING, []))}>New toolbox</button></div>
+          <p class="arrange-hint">A supply can be in as many toolboxes as you like; it's still the same tool, with the same paint on it. Saved views remember their toolbox.</p>
+        </div>
+      </StudioPanel>
+    {/if}
+    {#if viewsOpen}
+      <StudioPanel title="Saved views" label="saved views" dock="arrange" flow={compact} onclose={() => { viewsOpen = false; deletingView = renamingView = null; }}>
+        <div class="stack-panel">
+          <p class="arrange-hint">A view keeps where your supplies sit, the toolbox, the canvas window and its rotation. {accountState.userId ? 'Yours are saved to your account.' : 'Saved on this browser; sign in to keep them on every device.'}</p>
+          {#if savedViews.length}
+            <ul class="view-list">
+              {#each savedViews as view (view.id)}
+                <li class:current={activeViewValue === view.id}>
+                  {#if renamingView === view.id}
+                    <form class="rename" onsubmit={(event) => { event.preventDefault(); renameView(view.id); }}><input aria-label={`New name for ${view.name}`} maxlength="80" bind:value={renameText} /><button type="submit">Rename</button><button type="button" onclick={() => (renamingView = null)}>Cancel</button></form>
+                  {:else}
+                    <button type="button" class="view-open" aria-current={activeViewValue === view.id ? 'true' : undefined} onclick={() => loadView(view.id)}>{view.name}{#if view.layout.toolbox && view.layout.toolbox !== EVERYTHING}<span class="arrange-hint">&nbsp;·&nbsp;{findToolbox(view.layout.toolbox, customToolboxes).name}</span>{/if}</button>
+                    <div class="view-actions">
+                      <button type="button" aria-label={`Update ${view.name} with this arrangement`} onclick={() => updateView(view.id)}>Update</button>
+                      <button type="button" aria-label={`Rename ${view.name}`} onclick={() => { renamingView = view.id; renameText = view.name; }}>Rename</button>
+                      {#if deletingView === view.id}
+                        <button type="button" class="danger" onclick={() => deleteView(view.id)}>Yes, delete</button><button type="button" onclick={() => (deletingView = null)}>Keep</button>
+                      {:else}
+                        <button type="button" aria-label={`Delete ${view.name}`} onclick={() => (deletingView = view.id)}>Delete…</button>
+                      {/if}
+                    </div>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="arrange-hint">No saved views yet. Arrange your table, then save it here.</p>
+          {/if}
+          <form class="rename" onsubmit={(event) => { event.preventDefault(); saveView(); }}><input aria-label="New view name" placeholder="Name this view" maxlength="80" bind:value={viewName} /><button type="submit" class="primary">Save view</button></form>
+          {#if accountState.userId}
+            <details class="more"><summary>Account copies</summary><div class="arrange-actions"><button type="button" disabled={accountSyncing || !cloudLoaded} onclick={() => void saveCloud()}>Save views to account</button><button type="button" disabled={accountSyncing} onclick={() => void restoreAccount(accountState.userId)}>Reload account views</button><button type="button" disabled={accountSyncing || !cloudLoaded} onclick={importBrowserViews}>Import this browser’s views</button></div></details>
+          {/if}
+          <p class="arrange-hint" role="status">{storageError || accountMessage || 'Your latest arrangement is restored automatically.'}</p>
         </div>
       </StudioPanel>
     {/if}
@@ -586,12 +725,12 @@
   </div>
 
   <section bind:this={supplyGrid} class="supplies" aria-label="Art supplies">
-    {#each order as id, index (id)}
+    {#each shown as id, index (id)}
       {@const supply = supplies.find(supply => supply.id === id)!}
       {@const box = supplyBox(supply)}
       {@const reason = mode === 'arrange' ? '' : supply.id === 'water' ? takesWater(selection.tool) ? '' : 'Choose a brush or the sponge to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
       <div class="supply" data-tool={supply.tool} data-supply={supply.id} class:chosen={active(supply.id)}
-        style:--dock-column={index < Math.ceil(order.length / 2) ? index % 2 + 1 : (index - Math.ceil(order.length / 2)) % 2 + 4} style:--dock-row={index < Math.ceil(order.length / 2) ? Math.floor(index / 2) + 1 : Math.floor((index - Math.ceil(order.length / 2)) / 2) + 1} style:left={`${box.x}px`} style:top={`${box.y}px`} style:width={`${box.width}px`} style:height={`${box.height}px`}>
+        style:--dock-column={index < Math.ceil(shown.length / 2) ? index % 2 + 1 : (index - Math.ceil(shown.length / 2)) % 2 + 4} style:--dock-row={index < Math.ceil(shown.length / 2) ? Math.floor(index / 2) + 1 : Math.floor((index - Math.ceil(shown.length / 2)) / 2) + 1} style:left={`${box.x}px`} style:top={`${box.y}px`} style:width={`${box.width}px`} style:height={`${box.height}px`}>
         <PhotoSupply compact={compact || dock !== 'surround'} moving={mode === 'arrange' && !compact && dock === 'surround'} image={supply.id === 'burnisher' ? burnishingPad : asset(supply.id)} label={mode === 'arrange' ? `Move ${supply.name}` : supply.name} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
           hit={supply.tip ? [supply.tip[0] / supply.box[2] * 100, supply.tip[1] / supply.box[3] * 100, supply.tip[2] / supply.box[2] * 100, supply.tip[3] / supply.box[3] * 100] : supply.hit ? [(supply.hit[0] - supply.box[0]) / supply.box[2] * 100, (supply.hit[1] - supply.box[1]) / supply.box[3] * 100, supply.hit[2] / supply.box[2] * 100, supply.hit[3] / supply.box[3] * 100] : undefined}
           muted={mode === 'paint' && selection.tool !== null && (!!reason || (!!supply.tool && !active(supply.id)))} onclick={() => openSupply(supply)}
@@ -604,6 +743,12 @@
 
 <div id="table-actions" class="table-menu" popover aria-label="Painting table menu">
   {#if menu}<div class="menu-group">{@render menu()}</div>{/if}
+  <div class="menu-group">
+    <h2>Table</h2>
+    <button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button>
+    <button type="button" onclick={() => openPanel('views')}>Saved views…</button>
+    <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); mode = 'arrange'; paletteOpen = false; }}>Arrange table…</button>
+  </div>
   <div class="menu-group">
     <h2>Painting</h2>
     <button type="button" disabled={!selection.tool} onclick={() => { document.getElementById('table-actions')?.hidePopover(); void showSettings(); }}>Tool settings</button>
@@ -696,10 +841,6 @@
   .tray-options input { width: 18px; height: 18px; accent-color: #e6df54; }
   .medium-choice { font-size: 12px; margin-top: 6px; }
   .tray-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-  .workspace-menu summary { min-height: 44px; display: flex; align-items: center; padding: 8px 12px; border: 1px solid #9d8c67; border-radius: 4px; cursor: pointer; }
-  .workspace-menu label { display: grid; gap: 4px; }
-  .workspace-menu p { font-size: 12px; margin: 0; }
-  .workspace-menu input { min-height: 44px; width: 100%; background: #17100c; color: #fff5e5; border: 1px solid #9d8c67; }
   .docked:not(.compact) .supplies { position: absolute; top: calc(var(--header-height) + 12px); bottom: 48px; width: min(320px, 27vw); overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; }
   .dock-left:not(.compact) .supplies { left: 12px; }
   .dock-right:not(.compact) .supplies { right: 12px; }
@@ -729,9 +870,24 @@
   .nudge-pad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-areas: '. up .' 'left down right'; gap: 4px; justify-content: center; }
   .nudge-pad button { padding: 0; font-size: 20px; line-height: 1; }
   .nudge-pad .up { grid-area: up; } .nudge-pad .left { grid-area: left; } .nudge-pad .down { grid-area: down; } .nudge-pad .right { grid-area: right; }
+  .toolbox-pick { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #e8ddcc; }
+  .toolbox-pick select { min-height: 36px; padding: 4px 8px; font-size: 13px; max-width: 11rem; }
+  .stack-panel { display: grid; gap: 10px; }
+  .supply-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 10px; margin: 0; padding: 8px 10px; border: 1px solid #5d4d35; border-radius: 4px; font-size: 13px; }
+  .supply-checks legend { font-weight: 700; padding: 0 4px; }
+  .supply-checks label { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+  .supply-checks input, .wheel-option input { width: 18px; height: 18px; accent-color: #eee935; }
+  .view-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .view-list li { display: grid; gap: 4px; padding: 6px; border: 1px solid #5d4d35; border-radius: 4px; }
+  .view-list li.current { border-color: #e6df54; }
+  .view-open { text-align: left; font-weight: 700; }
+  .view-actions, .rename { display: flex; flex-wrap: wrap; gap: 4px; }
+  .view-actions button { font-size: 12px; min-height: 36px; padding: 4px 8px; }
+  .rename input { flex: 1 1 8rem; min-height: 40px; padding: 0 8px; background: #17100c; color: #fff5e5; border: 1px solid #9d8c67; border-radius: 4px; font: inherit; }
+  .danger { border-color: #e0604f; }
+  .more summary { cursor: pointer; font-size: 12px; min-height: 32px; display: flex; align-items: center; }
   .arrange-hint { margin: 0; font-size: 12px; line-height: 1.45; }
   .arrange-actions { display: flex; gap: 8px; justify-content: space-between; }
-  .workspace-menu > div { display: grid; gap: 8px; padding-top: 8px; }
   .workbench :global(input), .workbench :global(textarea) { -webkit-user-select: text; user-select: text; }
   .table-menu { position: fixed; inset: 96px 16px auto auto; width: min(calc(280px * var(--ui-scale, 1)), calc(100vw - 32px)); max-height: calc(100svh - 112px); overflow: auto; margin: 0; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; border-radius: 6px; padding: 14px 16px 16px; box-shadow: 0 10px 28px #000a; }
   .table-menu h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #e8ddcc; margin: 0 0 6px; }

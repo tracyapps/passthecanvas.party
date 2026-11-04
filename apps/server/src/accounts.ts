@@ -24,7 +24,8 @@ function hasKeys(value: Record<string, unknown>, keys: string[]): boolean {
   return Object.keys(value).every(key => keys.includes(key));
 }
 function validLayout(value: unknown): boolean {
-  if (!record(value) || !hasKeys(value, ['positions', 'order', 'dock', 'frame', 'rotation'])) return false;
+  if (!record(value) || !hasKeys(value, ['positions', 'order', 'dock', 'frame', 'rotation', 'toolbox'])) return false;
+  if (value.toolbox !== undefined && !shortText(value.toolbox)) return false;
   if (!record(value.positions) || Object.keys(value.positions).length > 32) return false;
   for (const [id, position] of Object.entries(value.positions)) {
     if (!shortText(id) || !record(position) || !hasKeys(position, ['x', 'y'])) return false;
@@ -34,13 +35,29 @@ function validLayout(value: unknown): boolean {
   if (!['surround', 'left', 'right', 'both'].includes(String(value.dock))) return false;
   if (!Number.isInteger(value.rotation) || Number(value.rotation) < 0 || Number(value.rotation) > 3) return false;
   if (value.frame !== null) {
-    if (!record(value.frame) || !hasKeys(value.frame, ['width', 'height'])) return false;
+    // The window's place (x, y) is kept as well as its size, as fractions of the screen.
+    if (!record(value.frame) || !hasKeys(value.frame, ['width', 'height', 'x', 'y'])) return false;
     if (![value.frame.width, value.frame.height].every(n => typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= 2)) return false;
+    if (![value.frame.x, value.frame.y].every(n => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= -1 && n <= 2))) return false;
+  }
+  return true;
+}
+/** Your own toolboxes: up to 20 named lists of supplies. */
+function validToolboxes(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > 20) return false;
+  const ids = new Set<string>();
+  for (const box of value) {
+    if (!record(box) || !hasKeys(box, ['id', 'name', 'supplies']) || !shortText(box.id) || !box.id || ids.has(box.id)) return false;
+    if (typeof box.name !== 'string' || !box.name.trim() || box.name.length > 40) return false;
+    if (!Array.isArray(box.supplies) || box.supplies.length > 32 || !box.supplies.every(shortText)) return false;
+    ids.add(box.id);
   }
   return true;
 }
 export function validAccountWorkspaces(value: unknown): boolean {
-  if (!record(value) || !hasKeys(value, ['version', 'current', 'views', 'selected'])) return false;
+  if (!record(value) || !hasKeys(value, ['version', 'current', 'views', 'selected', 'toolboxes'])) return false;
+  if (!validToolboxes(value.toolboxes)) return false;
   if (value.version !== 1 || !validLayout(value.current) || !shortText(value.selected)) return false;
   if (!Array.isArray(value.views) || value.views.length > 30) return false;
   const ids = new Set<string>();

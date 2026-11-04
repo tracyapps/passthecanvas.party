@@ -17,7 +17,7 @@ Today the painting table keeps its state inside `PaintingTable.svelte`: the tool
 - Across windows on one computer, the store syncs over `BroadcastChannel`.
 - Across devices, it syncs over the party server's WebSocket (see phase C).
 
-## Phase A: toolboxes (custom "dashboards" of supplies)
+## Phase A: toolboxes (custom "dashboards" of supplies) ✓ done Nov 4, 2026
 
 - **Show or hide** any supply on its own (pencils, water, sponge…).
 - **Named toolboxes**: a list of supplies plus where they sit.
@@ -26,6 +26,18 @@ Today the painting table keeps its state inside `PaintingTable.svelte`: the tool
 - **A supply can be in several toolboxes.** It is one tool with one state, shown in more than one place.
 - **Saved views** grow into **workspaces**: toolboxes, their layout, the canvas window, dock and rotation. They stay saved to the account, as views are now.
 - **Accessibility:** every show, hide and reorder can be done from the keyboard and is announced. Hidden tools stay reachable from the toolbox menu.
+
+### What shipped in Phase A
+
+- **Toolboxes:** `canvas/toolboxes.ts`.
+  - Built in: Everything, Drawing, Drawing +, Painting.
+  - Your own: up to 20, made from any toolbox; rename, tick supplies, duplicate, delete.
+  - A picker in the header, and a Toolboxes panel (Menu → Toolboxes…).
+- **Saving:** toolboxes live in the saved-views state (`toolboxes`), and each layout records its `toolbox`. Older views open as Everything.
+- **Saved views panel:** a list with open, update, rename and delete (asks first), plus save new. The account copy buttons are tucked under "Account copies".
+- **Server:** account views now accept toolboxes and the canvas window's x/y. Before this, account saves failed after the window had been resized.
+- **Not yet:** the shared `tableState` store. Tool, paint and size still live in `PaintingTable`; that's fine while there's one window, and moving them out is the first step of Phase B.
+- **Not yet:** supplies in a small toolbox keep their default spots. A "tidy up" that packs them around the canvas may be worth adding.
 
 ## Phase B: pop-out panels (several monitors on one computer)
 

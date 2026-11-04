@@ -1,3 +1,4 @@
+import { EVERYTHING, readToolboxes, type Toolbox } from './toolboxes';
 // Browser-only saved views. Account persistence can later store the same layout
 // behind an authenticated API; no canvas image or painting identity lives here.
 export type ToolDock = 'surround' | 'left' | 'right' | 'both';
@@ -8,12 +9,14 @@ export interface WorkspaceLayout {
   /** The canvas window, as fractions of the screen. x/y are new; older views only kept the size. */
   frame: { x?: number; y?: number; width: number; height: number } | null;
   rotation: number;
+  /** Which toolbox this view shows (missing in older views = everything). */
+  toolbox?: string;
 }
 export interface SavedWorkspace { id: string; name: string; layout: WorkspaceLayout }
-export interface WorkspaceState { version: 1; current: WorkspaceLayout; views: SavedWorkspace[]; selected: string }
+export interface WorkspaceState { version: 1; current: WorkspaceLayout; views: SavedWorkspace[]; selected: string; toolboxes?: Toolbox[] }
 export const WORKSPACE_KEY = 'ptc-painting-workspaces-v1';
 export function defaultLayout(ids: string[]): WorkspaceLayout {
-  return { positions: {}, order: [...ids], dock: 'surround', frame: null, rotation: 0 };
+  return { positions: {}, order: [...ids], dock: 'surround', frame: null, rotation: 0, toolbox: EVERYTHING };
 }
 export function gridDestination(index: number, count: number, columns: number, dx: number, dy: number): number {
   if (dy) {
@@ -44,6 +47,8 @@ function readLayout(value: unknown, ids: string[]): WorkspaceLayout {
     layout.frame = { width: source.frame.width, height: source.frame.height, ...(place(x) && place(y) ? { x: x as number, y: y as number } : {}) };
   }
   layout.dock = source.dock; layout.rotation = source.rotation;
+  // Unknown toolboxes (one since deleted) fall back to everything when shown.
+  layout.toolbox = typeof source.toolbox === 'string' && source.toolbox.length <= 80 ? source.toolbox : EVERYTHING;
   return layout;
 }
 export function decodeWorkspaces(raw: string, ids: string[]): WorkspaceState {
@@ -56,5 +61,5 @@ export function decodeWorkspaces(raw: string, ids: string[]): WorkspaceState {
     used.add(view.id);
     return { id: view.id, name: view.name, layout: readLayout(view.layout, ids) };
   });
-  return { version: 1, current: readLayout(value.current, ids), views, selected: typeof value.selected === 'string' && used.has(value.selected) ? value.selected : '' };
+  return { version: 1, current: readLayout(value.current, ids), views, selected: typeof value.selected === 'string' && used.has(value.selected) ? value.selected : '', toolboxes: readToolboxes(value.toolboxes, ids) };
 }
