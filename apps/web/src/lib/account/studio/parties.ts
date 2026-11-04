@@ -1,6 +1,7 @@
 // Small helpers for showing scheduled parties.
 import { addToCalendarLinks, durationText, planTiming, turnLengthText, type CalendarEvent, type ScheduledParty } from '@ptc/shared';
 import { partyCalendar } from '../calendar';
+import { fileSlug, saveFile } from '../../download';
 
 export type PartyStatus = 'hosting' | 'going' | 'invited' | 'declined' | 'cancelled';
 
@@ -39,12 +40,8 @@ export function calendarLinks(party: ScheduledParty) {
 }
 
 export function downloadIcs(party: ScheduledParty) {
-  const url = URL.createObjectURL(new Blob([partyCalendar(party)], { type: 'text/calendar;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${party.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'party'}.ics`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // The share sheet on iPad/iPhone (it offers Calendar); a normal download elsewhere.
+  void saveFile(new Blob([partyCalendar(party)], { type: 'text/calendar;charset=utf-8' }), `${fileSlug(party.title, 'party')}.ics`, party.title);
 }
 
 /** "Turns of 4 min · about 1 hr 5 min for 6 artists" (or the set party length). */

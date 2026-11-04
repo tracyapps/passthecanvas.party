@@ -11,6 +11,7 @@
   import { onMount, onDestroy, untrack, tick } from 'svelte';
   import type { PaintedStroke, Stamp, Stroke } from '@ptc/shared';
   import { partyUrl } from '../party/origin';
+  import { saveFile } from '../download';
   import { canPaint, TOOL_NAMES, type PaintingSelection } from './painting-selection';
   import { stampSpacing, type StrokePoint } from './brushes';
   import { TurnLayers } from './layers';
@@ -100,7 +101,7 @@
   let sentAny = false;
   let pointerId: number | null = null;
   let touches = new Map<number, { x: number; y: number }>();
-  let touchBackup: { surface: HTMLCanvasElement; pixels: ImageData }[] = [];
+  let touchBackup: { surface: HTMLCanvasElement; copy: HTMLCanvasElement }[] = [];
   let gesture = false;
   let pendingTouch = false;
   let panStart: { x: number; y: number; view: CanvasCamera } | null = null;
@@ -153,14 +154,35 @@
     if (!painting || selection.tool === null) untrack(stopStroke);
   });
 
+  // Drawing is batched to the screen's refresh: a pencil can report 240 moves a
+  // second, but the picture only needs restacking once per frame. That keeps the
+  // page free to respond to taps while you paint.
+  let frameQueued = 0;
+  let thumbnailAt = 0;
   function redraw() {
+    if (frameQueued) { cancelAnimationFrame(frameQueued); frameQueued = 0; }
     if (!context) return;
     layers.composite(context);
-    if (thumbnail) {
-      const small = thumbnail.getContext('2d')!;
-      small.clearRect(0, 0, thumbnail.width, thumbnail.height);
-      small.drawImage(element, 0, 0, thumbnail.width, thumbnail.height);
-    }
+    refreshThumbnail(true);
+  }
+  function scheduleRedraw() {
+    if (frameQueued) return;
+    frameQueued = requestAnimationFrame(() => {
+      frameQueued = 0;
+      if (!context) return;
+      layers.composite(context);
+      refreshThumbnail(false);
+    });
+  }
+  /** The navigator's little copy: only while it's showing, and a few times a second at most. */
+  function refreshThumbnail(now: boolean) {
+    if (!thumbnail || atFit) return;
+    const time = performance.now();
+    if (!now && time - thumbnailAt < 250) return;
+    thumbnailAt = time;
+    const small = thumbnail.getContext('2d')!;
+    small.clearRect(0, 0, thumbnail.width, thumbnail.height);
+    small.drawImage(element, 0, 0, thumbnail.width, thumbnail.height);
   }
   $effect(() => { if (!atFit && ready && thumbnail) untrack(redraw); });
 
@@ -171,7 +193,7 @@
     if (remote.canvasId !== loadedKey) return; // meant for a canvas we're not showing
     layers.apply(remote);
     log.push(remote);
-    redraw();
+    scheduleRedraw();
   }
 
   /** Late joiner: rebuild every turn's layer from the party's history. */
@@ -223,16 +245,17 @@
   /** Painting data only (no audio or video), for the "Export painting data" menu item. */
   export function downloadStrokes() {
     const data = { format: 'ptc-party-strokes', version: 1, width: documentWidth, height: documentHeight, strokes: log };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'pass-the-canvas-strokes.json'; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    announcement = 'Painting data exported. Strokes only; no audio or video.';
+    void saveFile(new Blob([JSON.stringify(data)], { type: 'application/json' }), 'pass-the-canvas-strokes.json').then((outcome) => {
+      announcement = outcome === 'cancelled' ? 'Export cancelled.' : 'Painting data exported. Strokes only; no audio or video.';
+    });
   }
 
   // ---------- your own painting ----------
 
+  /** The viewport's spot on screen, measured once per stroke (measuring on every move forces layout). */
+  let box: DOMRect | null = null;
   function point(event: PointerEvent): StrokePoint {
-    const box = viewport.getBoundingClientRect();
+    box ??= viewport.getBoundingClientRect();
     const local = screenToCanvas(event.clientX - box.left, event.clientY - box.top, view, frame);
     return { ...local, pressure: event.pointerType === 'mouse' || !event.pressure ? 0.5 : event.pressure };
   }
@@ -272,8 +295,8 @@
     outgoing = []; sentAny = false;
     holdUntil = touch ? performance.now() + 200 : 0;
     emit(at);
-    redraw();
-    if (selection.tool === 'airbrush') spray = setInterval(() => { if (stroke) { emit(stroke.last); redraw(); } }, 40);
+    scheduleRedraw();
+    if (selection.tool === 'airbrush') spray = setInterval(() => { if (stroke) { emit(stroke.last); scheduleRedraw(); } }, 40);
   }
   function lineTo(next: StrokePoint) {
     if (!stroke) return;
@@ -290,21 +313,33 @@
     }
     stroke.carry = (stroke.carry + distance) % spacing;
     stroke.last = next;
-    redraw();
+    scheduleRedraw();
   }
   /** Finish the stroke and send what's left. */
   function stopStroke() {
     if (spray) clearInterval(spray);
     spray = undefined;
-    if (stroke) { holdUntil = 0; flush(true); }
+    if (stroke) { holdUntil = 0; flush(true); redraw(); }
     stroke = null;
+    box = null;
+  }
+  const spareCopies: HTMLCanvasElement[] = [];
+  function copyOf(surface: HTMLCanvasElement) {
+    const copy = spareCopies.pop() ?? document.createElement('canvas');
+    if (copy.width !== surface.width || copy.height !== surface.height) { copy.width = surface.width; copy.height = surface.height; }
+    const ctx = copy.getContext('2d')!;
+    ctx.save(); ctx.globalCompositeOperation = 'copy'; ctx.drawImage(surface, 0, 0); ctx.restore();
+    return copy;
   }
   /** A second finger arrived before anything was sent: undo the tentative mark. */
   function cancelTentativeStroke(): boolean {
     if (!stroke || sentAny || !touchBackup.length) return false;
     if (spray) clearInterval(spray);
     spray = undefined;
-    for (const backup of touchBackup) backup.surface.getContext('2d')!.putImageData(backup.pixels, 0, 0);
+    for (const backup of touchBackup) {
+      const target = backup.surface.getContext('2d')!;
+      target.save(); target.globalCompositeOperation = 'copy'; target.drawImage(backup.copy, 0, 0); target.restore();
+    }
     stroke = null; outgoing = [];
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = null;
@@ -314,6 +349,7 @@
   function down(event: PointerEvent) {
     if (event.pointerType === 'mouse' && ![0, 2].includes(event.button)) return;
     keyboardPainting = false;
+    box = viewport.getBoundingClientRect();
     viewport.setPointerCapture(event.pointerId);
     touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (touches.size >= 2) {
@@ -334,25 +370,26 @@
     if (event.pointerType === 'touch') {
       // Snapshot your layers so a pinch that starts as one finger leaves no mark.
       layers.prepare(painterId, round);
-      touchBackup = layers.ownedSurfaces(painterId).map(surface => ({ surface, pixels: surface.getContext('2d')!.getImageData(0, 0, documentWidth, documentHeight) }));
+      // A quick image copy (no pixel readback, which is slow on tablets).
+      touchBackup = layers.ownedSurfaces(painterId).map(surface => ({ surface, copy: copyOf(surface) }));
       pendingTouch = true;
     } else begin(point(event));
   }
   function move(event: PointerEvent) {
     if (!touches.has(event.pointerId)) return;
     touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    const box = viewport.getBoundingClientRect();
+    const rect = (box ??= viewport.getBoundingClientRect());
     if (pinch && touches.size >= 2) {
       const [a, b] = [...touches.values()];
       const middleX = (a.x + b.x) / 2; const middleY = (a.y + b.y) / 2;
       const ratio = Math.hypot(b.x - a.x, b.y - a.y) / pinch.distance;
-      const zoomed = zoomView(pinch.view, pinch.view.zoom * ratio, (pinch.midpointX - box.left) / box.width, (pinch.midpointY - box.top) / box.height);
-      view = panView(zoomed, (pinch.midpointX - middleX) / box.width, (pinch.midpointY - middleY) / box.height);
+      const zoomed = zoomView(pinch.view, pinch.view.zoom * ratio, (pinch.midpointX - rect.left) / rect.width, (pinch.midpointY - rect.top) / rect.height);
+      view = panView(zoomed, (pinch.midpointX - middleX) / rect.width, (pinch.midpointY - middleY) / rect.height);
       return;
     }
     if (gesture || event.pointerId !== pointerId) return;
     if (panStart) {
-      view = panView(panStart.view, (panStart.x - event.clientX) / box.width, (panStart.y - event.clientY) / box.height);
+      view = panView(panStart.view, (panStart.x - event.clientX) / rect.width, (panStart.y - event.clientY) / rect.height);
       return;
     }
     if (pendingTouch && canPaint(selection) && painting) { pendingTouch = false; begin(point(event), true); }
@@ -363,7 +400,7 @@
     if (event.type !== 'pointercancel' && pendingTouch && !gesture && event.pointerId === pointerId && painting && canPaint(selection)) begin(point(event), true);
     touches.delete(event.pointerId);
     if (event.pointerId === pointerId) { stopStroke(); panStart = null; panning = false; pendingTouch = false; }
-    if (touches.size === 0) { gesture = false; pinch = null; touchBackup = []; pointerId = null; }
+    if (touches.size === 0) { gesture = false; pinch = null; spareCopies.push(...touchBackup.map(backup => backup.copy)); touchBackup = []; pointerId = null; }
   }
   function wheel(event: WheelEvent) {
     event.preventDefault();

@@ -33,27 +33,31 @@ export function decodePhoto(value: unknown, maxBytes = MAX_PHOTO_BYTES): { conte
 }
 /**
  * A practice piece's strokes: gzipped JSON from the browser. Every stroke is
- * checked like a live party stroke and stored re-compressed, so only clean data is kept.
+ * checked like a live party stroke and stored re-compressed, so only clean data
+ * is kept. Returns why when they can't be kept; the picture still saves.
  */
-export function cleanPracticeStrokes(value: unknown, shape: CanvasShape): Buffer | null {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return null;
+export const MAX_PRACTICE_STAMPS = 800_000;
+const MAX_PRACTICE_STROKE_BYTES = 12_000_000;
+export function cleanPracticeStrokes(value: unknown, shape: CanvasShape): { strokes: Buffer } | { reason: string } {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return { reason: 'not base64' };
   let parsed: unknown;
   try {
-    parsed = JSON.parse(gunzipSync(Buffer.from(value, 'base64'), { maxOutputLength: 80_000_000 }).toString('utf8'));
+    parsed = JSON.parse(gunzipSync(Buffer.from(value, 'base64'), { maxOutputLength: 120_000_000 }).toString('utf8'));
   } catch {
-    return null;
+    return { reason: 'unreadable or too large' };
   }
-  if (!Array.isArray(parsed) || parsed.length > 200_000) return null;
+  if (!Array.isArray(parsed) || parsed.length > 200_000) return { reason: 'too many strokes' };
   let stamps = 0;
   const clean = [];
-  for (const item of parsed) {
+  for (const [index, item] of parsed.entries()) {
     const stroke = sanitizeStroke(item, CANVAS_SHAPES[shape]);
-    if (!stroke) return null;
+    if (!stroke) return { reason: `stroke ${index} (${String((item as { tool?: unknown })?.tool)}) failed checks` };
     stamps += stroke.stamps.length;
-    if (stamps > 400_000) return null;
+    if (stamps > MAX_PRACTICE_STAMPS) return { reason: 'too many stamps' };
     clean.push({ ...stroke, painterId: 'me', round: 1 });
   }
-  return gzipSync(JSON.stringify(clean));
+  const packed = gzipSync(JSON.stringify(clean));
+  return packed.length > MAX_PRACTICE_STROKE_BYTES ? { reason: 'strokes too large' } : { strokes: packed };
 }
 export function validSchedule(value: unknown, now = Date.now()): value is ScheduleInput {
   if (!object(value) || !keys(value, ['title', 'startsAt', 'timeZone', 'durationMinutes', 'settings']) || !text(value.title, 1, 80) || typeof value.startsAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*Z$/.test(value.startsAt) || !text(value.timeZone, 1, 80) || !cleanPartySettings(value.settings)) return false;
@@ -131,9 +135,15 @@ export function createCommunityHandler(deps: Dependencies) {
         const shape = value.shape as CanvasShape;
         const image = decodePhoto(value.image, 8_000_000);
         const thumb = decodePhoto(value.thumb, 300_000);
-        const strokes = value.strokes === null ? null : cleanPracticeStrokes(value.strokes, shape);
-        if (!image || image.contentType !== 'image/png' || !thumb || (value.strokes !== null && !strokes)) throw new CommunityError(400, 'That painting could not be saved.');
-        return send(res, 200, await db.savePractice(user, { id: value.id as string | null, title: (value.title as string).trim(), shape, image: image.bytes, thumb, strokes }));
+        if (!image || image.contentType !== 'image/png') throw new CommunityError(400, 'That painting could not be saved: the picture was too large or not a PNG.');
+        if (!thumb) throw new CommunityError(400, 'That painting could not be saved: its preview image was not usable.');
+        // Strokes are a bonus (they let you keep painting later). If they can't be
+        // kept, the picture still saves and reopens as a picture to paint on.
+        const checked = value.strokes === null ? null : cleanPracticeStrokes(value.strokes, shape);
+        if (checked && 'reason' in checked) console.warn(`[practice] strokes not kept (${checked.reason})`);
+        const strokes = checked && 'strokes' in checked ? checked.strokes : null;
+        const saved = await db.savePractice(user, { id: value.id as string | null, title: (value.title as string).trim(), shape, image: image.bytes, thumb, strokes });
+        return send(res, 200, { ...saved, strokesKept: value.strokes === null ? null : !!strokes });
       }
       if (route === '/photo' && req.method === 'PUT' && keys(value, ['image'])) {
         const photo = decodePhoto(value.image);

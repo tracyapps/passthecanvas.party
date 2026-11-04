@@ -241,7 +241,13 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     const ok = await put({ id: null, title: 'Doodle', shape: 'classic', image: png, thumb: png, strokes: gz([stroke]) });
     expect(ok.status).toBe(200);
     const { id: pieceId } = await ok.json();
-    expect((await put({ id: null, title: 'Bad', shape: 'classic', image: png, thumb: png, strokes: gz([{ ...stroke, stamps: 'nope' }]) })).status).toBe(400);
+    // Strokes that fail the checks don't block saving: the picture is kept on its own.
+    const pictureOnly = await put({ id: null, title: 'Picture', shape: 'classic', image: png, thumb: png, strokes: gz([{ ...stroke, stamps: 'nope' }]) });
+    expect(pictureOnly.status).toBe(200);
+    const kept = await pictureOnly.json();
+    expect(kept.strokesKept).toBe(false);
+    expect((await store.practice('user_alice')).find((p) => p.id === kept.id)?.hasStrokes).toBe(false);
+    await store.deletePractice('user_alice', kept.id);
     expect((await put({ id: null, title: 'Bad', shape: 'classic', image: 'data:image/svg+xml;base64,PHN2Zy8+', thumb: png, strokes: null })).status).toBe(400);
     expect((await store.practice('user_alice')).map((p) => p.title)).toEqual(['Doodle']);
     await expect(store.practiceFile('user_eve', pieceId, 'image')).rejects.toThrow();

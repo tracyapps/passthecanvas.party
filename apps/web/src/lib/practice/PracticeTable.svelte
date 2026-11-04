@@ -10,6 +10,7 @@
   import { CANVAS_SHAPES, type CanvasShape, type PaintedStroke } from '@ptc/shared';
   import PaintingTable from '../canvas/PaintingTable.svelte';
   import { accountRequest, accountState, accountToken, initializeAccount } from '../account/account.svelte';
+  import { dataUrlToBlob, fileSlug, saveFile } from '../download';
 
   let { pieceId = null }: { pieceId?: string | null } = $props();
 
@@ -22,6 +23,8 @@
   let status = $state('');
   let saving = $state(false);
   let savedCount = 0; // strokes in the last saved (or loaded) version
+  /** True when this piece is kept as a picture only (its strokes were too much to keep). Saves stay picture-only. */
+  let pictureOnly = false;
   let canvasSize = $derived({ width: CANVAS_SHAPES[shape].width, height: CANVAS_SHAPES[shape].height });
   const canvasKey = 'c1'; // practice strokes use the party's canvas id rules
 
@@ -52,11 +55,24 @@
       shape = piece.shape in CANVAS_SHAPES ? piece.shape : 'classic';
       await tick();
       let strokes: PaintedStroke[] = [];
+      const headers = { Authorization: `Bearer ${await accountToken()}` };
+      const url = (kind: string) => `${base()}/api/account/community/practice/file?id=${encodeURIComponent(id)}&kind=${kind}`;
       if (piece.hasStrokes) {
-        const response = await fetch(`${base()}/api/account/community/practice/file?id=${encodeURIComponent(id)}&kind=strokes`, { headers: { Authorization: `Bearer ${await accountToken()}` } });
+        const response = await fetch(url('strokes'), { headers });
         if (response.ok) strokes = await response.json();
       }
-      await table.loadHistory('c1', canvasSize.width, canvasSize.height, strokes, true, null);
+      if (strokes.length) {
+        pictureOnly = false;
+        await table.loadHistory('c1', canvasSize.width, canvasSize.height, strokes, true, null);
+      } else {
+        // Kept as a picture: it becomes the paper you keep painting on.
+        const response = await fetch(url('image'), { headers });
+        if (!response.ok) throw new Error('That piece could not be opened.');
+        const picture = URL.createObjectURL(await response.blob());
+        try { await table.loadHistory('c1', canvasSize.width, canvasSize.height, [], false, picture); }
+        finally { URL.revokeObjectURL(picture); }
+        pictureOnly = true;
+      }
       savedCount = table.strokes().length;
       say(`Opened “${piece.title}”. Keep painting.`);
     } catch (cause) {
@@ -96,11 +112,14 @@
       table.finishStroke();
       const image = table.snapshot();
       const strokes = table.strokes();
-      const result = await accountRequest<{ id: string }>('community/practice', 'PUT', { id: savedId, title: title.trim() || 'Practice piece', shape, image, thumb: await thumbnail(image), strokes: await packStrokes(strokes) });
+      const result = await accountRequest<{ id: string; strokesKept: boolean | null }>('community/practice', 'PUT', { id: savedId, title: title.trim() || 'Practice piece', shape, image, thumb: await thumbnail(image), strokes: pictureOnly ? null : await packStrokes(strokes) });
       savedId = result.id;
       savedCount = strokes.length;
       history.replaceState(null, '', `/?practice&piece=${result.id}`);
-      say('Saved to your practice pieces.');
+      if (result.strokesKept === false) {
+        pictureOnly = true;
+        say('Saved as a picture. It had too much detail to keep every stroke, so it reopens as a picture you can keep painting on.');
+      } else say('Saved to your practice pieces.');
     } catch (cause) {
       say(cause instanceof Error ? cause.message : 'That piece could not be saved. Try downloading it instead.');
     } finally {
@@ -108,19 +127,17 @@
     }
   }
 
-  function download() {
+  async function download() {
     table.finishStroke();
-    const link = document.createElement('a');
-    link.href = table.snapshot();
-    link.download = `${(title.trim() || 'practice-piece').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
-    link.click();
-    say(`Downloaded a full-size PNG (${canvasSize.width} × ${canvasSize.height}).`);
+    const outcome = await saveFile(dataUrlToBlob(table.snapshot()), `${fileSlug(title, 'practice-piece')}.png`, title.trim() || 'Practice piece');
+    say(outcome === 'cancelled' ? 'Download cancelled.' : outcome === 'shared' ? 'Full-size PNG sent. (“Save Image” puts it in Photos.)' : `Downloaded a full-size PNG (${canvasSize.width} × ${canvasSize.height}).`);
   }
 
   /** A fresh canvas in the chosen shape. Callers confirm first when there are unsaved marks. */
   async function fresh(next: CanvasShape, name = 'Practice piece') {
     shape = next;
     savedId = null;
+    pictureOnly = false;
     title = name.trim() || 'Practice piece';
     await tick();
     await table.loadHistory('c1', CANVAS_SHAPES[next].width, CANVAS_SHAPES[next].height, [], true, null);
@@ -182,7 +199,7 @@
     {#if signedIn}
       <button type="button" disabled={saving} onclick={() => { closeMenu(); void save(); }}>{saving ? 'Saving…' : savedId ? 'Save' : 'Save to my pieces'}</button>
     {/if}
-    <button type="button" onclick={() => { closeMenu(); download(); }}>Download PNG</button>
+    <button type="button" onclick={() => { closeMenu(); void download(); }}>Download PNG</button>
     <button type="button" onclick={() => openChooser()}>New canvas…</button>
     {#if !signedIn}<p class="menu-note">Sign in from Account to save pieces. You can always download.</p>{/if}
   {/snippet}

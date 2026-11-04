@@ -100,5 +100,7 @@ export class TurnLayers {
 }
 
 function context(surface: HTMLCanvasElement) {
-  return surface.getContext('2d', { willReadFrequently: true })!;
+  // No willReadFrequently: that forces slow CPU drawing (very noticeable on tablets).
+  // Nothing reads these layers back pixel by pixel.
+  return surface.getContext('2d')!;
 }

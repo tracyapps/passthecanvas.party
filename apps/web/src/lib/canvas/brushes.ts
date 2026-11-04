@@ -23,19 +23,20 @@ export function stampSpacing(selection: PaintingSelection, size: number): number
  * - Airbrush: pressure is the trigger, so it changes paint flow, not width.
  */
 export const PRESSURE: Record<PaintingTool, { width: number; ink: number }> = {
-  round: { width: 1.2, ink: 0.3 },
-  flat: { width: 0.9, ink: 0.3 },
-  detail: { width: 0.5, ink: 0.5 },
-  fan: { width: 0.4, ink: 0.4 },
-  foam: { width: 0.3, ink: 0.5 },
-  knife: { width: 0.4, ink: 0.3 },
-  airbrush: { width: 0, ink: 1.2 },
-  pencil: { width: 0.4, ink: 1.1 },
-  charcoal: { width: 0.6, ink: 0.9 },
-  pastel: { width: 0.6, ink: 0.7 },
-  sponge: { width: 0.3, ink: 0 },
-  burnisher: { width: 0.5, ink: 0.6 },
-  eraser: { width: 0.9, ink: 0 }
+  // About 40% stronger than the first pass, after testing with an Apple Pencil.
+  round: { width: 1.7, ink: 0.45 },
+  flat: { width: 1.3, ink: 0.45 },
+  detail: { width: 0.75, ink: 0.7 },
+  fan: { width: 0.55, ink: 0.55 },
+  foam: { width: 0.45, ink: 0.7 },
+  knife: { width: 0.55, ink: 0.45 },
+  airbrush: { width: 0, ink: 1.6 },
+  pencil: { width: 0.55, ink: 1.5 },
+  charcoal: { width: 0.85, ink: 1.25 },
+  pastel: { width: 0.85, ink: 1 },
+  sponge: { width: 0.45, ink: 0 },
+  burnisher: { width: 0.7, ink: 0.85 },
+  eraser: { width: 1.25, ink: 0 }
 };
 
 /** Pressure 0–1 → a multiplier that is exactly 1 at 0.5 (a mouse). */

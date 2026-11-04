@@ -7,6 +7,7 @@
   import { CANVAS_SHAPES, type CanvasShape, type PracticePiece } from '@ptc/shared';
   import { accountRequest, accountToken } from '../account.svelte';
   import { studio, when } from './studio.svelte';
+  import { fileSlug, saveFile } from '../../download';
 
   let pieces = $state<PracticePiece[] | null>(null);
   let thumbs = $state<Record<string, string>>({});
@@ -38,13 +39,9 @@
 
   async function download(piece: PracticePiece) {
     try {
-      const url = URL.createObjectURL(await file(piece.id, 'image'));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${piece.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'practice-piece'}.png`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      studio.notice = `Downloading ${piece.title} (${piece.width} × ${piece.height}).`;
+      // Fetched before the tap's gesture runs out? Safari allows a few seconds, which is plenty here.
+      const outcome = await saveFile(await file(piece.id, 'image'), `${fileSlug(piece.title, 'practice-piece')}.png`, piece.title);
+      studio.notice = outcome === 'cancelled' ? 'Download cancelled.' : `${outcome === 'shared' ? 'Sent' : 'Downloading'} ${piece.title} (${piece.width} × ${piece.height}).`;
     } catch (cause) {
       studio.error = cause instanceof Error ? cause.message : 'That download did not work.';
     }
