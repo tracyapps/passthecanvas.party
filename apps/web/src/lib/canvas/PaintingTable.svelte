@@ -21,7 +21,7 @@
   import { constrainSupply, type SupplyRect } from './placement';
   import { emptySelection, selectTool, loadPaint, dipInWater, isBrush, unavailability,
     TOOL_NAMES, MEDIUM_NAMES, type PaintingTool, type PaintingMedium, type PaintLoad } from './painting-selection';
-  const images = import.meta.glob('../../../../../_design/mockups/asset-review/study-*.{svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+  const images = import.meta.glob('./supplies/study-*.{svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
   interface Props {
     canDraw: boolean;
     /** Your party member id; with `round` it names your turn's layer. */
@@ -48,7 +48,7 @@
   export function finishStroke() { canvas?.finishStroke(); }
   export function strokes(): PaintedStroke[] { return canvas?.strokes() ?? []; }
 
-  function asset(name: string, extension = 'svg'): string { return images[`../../../../../_design/mockups/asset-review/study-${name}.${extension}`] ?? ''; }
+  function asset(name: string, extension = 'svg'): string { return images[`./supplies/study-${name}.${extension}`] ?? ''; }
   const supplies: { id: string; name: string; box: number[]; hit?: number[]; tip?: number[]; tool?: PaintingTool; medium?: PaintingMedium }[] = [
     { id: 'acrylic', name: 'Acrylic paints', box: [0, 0, 320, 230], hit: [160, 12, 150, 140], medium: 'acrylic' },
     { id: 'tray', name: 'Color mixing tray', box: [0, 190, 200, 180] },
