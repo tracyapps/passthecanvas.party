@@ -40,11 +40,24 @@
   async function download(piece: PracticePiece) {
     try {
       // Fetched before the tap's gesture runs out? Safari allows a few seconds, which is plenty here.
-      const outcome = await saveFile(await file(piece.id, 'image'), `${fileSlug(piece.title, 'practice-piece')}.png`, piece.title);
+      const outcome = await saveFile(await onPaper(await file(piece.id, 'image')), `${fileSlug(piece.title, 'practice-piece')}.png`, piece.title);
       studio.notice = outcome === 'cancelled' ? 'Download cancelled.' : `${outcome === 'shared' ? 'Sent' : 'Downloading'} ${piece.title} (${piece.width} × ${piece.height}).`;
     } catch (cause) {
       studio.error = cause instanceof Error ? cause.message : 'That download did not work.';
     }
+  }
+  /** Newer pieces are saved as paint only; a download puts them back on the paper's color. */
+  async function onPaper(picture: Blob): Promise<Blob> {
+    const bitmap = await createImageBitmap(picture);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#e1dfda';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('That download did not work.'))), 'image/png'));
   }
   async function remove(piece: PracticePiece) {
     try {

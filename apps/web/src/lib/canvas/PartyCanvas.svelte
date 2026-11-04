@@ -157,6 +157,19 @@
   // Drawing is batched to the screen's refresh: a pencil can report 240 moves a
   // second, but the picture only needs restacking once per frame. That keeps the
   // page free to respond to taps while you paint.
+  // ?perf (or &perf) in the address shows a small readout: how long painting work
+  // and screen updates take on this device, for tuning tablets.
+  const perfOn = typeof location !== 'undefined' && /[?&]perf\b/.test(location.search);
+  const perf = { moves: 0, moveMs: 0, frames: 0, frameMs: 0, stamps: 0, worst: 0, since: 0 };
+  let perfText = $state('');
+  function notePerf() {
+    const now = performance.now();
+    if (!perf.since) perf.since = now;
+    if (now - perf.since < 1000) return;
+    const secs = (now - perf.since) / 1000;
+    perfText = `moves ${Math.round(perf.moves / secs)}/s · ${perf.moves ? (perf.moveMs / perf.moves).toFixed(1) : 0} ms each (worst ${perf.worst.toFixed(0)}) · stamps ${Math.round(perf.stamps / secs)}/s · redraws ${Math.round(perf.frames / secs)}/s · ${perf.frames ? (perf.frameMs / perf.frames).toFixed(1) : 0} ms each`;
+    Object.assign(perf, { moves: 0, moveMs: 0, frames: 0, frameMs: 0, stamps: 0, worst: 0, since: now });
+  }
   let frameQueued = 0;
   let thumbnailAt = 0;
   function redraw() {
@@ -170,8 +183,10 @@
     frameQueued = requestAnimationFrame(() => {
       frameQueued = 0;
       if (!context) return;
+      const start = perfOn ? performance.now() : 0;
       layers.composite(context);
       refreshThumbnail(false);
+      if (perfOn) { perf.frames += 1; perf.frameMs += performance.now() - start; notePerf(); }
     });
   }
   /** The navigator's little copy: only while it's showing, and a few times a second at most. */
@@ -197,7 +212,7 @@
   }
 
   /** Late joiner: rebuild every turn's layer from the party's history. */
-  export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, snapshotUrl: string | null) {
+  export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, snapshotUrl: string | null, ownBase = false) {
     stopStroke();
     loadedKey = key;
     layers.reset(width, height);
@@ -208,7 +223,7 @@
       const image = new Image();
       image.crossOrigin = 'anonymous'; // the party server may be another origin; keeps the canvas exportable
       image.src = partyUrl(snapshotUrl);
-      try { await image.decode(); layers.setBase(image); } catch { /* keep painting on a blank base */ }
+      try { await image.decode(); layers.setBase(image, ownBase ? { painter: painterId, round } : null); } catch { /* keep painting on a blank base */ }
     }
     for (const remote of strokes) { layers.apply(remote); log.push(remote); }
     redraw();
@@ -220,16 +235,37 @@
   }
 
   /** The finished picture on paper, as a PNG data URL (for the round snapshot). */
-  export function snapshot(): string {
+  export function snapshot(paintOnly = false): string {
     flush(true);
+    redraw(); // include marks still waiting for the next frame
     const flat = document.createElement('canvas');
     flat.width = documentWidth;
     flat.height = documentHeight;
     const paper = flat.getContext('2d')!;
-    paper.fillStyle = '#e1dfda'; // the canvas color behind the paint
-    paper.fillRect(0, 0, flat.width, flat.height);
+    // paintOnly: just the paint, on a see-through background (so it can be laid
+    // back onto the textured paper later). Otherwise on the paper's color.
+    if (!paintOnly) {
+      paper.fillStyle = '#e1dfda'; // the canvas color behind the paint
+      paper.fillRect(0, 0, flat.width, flat.height);
+    }
     paper.drawImage(element, 0, 0);
     return flat.toDataURL('image/png');
+  }
+
+  /**
+   * Reopen a saved piece from its picture: instant, however much was painted.
+   * The picture becomes your own paint (every tool can work it), and the saved
+   * strokes are kept as history for the next save, without redrawing them one
+   * dab at a time (that took minutes on a tablet).
+   */
+  export function loadPicture(key: string, width: number, height: number, picture: CanvasImageSource, strokes: PaintedStroke[]) {
+    stopStroke();
+    loadedKey = key;
+    layers.reset(width, height);
+    layers.setBase(picture, { painter: painterId, round });
+    log = [...strokes];
+    fullHistory = true;
+    redraw();
   }
 
   /** End any stroke in progress and send its last stamps (before passing). */
@@ -299,6 +335,14 @@
     if (selection.tool === 'airbrush') spray = setInterval(() => { if (stroke) { emit(stroke.last); scheduleRedraw(); } }, 40);
   }
   function lineTo(next: StrokePoint) {
+    if (!stroke) return;
+    const start = perfOn ? performance.now() : 0;
+    const before = stroke.index;
+    try { lineToInner(next); } finally {
+      if (perfOn && stroke) { const ms = performance.now() - start; perf.moves += 1; perf.moveMs += ms; perf.worst = Math.max(perf.worst, ms); perf.stamps += stroke.index - before; notePerf(); }
+    }
+  }
+  function lineToInner(next: StrokePoint) {
     if (!stroke) return;
     const previous = stroke.last;
     const dx = next.x - previous.x; const dy = next.y - previous.y;
@@ -506,6 +550,7 @@
     </div>
   </div>
 </div>
+{#if perfOn}<p class="perf" aria-hidden="true">{perfText || 'Paint to measure…'}</p>{/if}
 <p id="painting-keyboard-help" class="sr-only">On your turn, arrows move the cursor, Enter stamps and Shift+arrows draws. When it isn't your turn, or in Arrange and view, arrows pan. Plus and minus zoom. Alt+arrows pan in either mode. Hold Space and drag to pan, or drag with no tool in hand. Right-drag pans; two fingers pan and pinch to zoom. Tab leaves the canvas. Earlier painters' turns are protected.</p>
 <span class="sr-only" role="status">{announcement}</span>
 
@@ -516,7 +561,8 @@
   .paper::before { content: ''; position: absolute; right: 100%; top: 0; width: var(--edge); height: 100%; background: linear-gradient(90deg, #77766e, #bbb9ae); }
   .paper::after { content: ''; position: absolute; top: 100%; left: calc(-1 * var(--edge)); right: 0; height: calc(var(--edge) * 1.5); background: linear-gradient(#8a887f, #55544e); }
   .artwork { width: 100%; height: 100%; position: relative; }
-  .artwork > canvas { display: block; width: 100%; height: 100%; }
+  /* Its own compositing layer: painting repaints only the canvas, never the paper texture and shadow around it. */
+  .artwork > canvas { display: block; width: 100%; height: 100%; transform: translateZ(0); }
   .pans, .pans .artwork > canvas { cursor: grab; }
   .panning, .panning .artwork > canvas { cursor: grabbing; }
   .artwork > canvas.ready { cursor: crosshair; }
@@ -531,6 +577,7 @@
   .zoom-level { min-width: 72px; }
   :focus-visible { outline: 3px solid #f5ed37; outline-offset: 2px; }
   .navigator { width: 84px; }
+  .perf { position: fixed; left: 8px; bottom: 8px; z-index: 300; margin: 0; padding: 4px 8px; font: 12px/1.4 ui-monospace, monospace; color: #fff; background: #000c; border-radius: 4px; pointer-events: none; }
   .map { display: block; position: relative; width: 100%; height: 46px; padding: 0; overflow: hidden; background: #a89b80; }
   .map canvas, .map-area { width: 100%; height: 100%; display: block; object-fit: contain; position: absolute; inset: 0; }
   .map-area polygon { stroke: #f1ec35; stroke-width: 12; fill: #eee83518; }

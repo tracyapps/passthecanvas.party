@@ -40,8 +40,11 @@ export class TurnLayers {
   }
 
   /** A flattened picture nobody can modify. Used only when history is unavailable. */
-  setBase(image: CanvasImageSource) {
-    const base = this.layerFor(BASE_OWNER, 0);
+  setBase(image: CanvasImageSource, owner: { painter: string; round: number } | null = null) {
+    // Protected by default (a party's late-joiner picture). With an owner, the
+    // picture becomes that painter's own paint, so every tool can work it (a
+    // practice piece reopened as a picture).
+    const base = owner ? this.layerFor(owner.painter, owner.round) : this.layerFor(BASE_OWNER, 0);
     const context = base.surface.getContext('2d')!;
     context.clearRect(0, 0, this.width, this.height);
     context.drawImage(image, 0, 0, this.width, this.height);

@@ -170,15 +170,30 @@ function drawTip(ctx: CanvasRenderingContext2D, tool: PaintingTool, width: numbe
   }
 }
 
+// A dab's soft edge is drawn in a unit circle and scaled, so one gradient per
+// color and core works for every size. Reusing them saves building thousands
+// of gradients a second while painting (noticeable on tablets).
+const fades = new WeakMap<CanvasRenderingContext2D, Map<string, CanvasGradient>>();
+function fadeFor(ctx: CanvasRenderingContext2D, color: string, core: number): CanvasGradient {
+  let cache = fades.get(ctx);
+  if (!cache) { cache = new Map(); fades.set(ctx, cache); }
+  const key = `${color}|${core}`;
+  let fade = cache.get(key);
+  if (!fade) {
+    if (cache.size > 512) cache.clear();
+    fade = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    fade.addColorStop(0, color);
+    fade.addColorStop(core, color);
+    fade.addColorStop(1, transparentColor(color));
+    cache.set(key, fade);
+  }
+  return fade;
+}
 function softDab(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, color: string, alpha: number, core: number) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(rx, ry);
-  const fade = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-  fade.addColorStop(0, color);
-  fade.addColorStop(core, color);
-  fade.addColorStop(1, transparentColor(color));
-  ctx.fillStyle = fade;
+  ctx.fillStyle = fadeFor(ctx, color, core);
   ctx.globalAlpha = alpha;
   ctx.beginPath();
   ctx.arc(0, 0, 1, 0, Math.PI * 2);

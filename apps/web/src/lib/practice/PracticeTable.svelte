@@ -32,8 +32,10 @@
   let signedIn = $derived(!!accountState.userId);
 
   onMount(() => {
+    if (pieceId) startLoading('Signing you in…');
     void initializeAccount().then(async () => {
       if (pieceId && accountState.userId) await open(pieceId);
+      else if (pieceId) { stopLoading(); say('Sign in to open your practice pieces.'); }
     });
     if (pieceId) starting = false;
     else openChooser(true);
@@ -45,8 +47,38 @@
     return () => removeEventListener('beforeunload', warn);
   });
 
+  // Opening: anything slower than a moment gets a full-screen progress card.
+  let loading = $state<{ shown: boolean; step: string; progress: number | null } | null>(null);
+  let loadingTimer: ReturnType<typeof setTimeout> | undefined;
+  function startLoading(step: string) {
+    loading = { shown: false, step, progress: null };
+    clearTimeout(loadingTimer);
+    loadingTimer = setTimeout(() => { if (loading) loading.shown = true; }, 600);
+  }
+  function stopLoading() { clearTimeout(loadingTimer); loading = null; }
+
+  /** Fetch with a progress report (bytes so far, and the total when the server says). */
+  async function fetchProgress(url: string, headers: HeadersInit, onProgress: (loaded: number, total: number | null) => void): Promise<Response> {
+    const response = await fetch(url, { headers });
+    if (!response.ok || !response.body) return response;
+    const total = Number(response.headers.get('Content-Length')) || null;
+    const encoded = !!response.headers.get('Content-Encoding'); // then the length is the compressed size
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let loaded = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      onProgress(loaded, encoded ? null : total);
+    }
+    return new Response(new Blob(chunks as BlobPart[], { type: response.headers.get('Content-Type') ?? '' }), { status: response.status, headers: response.headers });
+  }
+  const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
+
   async function open(id: string) {
-    status = 'Opening your piece…';
+    startLoading('Finding your piece…');
     try {
       const pieces = await accountRequest<{ id: string; title: string; shape: CanvasShape; hasStrokes: boolean }[]>('community/practice');
       const piece = pieces.find((p) => p.id === id);
@@ -54,28 +86,31 @@
       title = piece.title;
       shape = piece.shape in CANVAS_SHAPES ? piece.shape : 'classic';
       await tick();
-      let strokes: PaintedStroke[] = [];
       const headers = { Authorization: `Bearer ${await accountToken()}` };
       const url = (kind: string) => `${base()}/api/account/community/practice/file?id=${encodeURIComponent(id)}&kind=${kind}`;
+      // 1. The picture: reopening from it is instant, however much was painted.
+      const imageResponse = await fetchProgress(url('image'), headers, (loaded, total) => {
+        if (loading) { loading.step = `Downloading the picture… ${megabytes(loaded)}${total ? ` of ${megabytes(total)}` : ''}`; loading.progress = total ? loaded / total : null; }
+      });
+      if (!imageResponse.ok) throw new Error('That piece could not be opened.');
+      const blob = await imageResponse.blob();
+      // 2. The strokes: kept as history for the next save (not redrawn).
+      let strokes: PaintedStroke[] = [];
       if (piece.hasStrokes) {
-        const response = await fetch(url('strokes'), { headers });
+        if (loading) { loading.step = 'Getting your brush strokes…'; loading.progress = null; }
+        const response = await fetchProgress(url('strokes'), headers, (loaded) => { if (loading) loading.step = `Getting your brush strokes… ${megabytes(loaded)}`; });
         if (response.ok) strokes = await response.json();
       }
-      if (strokes.length) {
-        pictureOnly = false;
-        await table.loadHistory('c1', canvasSize.width, canvasSize.height, strokes, true, null);
-      } else {
-        // Kept as a picture: it becomes the paper you keep painting on.
-        const response = await fetch(url('image'), { headers });
-        if (!response.ok) throw new Error('That piece could not be opened.');
-        const picture = URL.createObjectURL(await response.blob());
-        try { await table.loadHistory('c1', canvasSize.width, canvasSize.height, [], false, picture); }
-        finally { URL.revokeObjectURL(picture); }
-        pictureOnly = true;
-      }
+      if (loading) { loading.step = 'Laying it on the table…'; loading.progress = null; }
+      const picture = await createImageBitmap(blob);
+      table.loadPicture('c1', canvasSize.width, canvasSize.height, picture, strokes);
+      picture.close();
+      pictureOnly = !strokes.length;
       savedCount = table.strokes().length;
+      stopLoading();
       say(`Opened “${piece.title}”. Keep painting.`);
     } catch (cause) {
+      stopLoading();
       say(cause instanceof Error ? cause.message : 'That piece could not be opened.');
     }
   }
@@ -89,7 +124,10 @@
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(image.naturalWidth * scale);
     canvas.height = Math.round(image.naturalHeight * scale);
-    canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const small = canvas.getContext('2d')!;
+    small.fillStyle = '#e1dfda'; // the saved picture is paint only; previews show it on paper
+    small.fillRect(0, 0, canvas.width, canvas.height);
+    small.drawImage(image, 0, 0, canvas.width, canvas.height);
     const webp = canvas.toDataURL('image/webp', 0.82);
     return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.82);
   }
@@ -110,7 +148,8 @@
     status = 'Saving…';
     try {
       table.finishStroke();
-      const image = table.snapshot();
+      // Paint only (see-through paper), so reopening lays it back on the textured paper.
+      const image = table.snapshot(true);
       const strokes = table.strokes();
       const result = await accountRequest<{ id: string; strokesKept: boolean | null }>('community/practice', 'PUT', { id: savedId, title: title.trim() || 'Practice piece', shape, image, thumb: await thumbnail(image), strokes: pictureOnly ? null : await packStrokes(strokes) });
       savedId = result.id;
@@ -237,6 +276,17 @@
 
 <p class="sr-only" role="status">{status}</p>
 
+{#if loading?.shown}
+  <!-- Covers the table while a piece opens, so nothing looks broken or half-loaded. -->
+  <div class="loading" role="alertdialog" aria-modal="true" aria-labelledby="loading-title" aria-describedby="loading-step">
+    <div class="loading-card">
+      <h2 id="loading-title">Opening “{title}”</h2>
+      <p id="loading-step" aria-live="polite">{loading.step}</p>
+      {#if loading.progress !== null}<progress max="1" value={loading.progress} aria-label="Download progress"></progress>{:else}<progress aria-label="Working"></progress>{/if}
+    </div>
+  </div>
+{/if}
+
 <style lang="scss">
   @use '../../styles/tokens' as *;
 
@@ -267,5 +317,10 @@
   .actions .primary { border: 0; border-radius: $radius-pill; background: $cream; color: $walnut-900; font-weight: 700; padding: 0 1.25rem; }
   .chooser :focus-visible { outline: 3px solid $focus; outline-offset: 2px; }
 
+  .loading { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 1rem; background: #0c0806d9; }
+  .loading-card { width: min(26rem, 100%); padding: 1.5rem; border: 1px solid #aa976a; border-radius: 8px; background: #21180f; color: $cream; box-shadow: 0 16px 40px #000c; }
+  .loading-card h2 { font-size: 1.25rem; text-transform: none; letter-spacing: 0; color: $cream; margin: 0 0 .5rem; overflow-wrap: anywhere; }
+  .loading-card p { margin: 0 0 1rem; color: $cream-muted; line-height: 1.5; }
+  .loading-card progress { width: 100%; height: 10px; accent-color: #eee935; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>

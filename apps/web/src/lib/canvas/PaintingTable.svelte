@@ -47,8 +47,9 @@
   let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '' }: Props = $props();
   let canvas = $state<PartyCanvas>();
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
-  export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl); }
-  export function snapshot(): string { return canvas?.snapshot() ?? ''; }
+  export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null, ownBase = false) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl, ownBase); }
+  export function snapshot(paintOnly = false): string { return canvas?.snapshot(paintOnly) ?? ''; }
+  export function loadPicture(key: string, width: number, height: number, picture: CanvasImageSource, strokes: PaintedStroke[]) { canvas?.loadPicture(key, width, height, picture, strokes); }
   export function finishStroke() { canvas?.finishStroke(); }
   export function strokes(): PaintedStroke[] { return canvas?.strokes() ?? []; }
 
@@ -462,7 +463,7 @@
   </header>
 
   <section bind:this={canvasFrame} class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
-    style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface')}')`} style:--frame-x={`${frameRect.x}px`} style:--frame-y={`${frameRect.y}px`} style:--frame-width={`${frameRect.width}px`} style:--frame-height={`${frameRect.height}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height}>
+    style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface', 'webp')}')`} style:--frame-x={`${frameRect.x}px`} style:--frame-y={`${frameRect.y}px`} style:--frame-width={`${frameRect.width}px`} style:--frame-height={`${frameRect.height}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height}>
     <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {mode} {canDraw} {painterId} {round} {canvasKey} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => toolbarHeight = height} {onstroke} />
     {#if !compact}
       <!-- Drag any edge (or the corner) to resize the canvas window; arrow keys work too. -->
@@ -581,7 +582,8 @@
 <style lang="scss">
   @use '../../styles/tokens' as *;
   .filter-defs { position: absolute; pointer-events: none; }
-  .workbench { position: relative; width: 100%; height: 100svh; overflow: clip; isolation: isolate; background-image: linear-gradient(#1e0f0599, #1e0f0599), var(--wood); background-size: auto, 1000px; }
+  /* manipulation: no double-tap-to-zoom, so quick taps between tools are never swallowed on a tablet. */
+  .workbench { touch-action: manipulation; position: relative; width: 100%; height: 100svh; overflow: clip; isolation: isolate; background-image: linear-gradient(#1e0f0599, #1e0f0599), var(--wood); background-size: auto, 1000px; }
   .status-strip { position: absolute; inset: 0 0 auto; min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 20px; background: #0c0806ed; z-index: 40; }
   .mode { display: flex; gap: 4px; }
   .mode button { border: 1px solid #81704f; }
@@ -609,6 +611,8 @@
   .arranging .supply { z-index: 6; }
   .supply { position: absolute; pointer-events: none; z-index: 2; }
   .supply.chosen { z-index: 4; }
+  /* The burnishing pad is small and rests on the sponge and paint box: keep it on top so it's easy to pick up. */
+  .supply[data-supply='burnisher'] { z-index: 3; }
   .tool-grid { display: grid; gap: 4px 16px; align-items: center; }
   .size-controls { display: grid; grid-template-columns: minmax(120px, 1fr) 90px; gap: 16px; align-items: center; }
   .size-field label, .exact-field { display: block; font-size: 12px; font-weight: 700; }
