@@ -28,7 +28,7 @@ export const partySteps = [
   { number: '06', title: 'Give it a place on the wall.', detail: 'The plan: hang the finished pieces in your studio gallery, replay how they grew and deliberately share the ones you want to share.' },
 ];
 export const workbench = [
-  { state: 'Try it now', title: 'A little room to experiment', items: ['A public paint table with brushes, pencil and eraser', 'A look around the Cream City studio', 'An example gallery with creation playback'] },
+  { state: 'Try it now', title: 'A little room to experiment', items: ['A public paint table with brushes, pencil and eraser', 'A look around the Cream City studio', 'An example of one canvas, round by round'] },
   { state: 'In the making', title: 'The actual painting party', items: ['Private room codes, seats and video or avatar presence', 'Your own canvas, passed around the circle', 'Host-set rounds and a gentle finishing cue', 'Email and optional Discord sign-in; private profiles and illustrated avatars', 'Friend connections, scheduled parties, invitations and opt-in reminders'] },
   { state: 'Next on the table', title: 'Keep the whole story', items: ['Durable art-stroke recording and reconnect recovery', 'Private finished-art galleries and creation replay', 'Intentional sharing, downloads and account albums'] },
   { state: 'Someday pile', title: 'More room for the weird', items: ['More immersive studios', 'Real room lighting: adjustable lamps, colors and rendered light moods', 'A collage crate full of things to stick down', 'Companion tablet panels and custom shortcuts', 'More cats. Probably.'] },

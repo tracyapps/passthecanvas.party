@@ -1,14 +1,18 @@
 <script lang="ts">
-  let { image, label, selected = false, muted = false, compact = false, moving = false, unavailableReason = '', hit = [0, 0, 100, 100], onclick, onpointerdown, onpointermove, onpointerup, onkeydown }: {
+  let { image, label, selected = false, muted = false, compact = false, moving = false, masked = false, hovered = false, unavailableReason = '', hit = [0, 0, 100, 100], onclick, onpointerdown, onpointermove, onpointerup, onkeydown }: {
     image: string; label: string; selected?: boolean; muted?: boolean; unavailableReason?: string;
     compact?: boolean; moving?: boolean; hit?: number[]; onclick: () => void;
+    /** Mouse and touch pick this supply by its shape (the table hit-tests the photo's outline); the button stays for keyboard and screen readers. */
+    masked?: boolean;
+    /** The pointer is over this supply's shape: show its name. */
+    hovered?: boolean;
     onpointerdown?: (event: PointerEvent) => void; onpointermove?: (event: PointerEvent) => void;
     onpointerup?: (event: PointerEvent) => void; onkeydown?: (event: KeyboardEvent) => void;
   } = $props();
   const descriptionId = $props.id();
 </script>
 <!-- The photo may overhang its target; transparent image boxes must never steal a neighbor's clicks. -->
-<div class="photo" class:selected class:muted class:compact class:moving>
+<div class="photo" class:selected class:muted class:compact class:moving class:masked class:hovered>
   <img src={image} alt="" draggable="false" />
   <button type="button" aria-label={label} aria-describedby={unavailableReason ? descriptionId : undefined}
     aria-disabled={!!unavailableReason} aria-pressed={selected} {onclick} {onpointerdown} {onpointermove} {onpointerup} {onkeydown} onpointercancel={onpointerup}
@@ -24,7 +28,8 @@
   .muted img { filter: saturate(0.3) brightness(0.62) drop-shadow(3px 7px 4px #000b); }
   .selected img { filter: url('#supply-selection') drop-shadow(3px 7px 4px #000b); }
   .name { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: max-content; max-width: 160%; padding: 6px 10px; font-size: 13px; font-weight: 700; background: #1d150ef2; border: 1px solid #b5a47b; border-radius: 3px; opacity: 0; pointer-events: none; }
-  button:hover .name, button:focus-visible .name { opacity: 1; }
+  button:hover .name, button:focus-visible .name, .hovered .name { opacity: 1; }
+  .masked button { pointer-events: none; }
   button:focus-visible { outline: 3px solid #fff; outline-offset: 4px; border-radius: 4px; z-index: 5; }
   .moving button { touch-action: none; cursor: grab; }
   .compact button { inset: 0 !important; width: 100% !important; height: 100% !important; }

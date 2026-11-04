@@ -20,6 +20,7 @@
   import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './workspaces';
   import burnishingPad from './burnishing-pad.svg?url';
   import { constrainSupply, type SupplyRect } from './placement';
+  import { buildMask, maskHit, type ShapeMask } from './shape-masks';
   import { emptySelection, selectTool, loadPaint, dipInWater, isBrush, takesWater, unavailability,
     TOOL_NAMES, MEDIUM_NAMES, type PaintingTool, type PaintingMedium, type PaintLoad } from './painting-selection';
   const images = import.meta.glob('./supplies/study-*.{svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
@@ -116,6 +117,24 @@
   let accountSyncing = $state(false);
   let cloudEnabled = $state(false);
   let cloudLoaded = $state(false);
+  // ---- Is the table itself saved? (toolboxes, supply positions, views, canvas window) ----
+  // Always kept on this device straight away. Signed in, it also auto-saves to
+  // your account a couple of seconds after you stop changing it, or now with "Save table".
+  let layoutSavedJson = $state('');
+  let layoutSavedAt = $state<Date | null>(null);
+  let layoutSaving = $state(false);
+  let layoutError = $state(false);
+  let layoutNow = $state(Date.now());
+  let layoutJson = $derived(JSON.stringify(workspaceState()));
+  let layoutState = $derived(!accountState.userId ? 'local' : layoutSaving ? 'saving' : layoutError ? 'error' : !cloudLoaded ? 'loading' : layoutJson !== layoutSavedJson ? 'unsaved' : 'saved');
+  let layoutStatus = $derived(({
+    local: 'Table kept on this device (sign in to keep it everywhere)',
+    saving: 'Saving the table…',
+    error: 'Table not saved to your account: check your connection',
+    loading: 'Opening your account’s table…',
+    unsaved: 'Table changes not saved yet',
+    saved: layoutSavedAt ? `Table saved ${Math.max(0, layoutNow - layoutSavedAt.getTime()) < 45_000 ? 'just now' : layoutNow - layoutSavedAt.getTime() < 3_600_000 ? `${Math.round((layoutNow - layoutSavedAt.getTime()) / 60_000)} min ago` : layoutSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Table saved to your account'
+  } as Record<string, string>)[layoutState]);
   let accountMessage = $state('');
   let cloudQueue = Promise.resolve();
   let board = $state({ width: 1440, height: 1024 });
@@ -214,13 +233,15 @@
     const headerObserver = new ResizeObserver(() => headerHeight = statusStrip.getBoundingClientRect().height);
     headerObserver.observe(statusStrip);
     readMixes();
+    void loadMasks();
     const unlockZoom = lockPageZoom();
+    const layoutClock = setInterval(() => (layoutNow = Date.now()), 15_000);
     try {
       const raw = localStorage.getItem(WORKSPACE_KEY);
       if (raw) { const stored = decodeWorkspaces(raw, supplies.map(item => item.id)); savedViews = stored.views; selectedView = stored.selected; customToolboxes = stored.toolboxes ?? []; applyLayout(stored.current); }
     } catch { storageError = 'Saved views could not be read. Existing browser data has been kept.'; }
     storageReady = true;
-    return () => { observer.disconnect(); headerObserver.disconnect(); unlockZoom(); };
+    return () => { observer.disconnect(); headerObserver.disconnect(); unlockZoom(); clearInterval(layoutClock); };
   });
   function currentLayout(): WorkspaceLayout { return { positions: $state.snapshot(positions), order: [...order], dock, frame: frameOverride ? { x: frameOverride.x / windowWidth, y: frameOverride.y / windowHeight, width: frameOverride.width / windowWidth, height: frameOverride.height / windowHeight } : null, rotation, toolbox }; }
   function applyLayout(layout: WorkspaceLayout) {
@@ -253,10 +274,16 @@
     try {
       const remote = await loadAccountWorkspaces();
       if (accountState.userId !== userId) return;
-      if (remote !== null) { restoreWorkspace(remote); cloudEnabled = true; accountMessage = 'Account views restored. Changes to this arrangement will save automatically.'; }
-      else accountMessage = 'No account views yet. Save a view or explicitly import your browser views.';
+      if (remote !== null) { restoreWorkspace(remote); accountMessage = 'Account views restored. Changes to this arrangement save automatically.'; }
+      else accountMessage = 'Your table will be saved to your account as you change it.';
       cloudLoaded = true;
-    } catch (error) { if (accountState.userId === userId) accountMessage = error instanceof Error ? error.message : 'Account views could not be loaded.'; }
+      cloudEnabled = true;
+      layoutError = false;
+      // What the account holds now; any difference shows as "not saved yet" and auto-saves.
+      await tick();
+      layoutSavedJson = remote !== null ? JSON.stringify(workspaceState()) : '';
+      layoutSavedAt = remote !== null ? new Date() : null;
+    } catch (error) { if (accountState.userId === userId) { accountMessage = error instanceof Error ? error.message : 'Account views could not be loaded.'; layoutError = true; } }
     finally { if (accountState.userId === userId) accountSyncing = false; }
   }
   $effect(() => {
@@ -268,18 +295,21 @@
     const userId = accountState.userId;
     if (!userId || accountSyncing) return;
     if (!cloudLoaded) { accountMessage = 'Load account views successfully before saving changes to the account.'; return; }
+    layoutSaving = true;
     const save = cloudQueue.then(async () => {
       if (accountState.userId !== userId) return;
       await saveAccountWorkspaces(value);
-      if (accountState.userId === userId) { cloudEnabled = true; accountMessage = 'Saved to your account.'; }
+      if (accountState.userId === userId) { cloudEnabled = true; layoutError = false; layoutSavedJson = JSON.stringify(value); layoutSavedAt = new Date(); layoutNow = Date.now(); accountMessage = 'Saved to your account.'; }
     });
     cloudQueue = save.catch(() => {});
-    try { await save; } catch (error) { if (accountState.userId === userId) accountMessage = error instanceof Error ? error.message : 'Account save failed. Browser copy retained.'; }
+    try { await save; } catch (error) { if (accountState.userId === userId) { layoutError = true; accountMessage = error instanceof Error ? error.message : 'Account save failed. Browser copy retained.'; } }
+    finally { layoutSaving = false; }
   }
   $effect(() => {
     const value = workspaceState();
-    if (!cloudEnabled || !accountState.userId || accountSyncing || !storageReady) return;
-    const timer = setTimeout(() => void saveCloud(value), 1200);
+    if (!cloudEnabled || !accountState.userId || accountSyncing || !storageReady || JSON.stringify(value) === untrack(() => layoutSavedJson)) return;
+    // Wait for a pause (and never mid-drag) before saving the table to your account.
+    const timer = setTimeout(() => { if (!dragging && !edgeDrag) void saveCloud(value); }, 2000);
     return () => clearTimeout(timer);
   });
   function importBrowserViews() {
@@ -392,7 +422,58 @@
       window.removeEventListener('wheel', wheel);
     };
   }
-  function emptySpace(event: MouseEvent) { if (event.target === bench && !dragging) putDown(); }
+  function emptySpace(event: MouseEvent) {
+    if (event.target !== bench || dragging) return;
+    // A click on the tabletop picks up whatever supply's shape is under it, or puts the tool down.
+    const supply = supplyAt(event.clientX, event.clientY);
+    if (supply) void openSupply(supply); else putDown();
+  }
+
+  // ---- Picking supplies by their shape ----
+  // On the full table, supply buttons don't take pointer events; the table
+  // hit-tests each photo's outline instead (shape-masks.ts). Tiles (phones,
+  // docked columns) are plain rectangles, so they keep normal buttons.
+  let masked = $derived(!compact && dock === 'surround');
+  const masks: Record<string, ShapeMask | null> = {};
+  let hoverId = $state<string | null>(null);
+  async function loadMasks() {
+    for (const supply of supplies) {
+      const url = supply.id === 'burnisher' ? burnishingPad : asset(supply.id);
+      masks[supply.id] = await buildMask(url, supply.box[2]! / supply.box[3]!);
+    }
+  }
+  /** Stacking on the table: what's drawn on top is picked first. */
+  function layerOf(id: string): number { return mode === 'arrange' ? 6 : active(id) ? 4 : id === 'burnisher' ? 3 : 2; }
+  function supplyAt(clientX: number, clientY: number): typeof supplies[number] | null {
+    if (!masked) return null;
+    const table = bench.getBoundingClientRect();
+    const x = clientX - table.left, y = clientY - table.top;
+    const candidates = shown.map((id, index) => ({ supply: supplies.find(item => item.id === id)!, index }))
+      .sort((a, b) => layerOf(b.supply.id) - layerOf(a.supply.id) || b.index - a.index);
+    for (const { supply } of candidates) {
+      const box = supplyBox(supply);
+      const u = (x - box.x) / box.width, v = (y - box.y) / box.height;
+      if (u < 0 || v < 0 || u > 1 || v > 1) continue;
+      const mask = masks[supply.id];
+      if (mask ? maskHit(mask, u, v) : true) return supply;
+    }
+    return null;
+  }
+  function tablePointerDown(event: PointerEvent) {
+    if (event.target !== bench || event.button !== 0) return;
+    const supply = supplyAt(event.clientX, event.clientY);
+    if (supply && mode === 'arrange') {
+      const box = supplyBox(supply);
+      target = supply.id;
+      dragging = { id: supply.id, x: event.clientX, y: event.clientY, left: box.x, top: box.y, pointer: event.pointerId };
+      bench.setPointerCapture(event.pointerId);
+    }
+  }
+  function tablePointerMove(event: PointerEvent) {
+    if (dragging) { moveSupply(event); return; }
+    if (event.pointerType !== 'mouse') return;
+    hoverId = event.target === bench ? supplyAt(event.clientX, event.clientY)?.id ?? null : null;
+  }
   function select(tool: PaintingTool) {
     selection = selectTool(selection, tool);
     settingsOpen = true;
@@ -428,6 +509,12 @@
     if (supply.id === 'tray') { trayOpen = true; paletteOpen = true; await revealPalette(); return; }
     if (supply.tool) select(supply.tool);
     if (!supply.medium) { if (compact) await showSettings(); return; }
+    // Reaching for a paint box with no brush (or one that can't take this paint)
+    // picks up a round brush, so the click always does something you can see.
+    if (unavailability(selection.tool, supply.medium) && !unavailability('round', supply.medium)) {
+      select('round');
+      announcement = `Picked up a round brush for the ${MEDIUM_NAMES[supply.medium].toLowerCase()} paints.`;
+    }
     const reason = unavailability(selection.tool, supply.medium);
     if (reason) { announcement = reason; return; }
     paletteMedium = supply.medium; trayOpen = false; paletteOpen = true;
@@ -552,8 +639,16 @@
   </filter>
 </defs></svg>
 
+{#snippet tableSave()}
+  <!-- The table's own save state (toolbox, positions, views), with a manual save. -->
+  <div class={`layout-save ${layoutState}`}>
+    <span class="dot" aria-hidden="true"></span><span role="status">{layoutStatus}</span>
+    {#if accountState.userId}<button type="button" disabled={layoutSaving || !cloudLoaded || layoutState === 'saved'} onclick={() => void saveCloud()}>Save table</button>{/if}
+  </div>
+{/snippet}
+
 <!-- The main element only deselects on its own empty tabletop, never a child's click. -->
-<main bind:this={bench} class="workbench" class:compact class:docked={dock !== 'surround'} class:dock-left={dock === 'left'} class:dock-right={dock === 'right'} class:dock-both={dock === 'both'} class:arranging={mode === 'arrange'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
+<main bind:this={bench} onpointerdown={tablePointerDown} onpointermove={tablePointerMove} onpointerup={() => (dragging = null)} onpointercancel={() => (dragging = null)} onpointerleave={() => (hoverId = null)} class:pointing={!!hoverId} class="workbench" class:compact class:docked={dock !== 'surround'} class:dock-left={dock === 'left'} class:dock-right={dock === 'right'} class:dock-both={dock === 'both'} class:arranging={mode === 'arrange'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
   <a class="skip" href="#shared-canvas">Skip to canvas</a>
   <header bind:this={statusStrip} class="status-strip">
     <div class="mode" role="group" aria-label="Workspace mode">
@@ -568,9 +663,9 @@
     <div class="party-bar">{@render partyBar?.()}</div>
     {#if saveStatus}
       <!-- Tap to save now. The dot: amber = unsaved, pulsing = saving, green = saved, red = not saved. -->
-      <button type="button" class={`save-status ${saveState}`} disabled={!onsave || saveState === 'saving' || saveState === 'autosaving'} onclick={() => onsave?.()} aria-label={`${saveStatus}. Save now.`}><span class="dot" aria-hidden="true"></span>{saveStatus}</button>
-      <span class="sr-only" role="status">{saveState === 'unsaved' ? '' : saveStatus}</span>
+      <span class={`save-status ${saveState}`}><span class="dot" aria-hidden="true"></span><span role="status">{saveStatus}</span></span>
     {/if}
+    {#if onsave}<button type="button" class="save-now" class:alone={!saveStatus} disabled={saveState === 'saving' || saveState === 'autosaving'} onclick={() => onsave?.()} title="Save (Cmd/Ctrl+S)">Save</button>{/if}
     <button type="button" class="menu-button" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
   </header>
 
@@ -607,6 +702,7 @@
             <button type="button" class="primary" onclick={() => mode = 'paint'}>Done</button>
           </div>
           <div class="arrange-actions"><button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button><button type="button" onclick={() => openPanel('views')}>Saved views…</button></div>
+          {@render tableSave()}
         </div>
       </StudioPanel>
     {/if}
@@ -638,6 +734,7 @@
           {/if}
           <div class="arrange-actions"><button type="button" onclick={() => newToolbox(findToolbox(EVERYTHING, []))}>New toolbox</button></div>
           <p class="arrange-hint">A supply can be in as many toolboxes as you like; it's still the same tool, with the same paint on it. Saved views remember their toolbox.</p>
+          {@render tableSave()}
         </div>
       </StudioPanel>
     {/if}
@@ -673,7 +770,8 @@
           {#if accountState.userId}
             <details class="more"><summary>Account copies</summary><div class="arrange-actions"><button type="button" disabled={accountSyncing || !cloudLoaded} onclick={() => void saveCloud()}>Save views to account</button><button type="button" disabled={accountSyncing} onclick={() => void restoreAccount(accountState.userId)}>Reload account views</button><button type="button" disabled={accountSyncing || !cloudLoaded} onclick={importBrowserViews}>Import this browser’s views</button></div></details>
           {/if}
-          <p class="arrange-hint" role="status">{storageError || accountMessage || 'Your latest arrangement is restored automatically.'}</p>
+          {#if storageError}<p class="arrange-hint" role="status">{storageError}</p>{/if}
+          {@render tableSave()}
         </div>
       </StudioPanel>
     {/if}
@@ -731,7 +829,7 @@
       {@const reason = mode === 'arrange' ? '' : supply.id === 'water' ? takesWater(selection.tool) ? '' : 'Choose a brush or the sponge to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
       <div class="supply" data-tool={supply.tool} data-supply={supply.id} class:chosen={active(supply.id)}
         style:--dock-column={index < Math.ceil(shown.length / 2) ? index % 2 + 1 : (index - Math.ceil(shown.length / 2)) % 2 + 4} style:--dock-row={index < Math.ceil(shown.length / 2) ? Math.floor(index / 2) + 1 : Math.floor((index - Math.ceil(shown.length / 2)) / 2) + 1} style:left={`${box.x}px`} style:top={`${box.y}px`} style:width={`${box.width}px`} style:height={`${box.height}px`}>
-        <PhotoSupply compact={compact || dock !== 'surround'} moving={mode === 'arrange' && !compact && dock === 'surround'} image={supply.id === 'burnisher' ? burnishingPad : asset(supply.id)} label={mode === 'arrange' ? `Move ${supply.name}` : supply.name} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
+        <PhotoSupply {masked} hovered={hoverId === supply.id} compact={compact || dock !== 'surround'} moving={mode === 'arrange' && !compact && dock === 'surround'} image={supply.id === 'burnisher' ? burnishingPad : asset(supply.id)} label={mode === 'arrange' ? `Move ${supply.name}` : supply.name} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
           hit={supply.tip ? [supply.tip[0] / supply.box[2] * 100, supply.tip[1] / supply.box[3] * 100, supply.tip[2] / supply.box[2] * 100, supply.tip[3] / supply.box[3] * 100] : supply.hit ? [(supply.hit[0] - supply.box[0]) / supply.box[2] * 100, (supply.hit[1] - supply.box[1]) / supply.box[3] * 100, supply.hit[2] / supply.box[2] * 100, supply.hit[3] / supply.box[3] * 100] : undefined}
           muted={mode === 'paint' && selection.tool !== null && (!!reason || (!!supply.tool && !active(supply.id)))} onclick={() => openSupply(supply)}
           onpointerdown={(event) => startMove(event, supply)} onpointermove={moveSupply} onpointerup={() => dragging = null} onkeydown={(event) => supplyKey(event, supply.id)} />
@@ -748,6 +846,7 @@
     <button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button>
     <button type="button" onclick={() => openPanel('views')}>Saved views…</button>
     <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); mode = 'arrange'; paletteOpen = false; }}>Arrange table…</button>
+    {@render tableSave()}
   </div>
   <div class="menu-group">
     <h2>Painting</h2>
@@ -796,6 +895,8 @@
   @media (prefers-reduced-motion: reduce) { .edge::after { transition: none; } }
   .arranging .supply { z-index: 6; }
   .supply { position: absolute; pointer-events: none; z-index: 2; }
+  .workbench.pointing { cursor: pointer; }
+  .arranging.pointing { cursor: grab; }
   .supply.chosen { z-index: 4; }
   /* The burnishing pad is small and rests on the sponge and paint box: keep it on top so it's easy to pick up. */
   .supply[data-supply='burnisher'] { z-index: 3; }
@@ -852,7 +953,17 @@
   .header-note { flex: 1 1 12rem; min-width: 0; margin: 0; font-size: 13px; line-height: 1.4; color: #e8ddcc; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
   .header-note.fresh { color: #fff6e5; font-weight: 700; }
   .save-status { flex: none; display: inline-flex; align-items: center; gap: 6px; margin: 0 0 0 auto; min-height: 32px; padding: 4px 10px; font-size: 12px; color: #e8ddcc; white-space: nowrap; border-color: #5d4d35; border-radius: 999px; background: #1c150fcc; }
-  .save-status:disabled { opacity: 1; }
+  .save-now.alone { margin-left: auto; }
+  .save-now { flex: none; min-height: 36px; padding: 4px 14px; font-size: 13px; font-weight: 700; }
+  .save-status + .save-now + .menu-button, .save-status + .menu-button { margin-left: 0; }
+  .layout-save { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 4px; padding-top: 8px; border-top: 1px solid #5d4d35; font-size: 12px; color: #e8ddcc; }
+  .layout-save [role=status] { flex: 1 1 10rem; }
+  .layout-save button { min-height: 36px; padding: 4px 10px; font-size: 12px; }
+  .layout-save .dot, .save-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #7fc27f; flex: none; }
+  .layout-save.local .dot, .layout-save.loading .dot { background: #b7aa92; }
+  .layout-save.unsaved .dot { background: #e6b23c; }
+  .layout-save.error .dot { background: #e0604f; }
+  .layout-save.saving .dot { animation: save-pulse 1s ease-in-out infinite alternate; }
   .save-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #7fc27f; }
   .save-status.unsaved .dot { background: #e6b23c; }
   .save-status.error .dot { background: #e0604f; }
