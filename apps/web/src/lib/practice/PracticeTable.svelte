@@ -7,10 +7,11 @@
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { CANVAS_SHAPES, type CanvasShape, type PaintedStroke } from '@ptc/shared';
+  import { CANVAS_SHAPES, type CanvasShape, type PaintedStroke, type PracticePiece } from '@ptc/shared';
   import PaintingTable from '../canvas/PaintingTable.svelte';
   import { accountRequest, accountState, accountToken, initializeAccount } from '../account/account.svelte';
   import { dataUrlToBlob, fileSlug, saveFile } from '../download';
+  import { loadPreferences, prefs } from '../prefs.svelte';
 
   let { pieceId = null }: { pieceId?: string | null } = $props();
 
@@ -21,15 +22,42 @@
   // svelte-ignore state_referenced_locally — the page opens one piece; Save keeps its id
   let savedId = $state<string | null>(pieceId);
   let status = $state('');
-  let saving = $state(false);
-  let savedCount = 0; // strokes in the last saved (or loaded) version
+  let signedIn = $derived(!!accountState.userId);
+  /** The auto-save row this session writes to (a separate copy; never your saved piece). */
+  let autosaveId = $state<string | null>(null);
+
+  // ---- what's changed since the last save ----
+  // Every stroke (and a title change) bumps the revision. A save or auto-save
+  // records the revision it captured; anything newer is "unsaved".
+  let revision = 0;
+  let capturedRevision = 0;
+  let unsaved = $state(false);
+  let saveKind = $state<'saving' | 'autosaving' | null>(null);
+  let saveError = $state(false);
+  let lastSavedAt = $state<Date | null>(null);
+  let lastAutosavedAt = $state<Date | null>(null);
+  let lastSaveAttempt = Date.now();
+  function markChanged() { revision += 1; if (!unsaved) unsaved = true; }
+  // A new title is a change too (but loading a piece's title isn't).
+  let knownTitle = 'Practice piece';
+  $effect(() => { if (title !== knownTitle) { knownTitle = title; markChanged(); } });
+  const clock = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  /** Where saving stands, for the page and for the small indicator by the menu. */
+  let saveState = $derived(saveKind ?? (saveError ? 'error' : unsaved ? 'unsaved' : 'clean'));
+  let saveStatus = $derived(
+    saveKind === 'saving' ? 'Saving…'
+    : saveKind === 'autosaving' ? 'Auto-saving…'
+    : !signedIn ? (unsaved ? 'Not saved (sign in to save)' : '')
+    : saveError && unsaved ? 'Not saved: check your connection'
+    : unsaved ? 'Unsaved changes'
+    : lastAutosavedAt && (!lastSavedAt || lastAutosavedAt > lastSavedAt) ? `Auto-saved ${clock(lastAutosavedAt)}`
+    : lastSavedAt ? `Saved ${clock(lastSavedAt)}` : '');
   /** True when this piece is kept as a picture only (its strokes were too much to keep). Saves stay picture-only. */
   let pictureOnly = false;
   let canvasSize = $derived({ width: CANVAS_SHAPES[shape].width, height: CANVAS_SHAPES[shape].height });
   const canvasKey = 'c1'; // practice strokes use the party's canvas id rules
 
   const base = () => (import.meta.env.VITE_ACCOUNT_API_URL ?? '').replace(/\/$/, '');
-  let signedIn = $derived(!!accountState.userId);
 
   onMount(() => {
     if (pieceId) startLoading('Signing you in…');
@@ -39,12 +67,20 @@
     });
     if (pieceId) starting = false;
     else openChooser(true);
+    void loadPreferences();
     // Leaving with unsaved marks asks first (the browser's own prompt).
-    const warn = (event: BeforeUnloadEvent) => {
-      if (table && table.strokes().length !== savedCount) event.preventDefault();
-    };
+    const warn = (event: BeforeUnloadEvent) => { if (unsaved) event.preventDefault(); };
     addEventListener('beforeunload', warn);
-    return () => removeEventListener('beforeunload', warn);
+    // Auto-save: every few minutes (your Settings), only with changes, never mid-stroke.
+    const timer = setInterval(() => {
+      const minutes = prefs.autosaveMinutes;
+      if (!minutes || !signedIn || !unsaved || saveKind || loading || starting || table?.busy()) return;
+      if (Date.now() - lastSaveAttempt >= minutes * 60_000) void autosave();
+    }, 5_000);
+    // Leaving the tab (or the iPad putting it away) is a good moment too: iOS may reload it later.
+    const hidden = () => { if (document.visibilityState === 'hidden' && prefs.autosaveMinutes && signedIn && unsaved && !saveKind && !table?.busy()) void autosave(); };
+    document.addEventListener('visibilitychange', hidden);
+    return () => { removeEventListener('beforeunload', warn); clearInterval(timer); document.removeEventListener('visibilitychange', hidden); };
   });
 
   // Opening: anything slower than a moment gets a full-screen progress card.
@@ -80,11 +116,15 @@
   async function open(id: string) {
     startLoading('Finding your piece…');
     try {
-      const pieces = await accountRequest<{ id: string; title: string; shape: CanvasShape; hasStrokes: boolean }[]>('community/practice');
+      const pieces = await accountRequest<PracticePiece[]>('community/practice');
       const piece = pieces.find((p) => p.id === id);
       if (!piece) throw new Error('That piece is not in your practice pieces.');
+      knownTitle = piece.title;
       title = piece.title;
-      shape = piece.shape in CANVAS_SHAPES ? piece.shape : 'classic';
+      shape = piece.shape in CANVAS_SHAPES ? piece.shape as CanvasShape : 'classic';
+      // An auto-save keeps saving into itself; Save goes to the piece it came from (or a new one).
+      autosaveId = piece.autosave ? piece.id : null;
+      savedId = piece.autosave ? piece.draftOf : piece.id;
       await tick();
       const headers = { Authorization: `Bearer ${await accountToken()}` };
       const url = (kind: string) => `${base()}/api/account/community/practice/file?id=${encodeURIComponent(id)}&kind=${kind}`;
@@ -106,7 +146,9 @@
       table.loadPicture('c1', canvasSize.width, canvasSize.height, picture, strokes);
       picture.close();
       pictureOnly = !strokes.length;
-      savedCount = table.strokes().length;
+      revision = capturedRevision = 0; unsaved = false; saveError = false;
+      lastSavedAt = piece.autosave ? null : new Date(piece.updatedAt);
+      lastAutosavedAt = piece.autosave ? new Date(piece.updatedAt) : null;
       stopLoading();
       say(`Opened “${piece.title}”. Keep painting.`);
     } catch (cause) {
@@ -129,7 +171,9 @@
     small.fillRect(0, 0, canvas.width, canvas.height);
     small.drawImage(image, 0, 0, canvas.width, canvas.height);
     const webp = canvas.toDataURL('image/webp', 0.82);
-    return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.82);
+    const result = webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.82);
+    canvas.width = canvas.height = 0; // free it now (iPad Safari)
+    return result;
   }
 
   /** Strokes, gzipped in the browser and sent as base64 (they can be big). */
@@ -142,27 +186,62 @@
     return btoa(binary);
   }
 
+  /** Picture + preview + strokes, ready to send. */
+  async function capture() {
+    table.finishStroke();
+    const at = revision;
+    // Paint only (see-through paper), so reopening lays it back on the textured paper.
+    const image = table.snapshot(true);
+    const strokes = table.strokes();
+    return { at, image, thumb: await thumbnail(image), strokes: pictureOnly ? null : await packStrokes(strokes) };
+  }
+  function captured(at: number) {
+    capturedRevision = Math.max(capturedRevision, at);
+    unsaved = revision !== capturedRevision;
+    saveError = false;
+    lastSaveAttempt = Date.now();
+  }
+
   async function save() {
-    if (!signedIn) return;
-    saving = true;
+    if (!signedIn || saveKind === 'saving') return;
+    saveKind = 'saving';
     status = 'Saving…';
     try {
-      table.finishStroke();
-      // Paint only (see-through paper), so reopening lays it back on the textured paper.
-      const image = table.snapshot(true);
-      const strokes = table.strokes();
-      const result = await accountRequest<{ id: string; strokesKept: boolean | null }>('community/practice', 'PUT', { id: savedId, title: title.trim() || 'Practice piece', shape, image, thumb: await thumbnail(image), strokes: pictureOnly ? null : await packStrokes(strokes) });
+      const piece = await capture();
+      const result = await accountRequest<{ id: string; strokesKept: boolean | null }>('community/practice', 'PUT', { id: savedId, title: title.trim() || 'Practice piece', shape, image: piece.image, thumb: piece.thumb, strokes: piece.strokes });
       savedId = result.id;
-      savedCount = strokes.length;
+      captured(piece.at);
+      lastSavedAt = new Date();
       history.replaceState(null, '', `/?practice&piece=${result.id}`);
       if (result.strokesKept === false) {
         pictureOnly = true;
         say('Saved as a picture. It had too much detail to keep every stroke, so it reopens as a picture you can keep painting on.');
       } else say('Saved to your practice pieces.');
     } catch (cause) {
+      saveError = true;
       say(cause instanceof Error ? cause.message : 'That piece could not be saved. Try downloading it instead.');
     } finally {
-      saving = false;
+      saveKind = null;
+    }
+  }
+
+  /** A quiet copy into your Auto-saves (never over your saved piece). */
+  async function autosave() {
+    if (!signedIn || saveKind) return;
+    saveKind = 'autosaving';
+    lastSaveAttempt = Date.now();
+    try {
+      const piece = await capture();
+      const result = await accountRequest<{ id: string }>('community/practice', 'PUT', { id: autosaveId, title: title.trim() || 'Practice piece', shape, image: piece.image, thumb: piece.thumb, strokes: piece.strokes, autosave: true, draftOf: savedId });
+      autosaveId = result.id;
+      captured(piece.at);
+      lastAutosavedAt = new Date();
+      // If the page reloads (iPad Safari does under memory pressure), this brings you back to the newest copy.
+      history.replaceState(null, '', `/?practice&piece=${result.id}`);
+    } catch {
+      saveError = true; // shown by the indicator; the next try is in a few minutes
+    } finally {
+      saveKind = null;
     }
   }
 
@@ -176,11 +255,12 @@
   async function fresh(next: CanvasShape, name = 'Practice piece') {
     shape = next;
     savedId = null;
+    autosaveId = null;
     pictureOnly = false;
-    title = name.trim() || 'Practice piece';
+    title = knownTitle = name.trim() || 'Practice piece';
     await tick();
     await table.loadHistory('c1', CANVAS_SHAPES[next].width, CANVAS_SHAPES[next].height, [], true, null);
-    savedCount = 0;
+    revision = capturedRevision = 0; unsaved = false; saveError = false; lastSavedAt = lastAutosavedAt = null; lastSaveAttempt = Date.now();
     history.replaceState(null, '', '/?practice');
     say(`A fresh ${CANVAS_SHAPES[next].name.toLowerCase()} canvas.`);
   }
@@ -196,14 +276,14 @@
     starting = first;
     pickShape = shape;
     pickTitle = '';
-    dirty = !first && !!table && table.strokes().length !== savedCount;
+    dirty = !first && unsaved;
     document.getElementById('table-actions')?.hidePopover();
     chooser.showModal();
   }
   async function confirmChooser(event: SubmitEvent) {
     event.preventDefault();
     chooser.close();
-    if (starting && pickShape === shape) { title = pickTitle.trim() || title; starting = false; say(`${CANVAS_SHAPES[shape].name} canvas. Just you and the paints.`); return; }
+    if (starting && pickShape === shape) { title = knownTitle = pickTitle.trim() || title; starting = false; say(`${CANVAS_SHAPES[shape].name} canvas. Just you and the paints.`); return; }
     starting = false;
     await fresh(pickShape, pickTitle);
   }
@@ -229,14 +309,16 @@
   {canvasSize}
   label={`Practice canvas, ${CANVAS_SHAPES[shape].name}`}
   waitingNote=""
-  onstroke={() => {}}
+  onstroke={markChanged}
   notice={status}
+  {saveStatus}
+  onsave={() => void save()}
 >
   {#snippet menu()}
     <h2>This piece</h2>
     <label class="menu-title">Title <input maxlength="80" bind:value={title} /></label>
     {#if signedIn}
-      <button type="button" disabled={saving} onclick={() => { closeMenu(); void save(); }}>{saving ? 'Saving…' : savedId ? 'Save' : 'Save to my pieces'}</button>
+      <button type="button" disabled={saveKind === 'saving'} onclick={() => { closeMenu(); void save(); }}>{saveKind === 'saving' ? 'Saving…' : savedId ? 'Save' : 'Save to my pieces'}</button>
     {/if}
     <button type="button" onclick={() => { closeMenu(); void download(); }}>Download PNG</button>
     <button type="button" onclick={() => openChooser()}>New canvas…</button>
@@ -274,7 +356,7 @@
   </form>
 </dialog>
 
-<p class="sr-only" role="status">{status}</p>
+<p class="sr-only" role="status" data-save-state={saveState}>{status}</p>
 
 {#if loading?.shown}
   <!-- Covers the table while a piece opens, so nothing looks broken or half-loaded. -->

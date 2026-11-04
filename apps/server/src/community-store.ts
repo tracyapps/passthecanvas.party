@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { CANVAS_SHAPES, cleanPartySettings, type CanvasShape, type PracticePiece, DEFAULT_PARTY_SETTINGS, INITIALS_COLOR_KEYS, roomIdFor, sanitizeAvatarDesign, type CalendarEvent, type CommunityHome, type InitialsColor, type ProfileInput, type SavedAvatar, type ScheduleInput, type ScheduledParty, type StudioProfile, type SharedParty } from '@ptc/shared';
+import { CANVAS_SHAPES, cleanPartySettings, cleanPreferences, type CanvasShape, type StudioPreferences, type PracticePiece, DEFAULT_PARTY_SETTINGS, INITIALS_COLOR_KEYS, roomIdFor, sanitizeAvatarDesign, type CalendarEvent, type CommunityHome, type InitialsColor, type ProfileInput, type SavedAvatar, type ScheduleInput, type ScheduledParty, type StudioProfile, type SharedParty } from '@ptc/shared';
 
 export class CommunityError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -21,7 +21,9 @@ export interface CommunityStore {
   saveGallery(user: string, archiveId: string, title: string): Promise<void>;
   practice(user: string): Promise<PracticePiece[]>;
   practiceFile(user: string, id: string, kind: 'image' | 'thumb' | 'strokes'): Promise<{ contentType: string; bytes: Buffer; gzip: boolean }>;
-  savePractice(user: string, input: { id: string | null; title: string; shape: CanvasShape; image: Buffer; thumb: { contentType: string; bytes: Buffer }; strokes: Buffer | null }): Promise<{ id: string }>;
+  savePractice(user: string, input: { id: string | null; title: string; shape: CanvasShape; image: Buffer; thumb: { contentType: string; bytes: Buffer }; strokes: Buffer | null; autosave?: boolean; draftOf?: string | null }): Promise<{ id: string }>;
+  preferences(user: string): Promise<StudioPreferences>;
+  savePreferences(user: string, prefs: StudioPreferences): Promise<StudioPreferences>;
   deletePractice(user: string, id: string): Promise<void>;
   profile(user: string, id: string): Promise<StudioProfile>;
   requestFriend(user: string, id: string): Promise<void>;
@@ -135,7 +137,7 @@ export function postgresCommunityStore(db: pg.Pool): CommunityStore {
       return { events: parties.rows.map((row) => { const party = partyRow(row); return { id: party.id, title: party.title, startsAt: new Date(party.startsAt).toISOString(), durationMinutes: party.durationMinutes, description: `Art party hosted by ${party.hostName}. ${party.settings.description}`.trim(), cancelled: party.cancelled }; }) };
     },
     async practice(user) {
-      const result = await db.query('SELECT id, title, shape, width, height, strokes IS NOT NULL AS "hasStrokes", created_at AS "createdAt", updated_at AS "updatedAt" FROM studio_practice_pieces WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 200', [user]);
+      const result = await db.query('SELECT id, title, shape, width, height, strokes IS NOT NULL AS "hasStrokes", created_at AS "createdAt", updated_at AS "updatedAt", autosave, draft_of AS "draftOf" FROM studio_practice_pieces WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 200', [user]);
       return result.rows;
     },
     async practiceFile(user, id, kind) {
@@ -147,15 +149,37 @@ export function postgresCommunityStore(db: pg.Pool): CommunityStore {
     },
     async savePractice(user, input) {
       const { width, height } = CANVAS_SHAPES[input.shape];
+      const autosave = !!input.autosave;
+      // An auto-save may name the saved piece it came from (only one of yours).
+      let draftOf: string | null = null;
+      if (autosave && input.draftOf) {
+        const owner = await db.query('SELECT id FROM studio_practice_pieces WHERE id=$2 AND user_id=$1 AND NOT autosave', [user, input.draftOf]);
+        draftOf = owner.rows[0]?.id ?? null;
+      }
       if (input.id) {
-        const result = await db.query('UPDATE studio_practice_pieces SET title=$3, shape=$4, width=$5, height=$6, image=$7, thumb=$8, thumb_type=$9, strokes=$10, updated_at=now() WHERE id=$2 AND user_id=$1 RETURNING id', [user, input.id, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes]);
-        if (!result.rowCount) throw new CommunityError(404, 'This piece is unavailable.');
-        return { id: input.id };
+        // Saves only update their own kind: a manual save never overwrites an auto-save row, and vice versa.
+        const result = await db.query('UPDATE studio_practice_pieces SET title=$3, shape=$4, width=$5, height=$6, image=$7, thumb=$8, thumb_type=$9, strokes=$10, draft_of=CASE WHEN autosave THEN $12 ELSE draft_of END, updated_at=now() WHERE id=$2 AND user_id=$1 AND autosave=$11 RETURNING id', [user, input.id, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes, autosave, draftOf]);
+        if (result.rowCount) return { id: input.id };
+        if (!autosave) throw new CommunityError(404, 'This piece is unavailable.');
+        // The auto-save it pointed at was deleted: start a new one below.
       }
       const id = randomUUID();
-      const result = await db.query(`INSERT INTO studio_practice_pieces(id,user_id,title,shape,width,height,image,thumb,thumb_type,strokes) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 WHERE EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$2) AND (SELECT count(*) FROM studio_practice_pieces WHERE user_id=$2)<100 RETURNING id`, [id, user, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes]);
+      const limit = autosave ? 'TRUE' : '(SELECT count(*) FROM studio_practice_pieces WHERE user_id=$2 AND NOT autosave)<100';
+      const result = await db.query(`INSERT INTO studio_practice_pieces(id,user_id,title,shape,width,height,image,thumb,thumb_type,strokes,autosave,draft_of) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12 WHERE EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$2) AND ${limit} RETURNING id`, [id, user, input.title, input.shape, width, height, input.image, input.thumb.bytes, input.thumb.contentType, input.strokes, autosave, draftOf]);
       if (!result.rowCount) throw new CommunityError(409, 'Save your profile first. You can keep up to 100 practice pieces.');
+      // Keep the 20 newest auto-saves; older ones go (saved pieces are never touched).
+      if (autosave) await db.query('DELETE FROM studio_practice_pieces WHERE user_id=$1 AND autosave AND id NOT IN (SELECT id FROM studio_practice_pieces WHERE user_id=$1 AND autosave ORDER BY updated_at DESC LIMIT 20)', [user]);
       return { id };
+    },
+    async preferences(user) {
+      const result = await db.query('SELECT prefs FROM studio_preferences WHERE user_id=$1', [user]);
+      return cleanPreferences(result.rows[0]?.prefs);
+    },
+    async savePreferences(user, prefs) {
+      const clean = cleanPreferences(prefs);
+      const result = await db.query("INSERT INTO studio_preferences(user_id,prefs) SELECT $1,$2::jsonb WHERE EXISTS(SELECT 1 FROM studio_profiles WHERE user_id=$1) ON CONFLICT(user_id) DO UPDATE SET prefs=EXCLUDED.prefs, updated_at=now() RETURNING prefs", [user, JSON.stringify(clean)]);
+      if (!result.rowCount) throw new CommunityError(409, 'Save your profile first.');
+      return clean;
     },
     async deletePractice(user, id) {
       const result = await db.query('DELETE FROM studio_practice_pieces WHERE id=$2 AND user_id=$1 RETURNING id', [user, id]);

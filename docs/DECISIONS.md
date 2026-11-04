@@ -46,6 +46,20 @@ A running log. Newest first. One line for small calls, a short paragraph for big
   you switch tools, but switches to a paint set the new tool can use (airbrush
   and palette knife go to acrylic) instead of showing colors you can't pick.
 
+- **Auto-save** (Nov 4, 2026): practice pieces auto-save every few minutes
+  (Settings: off, or every 1/2/5/10/15 minutes; default 2), only when something
+  changed, never mid-stroke, and when the tab is hidden. Auto-saves are separate
+  rows (`autosave`, `draft_of`) in their own tab, newest 20 kept, and never
+  overwrite a saved piece. The page tracks clean / unsaved / saving /
+  auto-saving / error and shows a small status by the menu. Cmd/Ctrl+S saves.
+- **No page zoom on the painting table** (Nov 4, 2026): pinch, double-tap and
+  trackpad pinch move the canvas only. Keyboard zoom still works. The trade-off
+  for low-vision users is an **Interface size** setting (85–150%): it scales whole
+  pages on the site and account, and the controls on the painting table. Settings
+  live in `studio_preferences` and a browser copy.
+- **iPad memory** (Nov 4, 2026): temporary canvases are emptied right after use.
+  iPad Safari reloads the page when canvas memory piles up.
+
 ## Open questions
 
 ### Painting workspace direction — 2026-10-29

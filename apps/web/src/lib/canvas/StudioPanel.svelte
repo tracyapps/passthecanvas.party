@@ -42,7 +42,7 @@
   }
 </script>
 <section bind:this={panel} class="studio-panel" class:palette={dock === 'palette'} class:guests={dock === 'guests'} class:notes={dock === 'notes' || dock === 'radio'} class:radio={dock === 'radio'} class:arrange={dock === 'arrange'} class:flow aria-label={label}
-  style={position ? `position:fixed;left:${position.x}px;top:${position.y}px;right:auto;bottom:auto;z-index:30;width:min(400px, calc(100vw - 16px));max-height:calc(100svh - 16px);` : ''}>
+  style={position ? `position:fixed;left:${position.x}px;top:${position.y}px;right:auto;bottom:auto;z-index:30;width:min(calc(400px * var(--ui-scale, 1)), calc(100vw - 16px));max-height:calc(100svh - 16px);` : ''}>
   <header>
     <button type="button" class="handle" aria-label={`Move ${label}. Drag or use arrow keys.`}
       onpointerdown={down} onpointermove={move} onpointerup={() => start = null} onpointercancel={() => start = null} onkeydown={keyboard}>{title}</button>
@@ -58,8 +58,8 @@
   <div class="panel-content">{@render children()}</div>
 </section>
 <style lang="scss">
-  .studio-panel { position: fixed; right: 16px; bottom: 32px; width: min(400px, calc(100vw - 24px)); max-width: calc(100vw - 16px); max-height: calc(100svh - 116px); overflow: auto; padding: 8px 12px 12px; background: #17130fef; color: #fff5e6; border: 1px solid #e6df54; border-radius: 8px; box-shadow: 0 8px 25px #0008; z-index: 12; }
-  .palette { left: 12px; top: 108px; bottom: auto; right: auto; width: min(420px, calc(100vw - 24px)); }
+  .studio-panel { position: fixed; right: 16px; bottom: 32px; width: min(calc(400px * var(--ui-scale, 1)), calc(100vw - 24px)); max-width: calc(100vw - 16px); max-height: calc(100svh - 116px); overflow: auto; padding: 8px 12px 12px; background: #17130fef; color: #fff5e6; border: 1px solid #e6df54; border-radius: 8px; box-shadow: 0 8px 25px #0008; z-index: 12; }
+  .palette { left: 12px; top: calc(var(--header-height, 88px) + 16px); bottom: auto; right: auto; width: min(calc(420px * var(--ui-scale, 1)), calc(100vw - 24px)); }
   .guests { right: 12px; top: 96px; bottom: auto; width: auto; max-width: min(560px, calc(100vw - 24px)); max-height: calc(100svh - 220px); padding: 2px 10px 8px; }
   .guests .handle { font-size: 15px; }
   .notes { left: 12px; right: auto; bottom: 96px; width: min(340px, calc(100vw - 24px)); background: #f3ead9f5; color: #2b1d12; border-color: #b9a483; }
@@ -76,5 +76,7 @@
   .position-controls > div { position: absolute; right: 0; top: 44px; z-index: 2; width: 200px; display: grid; grid-template-columns: 1fr 1fr; padding: 6px; background: #2c2118; border: 1px solid #b8a47b; box-shadow: 0 5px 16px #0009; }
   .position-controls button { border: 1px solid #84714e; margin: 2px; }
   .panel-content { container-type: inline-size; }
+  /* Interface size (Settings): the panel's insides scale; its spot on screen doesn't. */
+  .studio-panel > * { zoom: var(--ui-scale, 1); }
   .flow { position: relative; inset: auto; width: 100%; max-width: 100%; max-height: none; margin: 0; z-index: 12; }
 </style>

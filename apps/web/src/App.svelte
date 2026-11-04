@@ -7,6 +7,7 @@
 <script lang="ts">
   import type { Look, Presence } from '@ptc/shared';
   import { PartyConnection } from './lib/party/connection.svelte';
+  import { applyPreferences, loadPreferences } from './lib/prefs.svelte';
 
   const params = new URLSearchParams(location.search);
   const publicPath = location.pathname.replace(/\/$/, '') || '/';
@@ -23,6 +24,12 @@
   const archiveId = params.get('archive'); // "?archive=<id>" opens a saved party gallery
   const galleryRoom = params.get('gallery'); // "?gallery=cream-city#g=…" opens a shared gallery room
   const partyId = params.get('party') ?? `party-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Interface size from your settings: the whole page on the site and account
+  // pages; just the controls on the painting table (see prefs.svelte.ts).
+  applyPreferences();
+  void loadPreferences();
+  document.documentElement.classList.toggle('scaled-page', showPublicSite);
 
   const party = new PartyConnection();
   let joined = $state(false);

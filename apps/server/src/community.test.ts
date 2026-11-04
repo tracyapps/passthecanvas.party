@@ -50,7 +50,7 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     origin = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/account/community`;
   });
   beforeEach(async () => {
-    await db.query('TRUNCATE studio_profiles,studio_friendships,studio_scheduled_parties,studio_party_invites,studio_party_history,studio_avatars,studio_profile_photos,studio_calendar_feeds,studio_saved_galleries,studio_practice_pieces CASCADE');
+    await db.query('TRUNCATE studio_profiles,studio_friendships,studio_scheduled_parties,studio_party_invites,studio_party_history,studio_avatars,studio_profile_photos,studio_calendar_feeds,studio_saved_galleries,studio_practice_pieces,studio_preferences CASCADE');
     for (const user of ['alice','bob','eve']) await store.saveProfile(`user_${user}`, { ...profile, name: user });
   });
   afterAll(async () => {
@@ -248,14 +248,29 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     expect(kept.strokesKept).toBe(false);
     expect((await store.practice('user_alice')).find((p) => p.id === kept.id)?.hasStrokes).toBe(false);
     await store.deletePractice('user_alice', kept.id);
+    // Auto-saves: their own rows, pointing back at the saved piece; never overwrite it.
+    const auto = await (await put({ id: null, title: 'Doodle', shape: 'classic', image: png, thumb: png, strokes: null, autosave: true, draftOf: pieceId })).json();
+    expect(auto.id).not.toBe(pieceId);
+    const listed = await store.practice('user_alice');
+    expect(listed.find((p) => p.id === auto.id)).toMatchObject({ autosave: true, draftOf: pieceId });
+    expect(listed.find((p) => p.id === pieceId)).toMatchObject({ autosave: false });
+    expect((await put({ id: auto.id, title: 'Sneaky', shape: 'classic', image: png, thumb: png, strokes: null })).status).toBe(404);
+    const pngBytes = Buffer.from(png.split(',')[1]!, 'base64');
+    for (let i = 0; i < 21; i++) await store.savePractice('user_alice', { id: null, title: `Auto ${i}`, shape: 'classic', image: pngBytes, thumb: { contentType: 'image/png', bytes: pngBytes }, strokes: null, autosave: true, draftOf: null });
+    expect((await store.practice('user_alice')).filter((p) => p.autosave)).toHaveLength(20);
+    // Preferences: cleaned, saved, and read back.
+    const prefs = await fetch(origin + '/preferences', { method: 'PUT', headers, body: JSON.stringify({ autosaveMinutes: 5, interfaceScale: 9 }) });
+    const prefsBody = await prefs.json();
+    expect(prefsBody).toEqual({ autosaveMinutes: 5, interfaceScale: 1 });
+    expect(await (await fetch(origin + '/preferences', { headers })).json()).toEqual({ autosaveMinutes: 5, interfaceScale: 1 });
     expect((await put({ id: null, title: 'Bad', shape: 'classic', image: 'data:image/svg+xml;base64,PHN2Zy8+', thumb: png, strokes: null })).status).toBe(400);
-    expect((await store.practice('user_alice')).map((p) => p.title)).toEqual(['Doodle']);
+    expect((await store.practice('user_alice')).filter((p) => !p.autosave).map((p) => p.title)).toEqual(['Doodle']);
     await expect(store.practiceFile('user_eve', pieceId, 'image')).rejects.toThrow();
     const strokes = await fetch(`${origin}/practice/file?id=${pieceId}&kind=strokes`, { headers });
     expect((await strokes.json())[0]).toMatchObject({ id: 's1', painterId: 'me', round: 1 });
     await expect(store.deletePractice('user_eve', pieceId)).rejects.toThrow();
     await store.deletePractice('user_alice', pieceId);
-    expect(await store.practice('user_alice')).toEqual([]);
+    expect((await store.practice('user_alice')).filter((p) => !p.autosave)).toEqual([]);
   });
   it('only records galleries that exist', async () => {
     await expect(store.saveGallery('user_alice', 'A'.repeat(22), 'Nope')).rejects.toThrow();

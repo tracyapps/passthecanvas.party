@@ -43,14 +43,19 @@
     utility?: Snippet;
     /** A short message from the page (saved, downloaded…), shown in the header for a few seconds. */
     notice?: string;
+    /** A tiny save state shown by the menu ("Unsaved changes", "Auto-saved 10:42"). */
+    saveStatus?: string;
+    /** Cmd/Ctrl+S. */
+    onsave?: () => void;
   }
-  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '' }: Props = $props();
+  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '', saveStatus = '', onsave }: Props = $props();
   let canvas = $state<PartyCanvas>();
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
   export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null, ownBase = false) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl, ownBase); }
   export function snapshot(paintOnly = false): string { return canvas?.snapshot(paintOnly) ?? ''; }
   export function loadPicture(key: string, width: number, height: number, picture: CanvasImageSource, strokes: PaintedStroke[]) { canvas?.loadPicture(key, width, height, picture, strokes); }
   export function finishStroke() { canvas?.finishStroke(); }
+  export function busy(): boolean { return canvas?.busy() ?? false; }
   export function strokes(): PaintedStroke[] { return canvas?.strokes() ?? []; }
 
   function asset(name: string, extension = 'svg'): string { return images[`./supplies/study-${name}.${extension}`] ?? ''; }
@@ -190,18 +195,19 @@
   }
   onMount(() => {
     board = { width: bench.clientWidth, height: bench.clientHeight };
-    headerHeight = statusStrip.clientHeight;
+    headerHeight = statusStrip.getBoundingClientRect().height;
     const observer = new ResizeObserver(() => { board = { width: bench.clientWidth, height: bench.clientHeight }; });
     observer.observe(bench);
-    const headerObserver = new ResizeObserver(() => headerHeight = statusStrip.clientHeight);
+    const headerObserver = new ResizeObserver(() => headerHeight = statusStrip.getBoundingClientRect().height);
     headerObserver.observe(statusStrip);
     readMixes();
+    const unlockZoom = lockPageZoom();
     try {
       const raw = localStorage.getItem(WORKSPACE_KEY);
       if (raw) { const stored = decodeWorkspaces(raw, supplies.map(item => item.id)); savedViews = stored.views; selectedView = stored.selected; applyLayout(stored.current); }
     } catch { storageError = 'Saved views could not be read. Existing browser data has been kept.'; }
     storageReady = true;
-    return () => { observer.disconnect(); headerObserver.disconnect(); };
+    return () => { observer.disconnect(); headerObserver.disconnect(); unlockZoom(); };
   });
   function currentLayout(): WorkspaceLayout { return { positions: $state.snapshot(positions), order: [...order], dock, frame: frameOverride ? { x: frameOverride.x / windowWidth, y: frameOverride.y / windowHeight, width: frameOverride.width / windowWidth, height: frameOverride.height / windowHeight } : null, rotation }; }
   function applyLayout(layout: WorkspaceLayout) {
@@ -288,8 +294,35 @@
     announcement = 'Tool put down. The artwork is unchanged.';
   }
   function globalKey(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's' && onsave) { event.preventDefault(); onsave(); return; }
     if (event.key !== 'Escape') return;
     putDown();
+  }
+  /**
+   * On the painting table, pinching and double-tapping move the canvas, never
+   * the page: a pinch outside the canvas, a trackpad pinch over the controls or
+   * focusing a small text field must not zoom the interface. Keyboard zoom
+   * (Cmd/Ctrl +) still works, and Settings has an interface size for bigger controls.
+   */
+  function lockPageZoom(): () => void {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const before = meta?.content;
+    if (meta) meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+    const onCanvas = (target: EventTarget | null) => target instanceof Element && !!target.closest('.viewport');
+    const gesture = (event: Event) => event.preventDefault(); // Safari's page pinch
+    const touch = (event: TouchEvent) => { if (event.touches.length > 1 && !onCanvas(event.target)) event.preventDefault(); };
+    const wheel = (event: WheelEvent) => { if (event.ctrlKey && !onCanvas(event.target)) event.preventDefault(); }; // trackpad pinch
+    document.addEventListener('gesturestart', gesture);
+    document.addEventListener('gesturechange', gesture);
+    document.addEventListener('touchmove', touch, { passive: false });
+    window.addEventListener('wheel', wheel, { passive: false });
+    return () => {
+      if (meta && before !== undefined) meta.content = before;
+      document.removeEventListener('gesturestart', gesture);
+      document.removeEventListener('gesturechange', gesture);
+      document.removeEventListener('touchmove', touch);
+      window.removeEventListener('wheel', wheel);
+    };
   }
   function emptySpace(event: MouseEvent) { if (event.target === bench && !dragging) putDown(); }
   function select(tool: PaintingTool) {
@@ -459,6 +492,7 @@
     <!-- Messages live up here, never on the table where you paint. -->
     <p class="header-note" class:fresh={!!notice}>{notice || status}</p>
     <div class="party-bar">{@render partyBar?.()}</div>
+    {#if saveStatus}<p class="save-status" role="status">{saveStatus}</p>{/if}
     <button type="button" class="menu-button" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
   </header>
 
@@ -584,7 +618,7 @@
   .filter-defs { position: absolute; pointer-events: none; }
   /* manipulation: no double-tap-to-zoom, so quick taps between tools are never swallowed on a tablet. */
   .workbench { touch-action: manipulation; position: relative; width: 100%; height: 100svh; overflow: clip; isolation: isolate; background-image: linear-gradient(#1e0f0599, #1e0f0599), var(--wood); background-size: auto, 1000px; }
-  .status-strip { position: absolute; inset: 0 0 auto; min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 20px; background: #0c0806ed; z-index: 40; }
+  .status-strip { position: absolute; inset: 0 0 auto; min-height: calc(72px * var(--ui-scale, 1)); display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 20px; background: #0c0806ed; z-index: 40; }
   .mode { display: flex; gap: 4px; }
   .mode button { border: 1px solid #81704f; }
   .mode button[aria-pressed='true'] { background: #e8ddbc; color: #21160d; font-weight: 700; }
@@ -669,6 +703,10 @@
   .party-bar:empty { display: none; }
   .header-note { flex: 1 1 12rem; min-width: 0; margin: 0; font-size: 13px; line-height: 1.4; color: #e8ddcc; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
   .header-note.fresh { color: #fff6e5; font-weight: 700; }
+  .save-status { flex: none; margin: 0 0 0 auto; font-size: 11px; color: #d8ccb6; white-space: nowrap; }
+  .save-status + .menu-button { margin-left: 0; }
+  /* Interface size (Settings) scales the controls, not the table. */
+  .status-strip > *, .table-menu > * { zoom: var(--ui-scale, 1); }
   .menu-button { flex: none; margin-left: auto; min-height: 40px; padding: 6px 16px; font-size: 14px; }
   .account-group :global(.account-controls) { font-size: 13px; }
   .arrange-controls { display: grid; gap: 10px; }
@@ -680,7 +718,7 @@
   .arrange-hint { margin: 0; font-size: 12px; line-height: 1.45; }
   .arrange-actions { display: flex; gap: 8px; justify-content: space-between; }
   .workspace-menu > div { display: grid; gap: 8px; padding-top: 8px; }
-  .table-menu { position: fixed; inset: 96px 16px auto auto; width: 280px; max-height: calc(100svh - 112px); overflow: auto; margin: 0; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; border-radius: 6px; padding: 14px 16px 16px; box-shadow: 0 10px 28px #000a; }
+  .table-menu { position: fixed; inset: 96px 16px auto auto; width: min(calc(280px * var(--ui-scale, 1)), calc(100vw - 32px)); max-height: calc(100svh - 112px); overflow: auto; margin: 0; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; border-radius: 6px; padding: 14px 16px 16px; box-shadow: 0 10px 28px #000a; }
   .table-menu h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #e8ddcc; margin: 0 0 6px; }
   .menu-group + .menu-group { margin-top: 14px; padding-top: 14px; border-top: 1px solid #5d4d35; }
   .table-menu :global(.menu-group > button), .table-menu :global(.menu-group > a) { display: flex; align-items: center; width: 100%; min-height: 44px; margin: 4px 0; padding: 8px 12px; text-align: left; font: inherit; color: #fff5e5; background: #1c150fe8; border: 1px solid #9d8c67; border-radius: 4px; text-decoration: none; box-sizing: border-box; cursor: pointer; }

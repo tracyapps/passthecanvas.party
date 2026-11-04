@@ -11,6 +11,12 @@ html {
   color-scheme: dark;
 }
 
+// Interface size (Settings). Site and account pages scale as a whole; the
+// painting table scales only its controls (each component uses --ui-scale).
+html.scaled-page body {
+  zoom: var(--ui-scale, 1);
+}
+
 body {
   margin: 0;
   min-height: 100dvh;

@@ -249,7 +249,9 @@
       paper.fillRect(0, 0, flat.width, flat.height);
     }
     paper.drawImage(element, 0, 0);
-    return flat.toDataURL('image/png');
+    const png = flat.toDataURL('image/png');
+    flat.width = flat.height = 0; // free it now: iPad Safari reloads the page if canvas memory piles up
+    return png;
   }
 
   /**
@@ -272,6 +274,9 @@
   export function finishStroke() {
     stopStroke();
   }
+
+  /** True while a stroke is under way (so an auto-save can wait for you to lift the pen). */
+  export function busy(): boolean { return !!stroke; }
 
   /** Every stroke drawn on this screen so far, in order (for the time-lapse). */
   export function strokes(): PaintedStroke[] {
@@ -569,7 +574,7 @@
   .cursor { position: absolute; width: 18px; height: 18px; border: 2px solid #222; outline: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
   .navigator.inactive { visibility: hidden; pointer-events: none; }
   .view-controls { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; color: #fff5e4; font-size: 12px; }
-  .view-left, .view-right { display: flex; align-items: center; gap: 6px; }
+  .view-left, .view-right { display: flex; align-items: center; gap: 6px; zoom: var(--ui-scale, 1); }
   button, select { min-height: 32px; border: 1px solid #ad9b73; border-radius: 3px; background: #241a11e8; color: #fff5e4; font: inherit; font-size: 12px; padding: 4px 8px; }
   button:disabled { opacity: .45; }
   .rotate { display: inline-flex; align-items: center; gap: 4px; }

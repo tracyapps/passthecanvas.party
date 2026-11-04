@@ -5,7 +5,7 @@ import pg from 'pg';
 import { activeSessionUser } from './accounts.ts';
 import { CommunityError, postgresCommunityStore, type CommunityStore } from './community-store.ts';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { CANVAS_SHAPES, calendarFile, cleanPartySettings, sanitizeStroke, type CanvasShape, cleanSocialLink, INITIALS_COLOR_KEYS, MAX_SOCIAL_LINKS, type ProfileInput, type ScheduleInput } from '@ptc/shared';
+import { CANVAS_SHAPES, calendarFile, cleanPartySettings, cleanPreferences, sanitizeStroke, type CanvasShape, cleanSocialLink, INITIALS_COLOR_KEYS, MAX_SOCIAL_LINKS, type ProfileInput, type ScheduleInput } from '@ptc/shared';
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -110,6 +110,7 @@ export function createCommunityHandler(deps: Dependencies) {
         if (route === '/invitation' && TOKEN.test(url.searchParams.get('token') ?? '')) return send(res, 200, await db.sharedParty(url.searchParams.get('token')!));
         if (route === '/avatars') return send(res, 200, await db.avatars(user));
         if (route === '/practice') return send(res, 200, await db.practice(user));
+        if (route === '/preferences') return send(res, 200, await db.preferences(user));
         if (route === '/practice/file' && ID.test(url.searchParams.get('id') ?? '') && ['image', 'thumb', 'strokes'].includes(url.searchParams.get('kind') ?? '')) {
           const file = await db.practiceFile(user, url.searchParams.get('id')!, url.searchParams.get('kind') as 'image' | 'thumb' | 'strokes');
           res.writeHead(200, { 'Content-Type': file.contentType, 'Cache-Control': 'private, max-age=60', ...(file.gzip ? { 'Content-Encoding': 'gzip' } : {}) }).end(file.bytes);
@@ -131,7 +132,7 @@ export function createCommunityHandler(deps: Dependencies) {
       const big = route === '/photo' ? 600_000 : route === '/avatars' ? 250_000 : route === '/practice' ? 24_000_000 : 8192;
       const value = await body(req, big);
       if (route === '/profile' && req.method === 'PUT' && validProfile(value)) { await db.saveProfile(user, { ...value, name: value.name.trim(), bio: value.bio.trim(), links: value.links.map((link) => cleanSocialLink(link)!) }); return send(res, 200, { saved: true }); }
-      if (route === '/practice' && req.method === 'PUT' && keys(value, ['id', 'title', 'shape', 'image', 'thumb', 'strokes']) && (value.id === null || ID.test(String(value.id))) && text(value.title, 1, 80) && typeof value.shape === 'string' && value.shape in CANVAS_SHAPES) {
+      if (route === '/practice' && req.method === 'PUT' && keys(value, ['id', 'title', 'shape', 'image', 'thumb', 'strokes', 'autosave', 'draftOf']) && (value.id === null || ID.test(String(value.id))) && (value.autosave === undefined || typeof value.autosave === 'boolean') && (value.draftOf === undefined || value.draftOf === null || ID.test(String(value.draftOf))) && text(value.title, 1, 80) && typeof value.shape === 'string' && value.shape in CANVAS_SHAPES) {
         const shape = value.shape as CanvasShape;
         const image = decodePhoto(value.image, 8_000_000);
         const thumb = decodePhoto(value.thumb, 300_000);
@@ -142,9 +143,10 @@ export function createCommunityHandler(deps: Dependencies) {
         const checked = value.strokes === null ? null : cleanPracticeStrokes(value.strokes, shape);
         if (checked && 'reason' in checked) console.warn(`[practice] strokes not kept (${checked.reason})`);
         const strokes = checked && 'strokes' in checked ? checked.strokes : null;
-        const saved = await db.savePractice(user, { id: value.id as string | null, title: (value.title as string).trim(), shape, image: image.bytes, thumb, strokes });
+        const saved = await db.savePractice(user, { id: value.id as string | null, title: (value.title as string).trim(), shape, image: image.bytes, thumb, strokes, autosave: value.autosave === true, draftOf: (value.draftOf as string | null | undefined) ?? null });
         return send(res, 200, { ...saved, strokesKept: value.strokes === null ? null : !!strokes });
       }
+      if (route === '/preferences' && req.method === 'PUT' && keys(value, ['autosaveMinutes', 'interfaceScale'])) return send(res, 200, await db.savePreferences(user, cleanPreferences(value)));
       if (route === '/photo' && req.method === 'PUT' && keys(value, ['image'])) {
         const photo = decodePhoto(value.image);
         if (!photo) throw new CommunityError(400, 'Use a PNG, JPEG or WebP image under 400 KB.');

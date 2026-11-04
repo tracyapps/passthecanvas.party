@@ -36,6 +36,9 @@ export class TurnLayers {
   reset(width = this.width, height = this.height) {
     this.width = width;
     this.height = height;
+    // Free the old layers' pixels right away (iPad Safari doesn't wait for
+    // garbage collection, and reloads the page when canvas memory runs out).
+    for (const layer of this.layers) { layer.surface.width = 0; layer.surface.height = 0; }
     this.layers = [];
   }
 

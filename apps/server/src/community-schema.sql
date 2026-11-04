@@ -112,3 +112,13 @@ CREATE TABLE IF NOT EXISTS studio_practice_pieces (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS studio_practice_user ON studio_practice_pieces(user_id, updated_at);
+-- Auto-saves are kept apart from saved pieces (their own tab, their own limit).
+-- draft_of points at the saved piece an auto-save was made from, if any.
+ALTER TABLE studio_practice_pieces ADD COLUMN IF NOT EXISTS autosave boolean NOT NULL DEFAULT false;
+ALTER TABLE studio_practice_pieces ADD COLUMN IF NOT EXISTS draft_of uuid REFERENCES studio_practice_pieces(id) ON DELETE SET NULL;
+-- Personal app settings (auto-save timing, interface size…), one small JSON per person.
+CREATE TABLE IF NOT EXISTS studio_preferences (
+  user_id text PRIMARY KEY REFERENCES studio_profiles(user_id) ON DELETE CASCADE,
+  prefs jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);

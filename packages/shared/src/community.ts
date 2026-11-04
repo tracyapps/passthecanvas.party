@@ -348,7 +348,25 @@ export interface ScheduledParty {
 }
 export interface PartyHistory { id: string; title: string; endedAt: string; artworkCount: number }
 /** A solo piece from the practice table (never shown to anyone else). */
-export interface PracticePiece { id: string; title: string; shape: string; width: number; height: number; hasStrokes: boolean; createdAt: string; updatedAt: string }
+export interface PracticePiece { id: string; title: string; shape: string; width: number; height: number; hasStrokes: boolean; createdAt: string; updatedAt: string; autosave: boolean; draftOf: string | null }
+/** Personal app settings. Missing values fall back to these defaults. */
+export interface StudioPreferences {
+  /** Minutes between auto-saves of a practice piece. 0 = off. */
+  autosaveMinutes: number;
+  /** How big the interface (buttons, panels, text) is drawn: 1 = normal. */
+  interfaceScale: number;
+}
+export const DEFAULT_PREFERENCES: StudioPreferences = { autosaveMinutes: 2, interfaceScale: 1 };
+export const AUTOSAVE_CHOICES = [0, 1, 2, 5, 10, 15] as const;
+export const INTERFACE_SCALES = [0.85, 1, 1.15, 1.3, 1.5] as const;
+/** Keep only known settings with allowed values. */
+export function cleanPreferences(value: unknown): StudioPreferences {
+  const raw = (value && typeof value === 'object' ? value : {}) as Partial<StudioPreferences>;
+  return {
+    autosaveMinutes: (AUTOSAVE_CHOICES as readonly number[]).includes(Number(raw.autosaveMinutes)) ? Number(raw.autosaveMinutes) : DEFAULT_PREFERENCES.autosaveMinutes,
+    interfaceScale: (INTERFACE_SCALES as readonly number[]).includes(Number(raw.interfaceScale)) ? Number(raw.interfaceScale) : DEFAULT_PREFERENCES.interfaceScale
+  };
+}
 /** A party gallery (archive) the person saved or was part of. */
 export interface SavedGallery { archiveId: string; title: string; savedAt: string }
 export interface CommunityHome {
