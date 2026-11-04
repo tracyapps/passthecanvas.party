@@ -1,5 +1,6 @@
 <script lang="ts">
   import PublicSupport from './PublicSupport.svelte';
+  import TiltLogo from './TiltLogo.svelte';
   import { site, navigation, pages, partySteps, workbench } from './public-site-content';
   import '../../styles/public-site.scss';
   let { path = '/' }: { path?: string } = $props();
@@ -26,7 +27,7 @@
 <div class="public-site">
   <a class="public-skip" href="#main-content">Skip to content</a>
   <header class="site-header">
-    <a class="wordmark" href="/" aria-label="Pass the Canvas home"><svg viewBox="0 0 46 46" aria-hidden="true"><path d="M7 6l30 3-2 29-29-2z" fill="#f0bb36" stroke="currentColor" stroke-width="2"/><path d="M14 15q9-9 17 1t-9 7-8 9" fill="none" stroke="#bc395f" stroke-width="5" stroke-linecap="round"/></svg><span>PASS THE<br/>CANVAS<span class="wordmark-dot">.party</span></span></a>
+    <TiltLogo />
     <nav class="desktop-nav" aria-label="Main navigation">{#each navigation as link}<a href={link.href} aria-current={path === link.href ? 'page' : undefined}>{link.label}</a>{/each}</nav>
     <div class="header-actions"><button class="theme-toggle" type="button" aria-label="Dark appearance" aria-pressed={dark} onclick={toggleTheme}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg><span>{dark ? 'Dark' : 'Light'}</span></button><a href="/account" class="account-link">Your studio</a><a href="/try" class="paint-link">Try the paints <span aria-hidden="true">↗</span></a></div>
     <details class="mobile-nav"><summary>Explore</summary><nav aria-label="Mobile navigation">{#each navigation as link}<a href={link.href} aria-current={path === link.href ? 'page' : undefined}>{link.label}</a>{/each}<a href="/account">Your studio</a><a href="/support">Support the studio</a></nav></details>

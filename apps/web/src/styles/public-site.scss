@@ -38,6 +38,7 @@
   .public-skip { position: absolute; top: -100px; left: 16px; padding: 12px 20px; background: #fff4dc; z-index: 100; }
   .public-skip:focus { top: 10px; }
   .site-header { position: relative; z-index: 10; min-height: 102px; padding: 20px clamp(20px, 4vw, 64px); display: flex; gap: 24px; align-items: center; background: #f5edda url('/site/paper.svg'); border-bottom: 1px solid #31251c26; }
+  .tilt-logo { --logo-height: 78px; }
   .wordmark { display: flex; align-items: center; gap: 10px; line-height: .96; font-family: 'Viga', sans-serif; font-weight: 800; letter-spacing: -.055em; font-size: 22px; text-decoration: none; flex-shrink: 0; }
   .wordmark svg { width: 44px; height: 48px; transform: rotate(-5deg); }
   .wordmark-dot { font-family: 'Square Peg', cursive; color: #993f2e; font-size: 19px; letter-spacing: -.02em; font-weight: 700; padding-left: 3px; }
@@ -177,6 +178,7 @@
     font-size: 16px;
     .site-header { min-height: 82px; padding: 14px 18px; gap: 14px; flex-wrap: wrap; }
     .wordmark { font-size: 19px; gap: 6px; margin-right: auto; }
+    .tilt-logo { --logo-height: 60px; margin-right: auto; }
     .wordmark svg { width: 34px; height: 38px; }
     .wordmark-dot { font-size: 16px; }
     .desktop-nav { display: none; }
@@ -252,6 +254,7 @@ html[data-site-theme='dark'] .public-site {
 @media (max-width: 420px) {
   .public-site .site-header { column-gap: 8px; }
   .public-site .wordmark { font-size: 17px; }
+  .public-site .tilt-logo { --logo-height: 50px; }
   .public-site .wordmark svg { width: 28px; height: 34px; }
   .public-site .header-actions .paint-link { gap: 4px; padding-inline: 8px; }
 }
