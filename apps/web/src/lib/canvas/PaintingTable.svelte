@@ -57,6 +57,7 @@
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
   export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null, ownBase = false) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl, ownBase); }
   export function snapshot(paintOnly = false): string { return canvas?.snapshot(paintOnly) ?? ''; }
+  export function snapshotBlob(paintOnly = false): Promise<Blob> { return canvas ? canvas.snapshotBlob(paintOnly) : Promise.reject(new Error('No canvas yet.')); }
   export function loadPicture(key: string, width: number, height: number, picture: CanvasImageSource, strokes: PaintedStroke[]) { canvas?.loadPicture(key, width, height, picture, strokes); }
   export function finishStroke() { canvas?.finishStroke(); }
   export function busy(): boolean { return canvas?.busy() ?? false; }

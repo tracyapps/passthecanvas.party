@@ -256,6 +256,25 @@
   }
 
   /**
+   * The picture as a PNG file, encoded off the main thread (canvas.toBlob), so
+   * saving never freezes the page mid-stroke the way toDataURL does on tablets.
+   */
+  export function snapshotBlob(paintOnly = false): Promise<Blob> {
+    flush(true);
+    redraw();
+    const flat = document.createElement('canvas');
+    flat.width = documentWidth;
+    flat.height = documentHeight;
+    const paper = flat.getContext('2d')!;
+    if (!paintOnly) { paper.fillStyle = '#e1dfda'; paper.fillRect(0, 0, flat.width, flat.height); }
+    paper.drawImage(element, 0, 0);
+    return new Promise((resolve, reject) => flat.toBlob((blob) => {
+      flat.width = flat.height = 0;
+      if (blob) resolve(blob); else reject(new Error('The picture could not be prepared.'));
+    }, 'image/png'));
+  }
+
+  /**
    * Reopen a saved piece from its picture: instant, however much was painted.
    * The picture becomes your own paint (every tool can work it), and the saved
    * strokes are kept as history for the next save, without redrawing them one

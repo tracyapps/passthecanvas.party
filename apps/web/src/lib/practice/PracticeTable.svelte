@@ -87,7 +87,7 @@
     document.addEventListener('visibilitychange', back);
     const hidden = () => { if (document.visibilityState === 'hidden' && prefs.autosaveMinutes && signedIn && unsaved && !saveKind && !table?.busy()) void autosave(); };
     document.addEventListener('visibilitychange', hidden);
-    return () => { removeEventListener('beforeunload', warn); clearInterval(timer); clearInterval(follow); clearInterval(ticking); document.removeEventListener('visibilitychange', back); document.removeEventListener('visibilitychange', hidden); };
+    return () => { removeEventListener('beforeunload', warn); clearInterval(timer); clearInterval(follow); clearInterval(ticking); document.removeEventListener('visibilitychange', back); document.removeEventListener('visibilitychange', hidden); packer?.terminate(); packer = null; };
   });
 
   // Opening: anything slower than a moment gets a full-screen progress card.
@@ -201,43 +201,100 @@
     } catch { /* offline for a moment: try again next time */ }
   }
 
-  /** A smaller copy for the practice pieces grid. */
-  async function thumbnail(png: string): Promise<string> {
-    const image = new Image();
-    image.src = png;
-    await image.decode();
-    const scale = 480 / Math.max(image.naturalWidth, image.naturalHeight);
+  // ---- Saving without freezing the page ----
+  // Everything heavy happens off the main thread (image encoding, gzip, base64),
+  // and strokes are packed incrementally: only those new since the last save.
+  // (Done all at once, a save froze an iPad for a second or more, mid-stroke.)
+  function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error ?? new Error('That could not be read.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+  function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob | null> {
+    return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+  }
+  /** A smaller copy for the practice pieces grid, on paper. */
+  async function thumbnail(picture: Blob): Promise<string> {
+    const image = await createImageBitmap(picture);
+    const scale = 480 / Math.max(image.width, image.height);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(image.naturalWidth * scale);
-    canvas.height = Math.round(image.naturalHeight * scale);
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
     const small = canvas.getContext('2d')!;
     small.fillStyle = '#e1dfda'; // the saved picture is paint only; previews show it on paper
     small.fillRect(0, 0, canvas.width, canvas.height);
     small.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const webp = canvas.toDataURL('image/webp', 0.82);
-    const result = webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.82);
+    image.close();
+    let blob = await canvasBlob(canvas, 'image/webp', 0.82);
+    if (!blob || blob.type !== 'image/webp') blob = await canvasBlob(canvas, 'image/jpeg', 0.82); // Safari can't always make WebP
     canvas.width = canvas.height = 0; // free it now (iPad Safari)
-    return result;
+    if (!blob) throw new Error('The preview could not be made.');
+    return blobToDataUrl(blob);
   }
 
-  /** Strokes, gzipped in the browser and sent as base64 (they can be big). */
+  /** The strokes as JSON, reusing what was already turned into text last time (strokes never change once painted). */
+  let packed = { first: null as PaintedStroke | null, count: 0, text: '' };
+  function strokesJson(strokes: PaintedStroke[]): string {
+    if (strokes[0] !== packed.first || strokes.length < packed.count) packed = { first: strokes[0] ?? null, count: 0, text: '' };
+    if (strokes.length > packed.count) {
+      const more = strokes.slice(packed.count).map((stroke) => JSON.stringify(stroke)).join(',');
+      packed.text = packed.text ? `${packed.text},${more}` : more;
+      packed.count = strokes.length;
+    }
+    return `[${packed.text}]`;
+  }
+  /** Strokes, gzipped and sent as base64 (they can be big). Done in a worker when possible, so the brush never freezes. */
+  let packer: Worker | null | undefined;
+  let packerSent = { first: null as PaintedStroke | null, count: 0 };
+  let packerJob = 0;
+  function packInWorker(strokes: PaintedStroke[]): Promise<string> | null {
+    if (packer === undefined) {
+      try { packer = new Worker(new URL('./pack-strokes.worker.ts', import.meta.url), { type: 'module' }); } catch { packer = null; }
+    }
+    if (!packer) return null;
+    const worker = packer;
+    const reset = strokes[0] !== packerSent.first || strokes.length < packerSent.count;
+    if (reset) packerSent = { first: strokes[0] ?? null, count: 0 };
+    const add = strokes.slice(packerSent.count); // plain objects, copied to the worker as-is
+    const id = ++packerJob;
+    return new Promise((resolve, reject) => {
+      const done = (event: MessageEvent<{ id: number; packed?: string; error?: string }>) => {
+        if (event.data.id !== id) return;
+        worker.removeEventListener('message', done);
+        worker.removeEventListener('error', failed);
+        if (event.data.packed !== undefined) resolve(event.data.packed);
+        else { packerSent = { first: null, count: 0 }; reject(new Error(event.data.error)); }
+      };
+      const failed = () => { worker.removeEventListener('message', done); packer = null; packerSent = { first: null, count: 0 }; reject(new Error('Worker failed.')); };
+      worker.addEventListener('message', done);
+      worker.addEventListener('error', failed);
+      worker.postMessage({ id, reset, add });
+      packerSent = { first: strokes[0] ?? null, count: strokes.length };
+    });
+  }
   async function packStrokes(strokes: PaintedStroke[]): Promise<string | null> {
     if (!strokes.length || typeof CompressionStream === 'undefined') return null;
-    const stream = new Blob([JSON.stringify(strokes)]).stream().pipeThrough(new CompressionStream('gzip'));
-    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return btoa(binary);
+    const inWorker = packInWorker(strokes);
+    if (inWorker) {
+      try { return await inWorker; } catch { /* fall back to doing it here */ }
+    }
+    const gzipped = await new Response(new Blob([strokesJson(strokes)]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+    const url = await blobToDataUrl(gzipped);
+    return url.slice(url.indexOf(',') + 1);
   }
 
   /** Picture + preview + strokes, ready to send. */
   async function capture() {
     table.finishStroke();
     const at = revision;
-    // Paint only (see-through paper), so reopening lays it back on the textured paper.
-    const image = table.snapshot(true);
     const strokes = table.strokes();
-    return { at, image, thumb: await thumbnail(image), strokes: pictureOnly ? null : await packStrokes(strokes) };
+    // Paint only (see-through paper), so reopening lays it back on the textured paper.
+    const picture = await table.snapshotBlob(true);
+    const [image, thumb, packedStrokes] = await Promise.all([blobToDataUrl(picture), thumbnail(picture), pictureOnly ? Promise.resolve(null) : packStrokes(strokes)]);
+    return { at, image, thumb, strokes: packedStrokes };
   }
   function captured(at: number) {
     capturedRevision = Math.max(capturedRevision, at);

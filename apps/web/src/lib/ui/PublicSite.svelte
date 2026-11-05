@@ -1,6 +1,7 @@
 <script lang="ts">
   import PublicSupport from './PublicSupport.svelte';
   import TiltLogo from './TiltLogo.svelte';
+  import LegalPages from './LegalPages.svelte';
   import PartyJourney from './PartyJourney.svelte';
   import { site, navigation, pages, partySteps, workbench } from './public-site-content';
   import '../../styles/public-site.scss';
@@ -109,29 +110,7 @@
     <section class="account-opening studio-wall wall-section">{#await import('../account/studio/AccountApp.svelte')}<p>Opening your studio…</p>{:then { default: AccountApp }}<AccountApp />{/await}</section>
 
   {:else if path === '/privacy' || path === '/terms'}
-    <article class="legal-page wall-section"><p class="eyebrow">The studio noticeboard · Updated October 29, 2026</p><h1>{path === '/privacy' ? 'Privacy, in' : 'A few studio'}<br/><em>{path === '/privacy' ? 'plain language.' : 'ground rules.'}</em></h1>
-    {#if path === '/privacy'}
-      <p class="lead">The public preview is for trying things. Your painting isn’t being watched, uploaded or added to a public gallery.</p>
-      <h2>What stays here</h2><p>The public paint table keeps marks in your current browser tab’s memory. It does not save them to your account or upload them. Leaving or reloading the page clears them. Example gallery playback is sample artwork, not another person’s private session.</p>
-      <p>Your light or dark appearance choice is saved in this browser so it stays the same when you return. It is not sent to an account or used for tracking.</p>
-      <h2>No call recording. No advertising trackers.</h2><p>We do not record, store or analyze anyone’s camera video or microphone audio. This preview has no advertising trackers or application analytics. The future art replay feature records artwork operations, not your call.</p>
-      <h2>Hosting and basic requests</h2><p>Loading the site sends ordinary web requests, including an IP address, to the hosting provider. The planned public host is Vercel; its service may keep operational logs. Fonts and site images are served with the website. Interactive 360° viewing uses your device’s graphics capabilities and does not request camera or microphone access.</p>
-      <h2>If you choose to sign in</h2><p>When account sign-in is configured, Clerk handles email verification and optional Discord sign-in. Signing in sends the information needed for that flow to Clerk and, if you choose it, Discord. We do not need your Discord messages or server membership. When the account server is enabled, it stores your profile (name, a short bio, an optional photo, the color behind your initials and any links you add), the cutout avatars you make, saved layouts, friend requests and connections, party plans and RSVPs under your verified account identifier. A profile photo is shrunk and re-saved in your browser before upload, which removes camera details such as location, and only people who can see your profile can see it. Your calendar subscription link is private to you: anyone holding it can read your party titles and times, and you can replace it any time. Camera and microphone choices from the device check stay in your browser. Profiles are private by default. A shared profile link is visible to signed-in visitors when you enable it; friends and people you request can see your profile. Your email address is not displayed on profiles or guest lists.</p>
-      <h2>Invitations and reminders</h2><p>Account invitations appear in your studio. Shared invitation links reveal the party details, not the guest list; the host can replace or cancel them. Manual email invitations open your own email app. When Resend delivery is enabled, only connected friends who have opted into email invitations and people who have opted into reminders for parties they host or accept are emailed. The server gets your verified primary email from Clerk for delivery; it is not copied into profile cards. Turn either preference off in your profile. A calendar download includes an optional 15-minute reminder handled by your calendar after import. Calendar entries need updating if a party changes.</p><h2>Account launch status</h2><p>Account services and email delivery are not enabled on this public preview yet. Unsigned profile and avatar previews stay in this tab. Before hosted account history and artwork launch, we will publish retention and deletion choices and verify account isolation and delivery.</p>
-      <h2>Optional support and contact</h2><p>Support links take you to Cash App, Venmo or PayPal. We do not embed a checkout, track payment clicks or receive your payment details through this website. Copy buttons only put the displayed public handle on your clipboard when you ask. The contact form opens on tapps.design; information you choose to submit there is handled on that site.</p>
-      <h2>Party artwork and sharing</h2><p>Hosted party rooms, durable artwork history and account galleries are not enabled in this public preview. Before those launch, this notice will describe retention, deletion, party access and sharing choices. Artwork will not quietly become a public gallery entry.</p>
-      <h2>Questions or data requests</h2><p>For privacy questions or account-data requests, <a href={site.contactUrl} rel="noopener noreferrer">contact Tapps using the contact form</a>.</p>
-      <p><a href="https://vercel.com/legal/privacy-policy" rel="noopener noreferrer">Vercel privacy policy</a> · <a href="https://clerk.com/legal/privacy" rel="noopener noreferrer">Clerk privacy policy</a> · <a href="https://discord.com/privacy" rel="noopener noreferrer">Discord privacy policy</a></p>
-    {:else}
-      <p class="lead">Be kind. Make room for other people. Leave a little space for the weird idea.</p>
-      <h2>This is a public preview</h2><p>Pass the Canvas is an independent project in active development. Tools and pages may change, stop working or be reset. The public paint preview is temporary and does not save your work. Do not use it as the only copy of anything important.</p>
-      <h2>Your work is yours</h2><p>Trying the paint table does not transfer ownership of your artwork to us. Don’t use the service to violate someone else’s rights. Future shared-art publishing and export features will have clear contribution and sharing choices before launch.</p>
-      <h2>Make it a place people can enjoy</h2><p>No harassment, hateful content, threats, impersonation or attempts to interfere with the service. Respect privacy and consent. Nobody owes the group a camera feed, personal details or a particular level of artistic skill.</p>
-      <h2>Examples and availability</h2><p>The gallery currently contains illustrative studio examples. It is not a record of real customer parties. Descriptions of planned party and replay features explain the intended experience, not a promise that those features are available now.</p>
-      <h2>Accounts and donations</h2><p>If enabled, sign-in is handled by the displayed account provider. Support is optional: Cash App, Venmo and PayPal links open their own services, where you choose an amount. This website does not process payments or store payment details. The payment provider’s terms and privacy policy apply there.</p>
-      <h2>Contact and updates</h2><p>Questions? <a href={site.contactUrl} rel="noopener noreferrer">Get in touch with Tapps</a>.</p><p>These are the current preview’s studio rules. Additional terms will be presented before enabling paid features or hosted party-art storage.</p>
-    {/if}
-    </article>
+    <LegalPages page={path === '/privacy' ? 'privacy' : 'terms'} />
   {/if}
   </main>
 
