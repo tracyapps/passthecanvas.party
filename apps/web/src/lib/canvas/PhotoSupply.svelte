@@ -1,7 +1,7 @@
 <script lang="ts">
-  let { image, label, selected = false, muted = false, compact = false, moving = false, masked = false, hovered = false, unavailableReason = '', hit = [0, 0, 100, 100], onclick, onpointerdown, onpointermove, onpointerup, onkeydown }: {
+  let { image, label, selected = false, muted = false, compact = false, tile = false, moving = false, masked = false, hovered = false, unavailableReason = '', hit = [0, 0, 100, 100], onclick, onpointerdown, onpointermove, onpointerup, onkeydown }: {
     image: string; label: string; selected?: boolean; muted?: boolean; unavailableReason?: string;
-    compact?: boolean; moving?: boolean; hit?: number[]; onclick: () => void;
+    compact?: boolean; tile?: boolean; moving?: boolean; hit?: number[]; onclick: () => void;
     /** Mouse and touch pick this supply by its shape (the table hit-tests the photo's outline); the button stays for keyboard and screen readers. */
     masked?: boolean;
     /** The pointer is over this supply's shape: show its name. */
@@ -12,7 +12,7 @@
   const descriptionId = $props.id();
 </script>
 <!-- The photo may overhang its target; transparent image boxes must never steal a neighbor's clicks. -->
-<div class="photo" class:selected class:muted class:compact class:moving class:masked class:hovered>
+<div class="photo" class:selected class:muted class:compact class:tile class:moving class:masked class:hovered>
   <img src={image} alt="" draggable="false" />
   <button type="button" aria-label={label} aria-describedby={unavailableReason ? descriptionId : undefined}
     aria-disabled={!!unavailableReason} aria-pressed={selected} {onclick} {onpointerdown} {onpointermove} {onpointerup} {onkeydown} onpointercancel={onpointerup}
@@ -34,5 +34,10 @@
   .moving button { touch-action: none; cursor: grab; }
   .compact button { inset: 0 !important; width: 100% !important; height: 100% !important; }
   .compact .name { bottom: 0; left: 0; right: 0; transform: none; opacity: 1; margin: auto; width: auto; max-width: 100%; padding: 4px; font-size: 12px; }
-  .compact img { height: calc(100% - 36px); object-fit: contain; }
+  .compact img { height: calc(100% - 36px); object-fit: contain; filter: none; }
+  .compact.muted img { filter: saturate(0.35) brightness(0.75); }
+  .compact.selected button { box-shadow: inset 0 0 0 2px #f5f325; border-radius: 4px; }
+  .tile { background: #38291d; border: 1px solid #897451; border-radius: 4px; }
+  .tile img { padding: 5px; }
+  @media (prefers-reduced-motion: reduce) { img { transition: none; } }
 </style>

@@ -13,14 +13,25 @@ import { accountRequest, accountState, initializeAccount } from './account/accou
 
 const KEY = 'ptc:preferences';
 
-function readLocal(): StudioPreferences {
-  try { return cleanPreferences(JSON.parse(localStorage.getItem(KEY) ?? '{}')); } catch { return { ...DEFAULT_PREFERENCES }; }
+function storageKey(user: string | null) { return user ? `${KEY}:${user}` : KEY; }
+function readLocal(user: string | null): StudioPreferences {
+  try { return cleanPreferences(JSON.parse(localStorage.getItem(storageKey(user)) ?? '{}')); } catch { return { ...DEFAULT_PREFERENCES }; }
 }
-function writeLocal() {
-  try { localStorage.setItem(KEY, JSON.stringify($state.snapshot(prefs))); } catch { /* private mode: settings last for this visit */ }
+function writeLocal(user: string | null, value: StudioPreferences) {
+  try { localStorage.setItem(storageKey(user), JSON.stringify(value)); } catch { /* private mode: settings last for this visit */ }
 }
 
-export const prefs = $state<StudioPreferences>(readLocal());
+let activeUser = accountState.userId;
+let revision = 0;
+export const prefs = $state<StudioPreferences>(readLocal(activeUser));
+
+function useAccount(user: string | null) {
+  if (activeUser === user) return;
+  activeUser = user;
+  revision += 1;
+  Object.assign(prefs, readLocal(user));
+  applyPreferences();
+}
 
 /** Puts the interface size on the page (as --ui-scale). */
 export function applyPreferences() {
@@ -28,23 +39,41 @@ export function applyPreferences() {
 }
 
 let loadedFor: string | null | undefined;
-/** Fetch your account's settings once you're signed in (the browser copy is used until then). */
+/** Fetch the current artist's settings once per sign-in. */
 export async function loadPreferences(): Promise<void> {
+  useAccount(accountState.userId);
   await initializeAccount();
   const user = accountState.userId;
-  if (!user || loadedFor === user) return;
+  useAccount(user);
+  if (loadedFor === user) return;
   loadedFor = user;
+  if (!user) return;
+  const before = revision;
   try {
-    Object.assign(prefs, cleanPreferences(await accountRequest<StudioPreferences>('community/preferences')));
-    writeLocal();
+    const saved = cleanPreferences(await accountRequest<StudioPreferences>('community/preferences'));
+    // A slow load should never overwrite newer edits or another artist's settings.
+    if (before !== revision || user !== accountState.userId) return;
+    Object.assign(prefs, saved);
+    writeLocal(user, saved);
     applyPreferences();
-  } catch { /* offline or no profile yet: keep the browser copy */ }
+  } catch { /* offline or no profile yet: keep this artist's browser copy */ }
 }
 
-/** Change settings: applied right away, then saved to the browser and your account. */
+let pendingSave: Promise<unknown> = Promise.resolve();
+/** Change settings immediately and write account changes in the same order. */
 export async function savePreferences(next: Partial<StudioPreferences>): Promise<void> {
-  Object.assign(prefs, cleanPreferences({ ...$state.snapshot(prefs), ...next }));
-  writeLocal();
+  const user = accountState.userId;
+  useAccount(user);
+  const saved = cleanPreferences({ ...$state.snapshot(prefs), ...next });
+  revision += 1;
+  Object.assign(prefs, saved);
+  writeLocal(user, saved);
   applyPreferences();
-  if (accountState.userId) await accountRequest('community/preferences', 'PUT', $state.snapshot(prefs));
+  if (!user) return;
+  const request = pendingSave.catch(() => {}).then(() => {
+    if (accountState.userId !== user) throw new Error('The signed-in account changed.');
+    return accountRequest('community/preferences', 'PUT', saved);
+  });
+  pendingSave = request;
+  await request;
 }

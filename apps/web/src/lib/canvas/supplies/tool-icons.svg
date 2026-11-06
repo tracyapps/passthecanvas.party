@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- All symbols use the same 24-unit grid and fit a 16–24px visual slot. -->
+  <symbol id="round" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M21 2a2 2 0 0 1 1 3L12 15l-3-3L19 2a2 2 0 0 1 2 0ZM8 13l3 3c0 5-5 5-9 6 2-2 1-7 6-9Z"/>
+  </symbol>
+  <symbol id="flat" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m14 11 6-9 3 2-7 10-2 4-5-4 5-3ZM8 15l6 4-3 4-9-6 3-4Z"/>
+  </symbol>
+  <symbol id="detail" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m20 2 2 2L10 16l-2-2ZM7 15l2 2-6 5 2-5Z"/>
+  </symbol>
+  <symbol id="fan" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M2 8a11 11 0 0 1 15-6l-4 10 8 8-2 2-9-9Z"/>
+    <path stroke="currentColor" stroke-width="1.5" d="m11 13-4-9m4 8 1-10"/>
+  </symbol>
+  <symbol id="foam" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m3 2 12 2-2 8-3 2 1 7-3 1-1-8-3-3Z"/>
+    <path stroke="currentColor" stroke-width="1.5" d="m16 12 5 8"/>
+  </symbol>
+  <symbol id="knife" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M22 2c-1 6-3 9-8 11l-3-3c2-5 5-7 11-8ZM3 21a2 2 0 0 1 0-3l5-5 3 3-5 5a2 2 0 0 1-3 0Z"/>
+    <path d="m9 14 4-3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  </symbol>
+  <symbol id="airbrush" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M7 10h16v3H7l-3-1.5Zm4-7h7l-2 6h-3Zm2 11h4l-2 6h-3Z"/>
+    <path fill="currentColor" d="M2 8h1.5v1.5H2Zm-1 3h1.5v1.5H1Zm1 3h1.5v1.5H2Z"/>
+  </symbol>
+  <symbol id="pencil" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m17 3 4 4 2-2-4-4ZM4 16 16 4l4 4L8 20l-6 2Z"/>
+  </symbol>
+  <symbol id="charcoal" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m6 5 5-2 4 3-1 13-4 3-5-4Zm11 2 3-2 2 2-2 13-4 1Z"/>
+    <path fill="currentColor" d="m2 18 2 1-1 2H1Z"/>
+  </symbol>
+  <symbol id="pastel" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m16 2 4 1 2 4-5 6-7-5ZM9 9l7 5-5 6-7-5ZM3 16l7 5-3 2-6-4Z"/>
+  </symbol>
+  <symbol id="sponge" viewBox="0 0 24 24">
+    <path fill="currentColor" fill-rule="evenodd" d="M2 11q-1-4 4-6 2-3 6-1 5-1 7 3 5 1 3 6 1 4-4 5-2 4-7 2-6 1-8-3-3-2-1-6Zm5-3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm8 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm-5 5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>
+  </symbol>
+  <symbol id="burnisher" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M2 10a2 2 0 0 1 1-3l12-4 6 7a2 2 0 0 1-1 3L8 17Zm0 3 6 5 13-4v3L8 22l-6-5Z"/>
+  </symbol>
+  <symbol id="eraser" viewBox="0 0 24 24">
+    <path fill="currentColor" fill-rule="evenodd" d="M2 14 12 3q1-1 2 0l8 7q1 1 0 2l-9 9H8l-6-5q-1-1 0-2Zm3 1 4 4h3l3-3-6-5Z"/>
+  </symbol>
+  <symbol id="water" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="2" d="m4 4 2 16h12l2-16ZM5 10q3-2 7 0t7 0"/>
+  </symbol>
+</svg>

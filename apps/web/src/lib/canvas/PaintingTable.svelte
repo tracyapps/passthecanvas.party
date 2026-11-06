@@ -15,15 +15,16 @@
   import StudioPanel from './StudioPanel.svelte';
   import PartyCanvas from './PartyCanvas.svelte';
   import { addPart, decodeMixes, expand, mixColor, recipeText, rememberMix, removeColor, removePart, totalParts, MAX_PARTS, SAVED_MIXES_KEY, type Recipe, type SavedMix } from './recipes';
+  import { prefs, savePreferences } from '../prefs.svelte';
+  import { colorLibrary } from './color-library';
   import { PALETTES } from './palettes';
   import { allToolboxes, EVERYTHING, findToolbox, freshName, isBuiltIn, makeToolbox, MAX_TOOLBOXES, shownSupplies, type Toolbox } from './toolboxes';
   import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './workspaces';
-  import burnishingPad from './burnishing-pad.svg?url';
   import { constrainSupply, type SupplyRect } from './placement';
   import { buildMask, maskHit, type ShapeMask } from './shape-masks';
   import { emptySelection, selectTool, loadPaint, dipInWater, isBrush, takesWater, unavailability,
     TOOL_NAMES, MEDIUM_NAMES, type PaintingTool, type PaintingMedium, type PaintLoad } from './painting-selection';
-  const images = import.meta.glob('./supplies/study-*.{svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+  const images = import.meta.glob('./supplies/{study-*,compact-*}.{svg,webp}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
   interface Props {
     canDraw: boolean;
     /** Your party member id; with `round` it names your turn's layer. */
@@ -89,6 +90,20 @@
   let statusStrip: HTMLElement;
   let headerHeight = $state(88);
   let dock = $state<ToolDock>('surround');
+  let gridView = $derived(prefs.toolView === 'grid');
+  // The grid reuses the docked layout without overwriting saved cutout positions.
+  let toolDock = $derived(gridView && dock === 'surround' ? 'left' : dock);
+  async function setToolView(view: 'cutouts' | 'grid') {
+    try { await savePreferences({ toolView: view }); }
+    catch { announcement = 'Tool view changed here. Account sync failed.'; }
+  }
+  function supplyImage(id: string, small = false): string {
+    if (small) {
+      const preview = gridView && (id === 'acrylic' || id === 'watercolor') ? 'paint-chips' : id;
+      return images[`./supplies/compact-${preview}.webp`];
+    }
+    return id === 'burnisher' ? asset(id, 'webp') : asset(id);
+  }
   let rotation = $state(0);
   let viewReset = $state(0);
   let toolbarHeight = $state(110);
@@ -174,7 +189,11 @@
     : selection.wet ? 'Water only: paint you brush over runs and smears. Only your own turn will change.' : 'Choose a compatible paint to load your tool.');
   let trayReason = $derived(unavailability(selection.tool, trayMedium));
   let solidColor = $derived(mixColor(recipe));
-  let availableColors = $derived(PALETTES[trayOpen ? trayMedium : paletteMedium]);
+  let paletteId = $state('');
+  let visiblePalettes = $derived(colorLibrary(prefs.colorPalettes).filter((palette) => !palette.hidden)
+    .sort((a, b) => Number(b.favorite) - Number(a.favorite)));
+  let selectedPalette = $derived(visiblePalettes.find((palette) => palette.id === paletteId));
+  let availableColors = $derived(selectedPalette?.colors ?? PALETTES[trayOpen ? trayMedium : paletteMedium]);
   // The default canvas window depends only on the screen, the tool dock and the
   // canvas shape. Palettes and settings panels float above it, so opening one
   // never moves the canvas or the supplies.
@@ -182,10 +201,10 @@
     const top = headerHeight + toolbarHeight + 16;
     const scale = Math.min(board.width / 1440, board.height / 1024);
     // Leave room for the acrylic rack (the widest supply on the left) beside the canvas.
-    const left = dock === 'right' ? 24 : dock === 'left' || dock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
-    const rightRail = dock === 'right' || dock === 'both' ? Math.min(360, board.width * .3) : dock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
+    const left = toolDock === 'right' ? 24 : toolDock === 'left' || toolDock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
+    const rightRail = toolDock === 'right' || toolDock === 'both' ? Math.min(360, board.width * .3) : toolDock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
     const available = Math.max(300, board.width - left - rightRail);
-    const bottomSpace = dock !== 'surround' ? 56 : 250 * scale + 20;
+    const bottomSpace = toolDock !== 'surround' ? 56 : 250 * scale + 20;
     const width = Math.min(available, Math.max(260, (board.height - top - bottomSpace) * documentSize.width / documentSize.height));
     return { x: left + (available - width) / 2, y: top, width, height: width * documentSize.height / documentSize.width };
   });
@@ -234,7 +253,6 @@
     const headerObserver = new ResizeObserver(() => headerHeight = statusStrip.getBoundingClientRect().height);
     headerObserver.observe(statusStrip);
     readMixes();
-    void loadMasks();
     const unlockZoom = lockPageZoom();
     const layoutClock = setInterval(() => (layoutNow = Date.now()), 15_000);
     try {
@@ -434,12 +452,19 @@
   // On the full table, supply buttons don't take pointer events; the table
   // hit-tests each photo's outline instead (shape-masks.ts). Tiles (phones,
   // docked columns) are plain rectangles, so they keep normal buttons.
-  let masked = $derived(!compact && dock === 'surround');
+  let masked = $derived(!compact && toolDock === 'surround');
   const masks: Record<string, ShapeMask | null> = {};
+  let masksStarted = false;
+  $effect(() => {
+    if (masked && !masksStarted) {
+      masksStarted = true;
+      void loadMasks();
+    }
+  });
   let hoverId = $state<string | null>(null);
   async function loadMasks() {
     for (const supply of supplies) {
-      const url = supply.id === 'burnisher' ? burnishingPad : asset(supply.id);
+      const url = supplyImage(supply.id);
       masks[supply.id] = await buildMask(url, supply.box[2]! / supply.box[3]!);
     }
   }
@@ -593,7 +618,7 @@
     return constrainSupply({ x, y, width, height }, bounds, tip, frame);
   }
   function startMove(event: PointerEvent, supply: typeof supplies[number]) {
-    if (mode !== 'arrange' || compact || dock !== 'surround' || event.button !== 0) return;
+    if (mode !== 'arrange' || compact || toolDock !== 'surround' || event.button !== 0) return;
     const box = supplyBox(supply);
     target = supply.id;
     dragging = { id: supply.id, x: event.clientX, y: event.clientY, left: box.x, top: box.y, pointer: event.pointerId };
@@ -605,16 +630,16 @@
   }
   function nudge(dx: number, dy: number) {
     const supply = supplies.find(supply => supply.id === target)!;
-    if (compact || dock !== 'surround') {
+    if (compact || toolDock !== 'surround') {
       // On the flowing layout, reorder rather than pushing controls offscreen.
       // Reorder among the supplies this toolbox shows; hidden ones keep their place after them.
       const list = [...shown];
       const index = list.indexOf(target);
       if (index < 0) return;
-      const columns = dock === 'both' && !compact ? 2 : Math.max(1, getComputedStyle(supplyGrid).gridTemplateColumns.split(' ').length);
+      const columns = toolDock === 'both' && !compact ? 2 : Math.max(1, getComputedStyle(supplyGrid).gridTemplateColumns.split(' ').length);
       const split = Math.ceil(list.length / 2);
-      const offset = dock === 'both' && !compact && index >= split ? split : 0;
-      const count = dock === 'both' && !compact ? offset ? list.length - split : split : list.length;
+      const offset = toolDock === 'both' && !compact && index >= split ? split : 0;
+      const count = toolDock === 'both' && !compact ? offset ? list.length - split : split : list.length;
       const next = gridDestination(index - offset, count, columns, dx, dy) + offset;
       list.splice(index, 1); list.splice(next, 0, target);
       order = [...list, ...order.filter(id => !list.includes(id))];
@@ -649,7 +674,7 @@
 {/snippet}
 
 <!-- The main element only deselects on its own empty tabletop, never a child's click. -->
-<main bind:this={bench} onpointerdown={tablePointerDown} onpointermove={tablePointerMove} onpointerup={() => (dragging = null)} onpointercancel={() => (dragging = null)} onpointerleave={() => (hoverId = null)} class:pointing={!!hoverId} class="workbench" class:compact class:docked={dock !== 'surround'} class:dock-left={dock === 'left'} class:dock-right={dock === 'right'} class:dock-both={dock === 'both'} class:arranging={mode === 'arrange'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
+<main bind:this={bench} onpointerdown={tablePointerDown} onpointermove={tablePointerMove} onpointerup={() => (dragging = null)} onpointercancel={() => (dragging = null)} onpointerleave={() => (hoverId = null)} class:pointing={!!hoverId} class="workbench" class:compact class:grid-view={gridView} class:docked={toolDock !== 'surround'} class:dock-left={toolDock === 'left'} class:dock-right={toolDock === 'right'} class:dock-both={toolDock === 'both'} class:arranging={mode === 'arrange'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
   <a class="skip" href="#shared-canvas">Skip to canvas</a>
   <header bind:this={statusStrip} class="status-strip">
     <div class="mode" role="group" aria-label="Workspace mode">
@@ -690,14 +715,15 @@
       <StudioPanel title="Arrange table" label="arrange table" dock="arrange" flow={compact} onclose={() => mode = 'paint'}>
         <div class="arrange-controls">
           <label class="arrange-field">Supply<select bind:value={target}>{#each supplies.filter(item => shown.includes(item.id)) as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
-          <div class="nudge-pad" role="group" aria-label={compact || dock !== 'surround' ? 'Reorder the chosen supply' : 'Move the chosen supply'}>
+          <div class="nudge-pad" role="group" aria-label={compact || toolDock !== 'surround' ? 'Reorder the chosen supply' : 'Move the chosen supply'}>
             <button type="button" class="up" aria-label="Up" onclick={() => nudge(0, -32)}>↑</button>
             <button type="button" class="left" aria-label="Left" onclick={() => nudge(-32, 0)}>←</button>
             <button type="button" class="down" aria-label="Down" onclick={() => nudge(0, 32)}>↓</button>
             <button type="button" class="right" aria-label="Right" onclick={() => nudge(32, 0)}>→</button>
           </div>
+          <label class="arrange-field">Tool view<select value={prefs.toolView} onchange={(event) => setToolView(event.currentTarget.value === 'grid' ? 'grid' : 'cutouts')}><option value="cutouts">Default cutouts</option><option value="grid">Toolbox grid</option></select></label>
           <label class="arrange-field">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
-          <p class="arrange-hint">{compact || dock !== 'surround' ? 'Pick a supply, then use the arrows to reorder it.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>
+          <p class="arrange-hint">{compact || toolDock !== 'surround' ? 'Pick a supply, then use the arrows to reorder it.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>
           <div class="arrange-actions">
             <button type="button" onclick={() => { applyLayout(defaultLayout(supplies.map(supply => supply.id))); selectedView = ''; announcement = 'Layout reset.'; }}>Reset layout</button>
             <button type="button" class="primary" onclick={() => mode = 'paint'}>Done</button>
@@ -812,9 +838,15 @@
           </ul>
           <fieldset class="tray-options"><legend>In this tray</legend><label><input type="radio" bind:group={trayMode} value="multicolor" /> Keep colors separate (streaks)</label><label><input type="radio" bind:group={trayMode} value="solid" /> Mix evenly</label></fieldset>
           <label class="medium-choice">Medium<select bind:value={trayMedium}><option value="acrylic">Acrylic</option><option value="watercolor">Watercolor</option></select></label>
-        {:else}<label class="medium-choice">Paint set<select value={paletteMedium} onchange={(event) => changePalette(event.currentTarget.value as PaintingMedium)}>{#each Object.entries(MEDIUM_NAMES) as [medium, name]}<option value={medium}>{name}</option>{/each}</select></label><p class="palette-caption">{#if paletteMedium === 'pencil' || paletteMedium === 'charcoal'}{availableColors.length} colors · pictured shades plus extra studio colors.{:else}{availableColors.length} colors from the pictured {MEDIUM_NAMES[paletteMedium].toLowerCase()} set.{/if}</p>{/if}
+        {:else}<label class="medium-choice">Paint set<select value={paletteMedium} onchange={(event) => changePalette(event.currentTarget.value as PaintingMedium)}>{#each Object.entries(MEDIUM_NAMES) as [medium, name]}<option value={medium}>{name}</option>{/each}</select></label>{/if}
+        <label class="medium-choice">Color palette
+          <select value={selectedPalette?.id ?? ''} onchange={(event) => paletteId = event.currentTarget.value}>
+            <option value="">Studio {MEDIUM_NAMES[trayOpen ? trayMedium : paletteMedium]} colors</option>
+            {#each visiblePalettes as palette (palette.id)}<option value={palette.id}>{palette.name}{palette.favorite ? ' (favorite)' : ''}</option>{/each}
+          </select>
+        </label>
         <div class="paint-grid" role="group" aria-label={trayOpen ? 'Add colors to mixing area' : `${MEDIUM_NAMES[paletteMedium]} colors`}>
-          {#each availableColors as paint}<button type="button" title={paint.name} aria-label={paint.name} aria-pressed={!trayOpen && selection.load?.name === paint.name} disabled={trayOpen ? totalParts(recipe) >= MAX_PARTS : !!unavailability(selection.tool, paletteMedium)} onclick={() => { if (trayOpen) recipe = addPart(recipe, paint); else chooseColor(paint); }}><span style:background={paint.hex}></span></button>{/each}
+          {#each availableColors as paint}<button type="button" title={paint.name} aria-label={paint.name} aria-pressed={!trayOpen && selection.load?.colors.length === 1 && selection.load.colors[0] === paint.hex && selection.load?.medium === paletteMedium} disabled={trayOpen ? totalParts(recipe) >= MAX_PARTS : !!unavailability(selection.tool, paletteMedium)} onclick={() => { if (trayOpen) recipe = addPart(recipe, paint); else chooseColor(paint); }}><span style:background={paint.hex}></span></button>{/each}
         </div>
         {#if trayOpen}<div class="tray-actions"><button type="button" class="secondary" disabled={!recipe.length} onclick={saveMix}>Save mix</button><button type="button" class="secondary" disabled={!recipe.length} onclick={() => recipe = []}>Empty tray</button></div><p class="palette-caption">{trayReason || 'Your brush picks up the tray as you mix. Parts set how much of each color goes in; streaks get wider with more parts.'} Mixing is approximate.</p>
         {#if savedMixes.length}<div class="saved-mixes" role="group" aria-label="Saved mixes"><span>Saved mixes</span>{#each savedMixes as mix (mix.id)}<button type="button" aria-label={`Refill the tray: ${mix.mode === 'solid' ? 'even mix' : 'streaks'}, ${recipeText(mix.recipe)}`} onclick={() => useMix(mix)}><span class="mini" aria-hidden="true">{#each mix.mode === 'solid' ? [mixColor(mix.recipe)] : expand(mix.recipe).map(dab => dab.hex) as color}<i style:background={color}></i>{/each}</span></button>{/each}</div>{/if}
@@ -830,7 +862,7 @@
       {@const reason = mode === 'arrange' ? '' : supply.id === 'water' ? takesWater(selection.tool) ? '' : 'Choose a brush or the sponge to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
       <div class="supply" data-tool={supply.tool} data-supply={supply.id} class:chosen={active(supply.id)}
         style:--dock-column={index < Math.ceil(shown.length / 2) ? index % 2 + 1 : (index - Math.ceil(shown.length / 2)) % 2 + 4} style:--dock-row={index < Math.ceil(shown.length / 2) ? Math.floor(index / 2) + 1 : Math.floor((index - Math.ceil(shown.length / 2)) / 2) + 1} style:left={`${box.x}px`} style:top={`${box.y}px`} style:width={`${box.width}px`} style:height={`${box.height}px`}>
-        <PhotoSupply {masked} hovered={hoverId === supply.id} compact={compact || dock !== 'surround'} moving={mode === 'arrange' && !compact && dock === 'surround'} image={supply.id === 'burnisher' ? burnishingPad : asset(supply.id)} label={mode === 'arrange' ? `Move ${supply.name}` : supply.name} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
+        <PhotoSupply {masked} hovered={hoverId === supply.id} compact={!masked} tile={gridView} moving={mode === 'arrange' && !compact && toolDock === 'surround'} image={supplyImage(supply.id, !masked)} label={mode === 'arrange' ? `Move ${supply.name}` : supply.name} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
           hit={supply.tip ? [supply.tip[0] / supply.box[2] * 100, supply.tip[1] / supply.box[3] * 100, supply.tip[2] / supply.box[2] * 100, supply.tip[3] / supply.box[3] * 100] : supply.hit ? [(supply.hit[0] - supply.box[0]) / supply.box[2] * 100, (supply.hit[1] - supply.box[1]) / supply.box[3] * 100, supply.hit[2] / supply.box[2] * 100, supply.hit[3] / supply.box[3] * 100] : undefined}
           muted={mode === 'paint' && selection.tool !== null && (!!reason || (!!supply.tool && !active(supply.id)))} onclick={() => openSupply(supply)}
           onpointerdown={(event) => startMove(event, supply)} onpointermove={moveSupply} onpointerup={() => dragging = null} onkeydown={(event) => supplyKey(event, supply.id)} />
@@ -948,6 +980,10 @@
   .dock-right:not(.compact) .supplies { right: 12px; }
   .dock-both:not(.compact) .supplies { left: 12px; right: 12px; width: auto; grid-template-columns: repeat(2, min(140px, 12vw)) 1fr repeat(2, min(140px, 12vw)); pointer-events: none; }
   .dock-both:not(.compact) .supply { grid-column: var(--dock-column); grid-row: var(--dock-row); }
+  .grid-view .supplies { background: #261c14; border: 1px solid #897451; border-radius: 6px; padding: 8px; }
+  .grid-view.docked:not(.compact) .supplies { z-index: 6; }
+  .grid-view.docked:not(.compact) .supply, .grid-view.compact .supply { height: auto !important; aspect-ratio: 1; min-height: 72px; }
+  .grid-view.dock-both:not(.compact) .supplies { background: transparent; border: 0; z-index: auto; }
   .docked:not(.compact) .supply { position: relative; inset: auto !important; width: 100% !important; height: 128px !important; }
   .party-bar { flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-end; }
   .party-bar:empty { display: none; }

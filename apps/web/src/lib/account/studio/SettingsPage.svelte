@@ -3,6 +3,7 @@
   (Profile details are in Edit profile; camera and mic in the device check.)
 -->
 <script lang="ts">
+  import PaletteLibrary from './PaletteLibrary.svelte';
   import { manageAccount } from '../account.svelte';
   import { act, go, studio } from './studio.svelte';
   import { AUTOSAVE_CHOICES, INTERFACE_SCALES } from '@ptc/shared';
@@ -65,6 +66,12 @@
         </select>
       </label>
       <p class="hint">Makes buttons, panels and text bigger or smaller everywhere. On the painting table it sizes the controls (the canvas keeps its own zoom).</p>
+      <label class="field">Tool view
+        <select value={prefs.toolView} onchange={(e) => changePrefs({ toolView: e.currentTarget.value === 'grid' ? 'grid' : 'cutouts' }, 'Tool view')}>
+          <option value="cutouts">Default cutouts</option>
+          <option value="grid">Toolbox grid</option>
+        </select>
+      </label>
       <p class="hint" role="status">{prefsNote}</p>
     </section>
     <section class="card" aria-labelledby="signin-title">
@@ -79,3 +86,5 @@
     </section>
   </div>
 </form>
+
+<PaletteLibrary />

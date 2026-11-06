@@ -59,6 +59,9 @@ The whole game loop, accessible, without the fancy room yet.
 
 ### The paint box (started Oct 2026)
 
+- [x] Owner-requested pre-test update (Nov 6): toolbox grid, compact tool photos, burnishing pad, personal color palette library, and tool icon artwork. See [decisions](DECISIONS.md).
+- [x] [Device performance and companion canvas research](DEVICE-PERFORMANCE.md). The physical-device performance checks and companion design are still open.
+
 The owner's priority: the painting should feel like real art supplies, and the media must interact — water dilutes and smears, charcoal builds and smudges, glazes deepen to opaque.
 
 - [x] Media set: watercolor, acrylic (viscosity slider), airbrush, charcoal, pastel + the existing pencil/round/flat/eraser

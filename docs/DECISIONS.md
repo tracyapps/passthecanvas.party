@@ -794,3 +794,23 @@ Full how-to: `studio/SEAT-VIEWS.md`.
   web `VITE_ACCOUNT_DEV_USER=dev-<name>` sign in as a pretend person against
   a local database. Refused in production and for non-localhost origins.
 
+
+### 2026-11-06 — Tool grid and palette library before device testing
+
+Default cutouts retain their saved positions. Grid view uses the current toolbox
+and dock, with the left tray as the default on wide screens. Compact layouts use
+small transparent WebPs and skip the full-size image masks until the cutout
+layout needs them. The original tool icons live in a 24-unit SVG sprite for a
+future picker.
+
+The palette directory starts with six studio presets and personal palettes in
+Settings. Preset edits are personal overrides. Hidden palettes stay in the
+library, and favorites sort first in the party palette picker. Palette choice
+changes swatches independently of the paint medium, including in the mixing
+tray. Version 1 JSON exports share names and colors. Imports create independent
+copies and open a review form. Saved palettes and tool view use the existing
+account preferences store and browser copy.
+
+See [device performance research](DEVICE-PERFORMANCE.md) for the single-device
+performance priorities and the tablet companion design to evaluate after
+measuring the live party.

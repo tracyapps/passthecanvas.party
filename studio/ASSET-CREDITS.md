@@ -132,3 +132,15 @@ from Google's official font CSS and google/fonts `ofl/viga/OFL.txt` respectively
 It replaces Days One for public headings. Square Peg remains the handwriting.
 The brush/star/cat/swirl SVG avatar badges are original code-created artwork in
 `StudioAvatar.svelte`, with no external character-kit or hosted avatar assets.
+
+## Compact painting tools — November 6, 2026
+
+- `apps/web/src/lib/canvas/supplies/compact-*.webp` are 144px-or-smaller
+  transparent derivatives of the existing approved `study-*.svg` tool cutouts.
+  Brushes and other long tools use the working-end framing from the table.
+- `study-burnisher.webp`, `compact-burnisher.webp`, and `compact-paint-chips.webp`
+  derive from the owner's attached `burnishing-pad-canvas-felt.png` and
+  `paint-chip-fan.png`. Supplied for use in the painting table. The ArtBin
+  photo and chroma strip images were used as visual references.
+- `tool-icons.svg` contains original project-authored tool symbols for future
+  compact icon controls.

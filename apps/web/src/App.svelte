@@ -28,7 +28,7 @@
   // Interface size from your settings: the whole page on the site and account
   // pages; just the controls on the painting table (see prefs.svelte.ts).
   applyPreferences();
-  void loadPreferences();
+  $effect(() => { void loadPreferences(); });
   document.documentElement.classList.toggle('scaled-page', showPublicSite);
 
   const party = new PartyConnection();

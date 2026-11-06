@@ -261,8 +261,8 @@ describe.skipIf(!databaseUrl)('community with real Postgres', () => {
     // Preferences: cleaned, saved, and read back.
     const prefs = await fetch(origin + '/preferences', { method: 'PUT', headers, body: JSON.stringify({ autosaveMinutes: 5, interfaceScale: 9 }) });
     const prefsBody = await prefs.json();
-    expect(prefsBody).toEqual({ autosaveMinutes: 5, interfaceScale: 1 });
-    expect(await (await fetch(origin + '/preferences', { headers })).json()).toEqual({ autosaveMinutes: 5, interfaceScale: 1 });
+    expect(prefsBody).toEqual({ autosaveMinutes: 5, interfaceScale: 1, toolView: 'cutouts', colorPalettes: [] });
+    expect(await (await fetch(origin + '/preferences', { headers })).json()).toEqual({ autosaveMinutes: 5, interfaceScale: 1, toolView: 'cutouts', colorPalettes: [] });
     expect((await put({ id: null, title: 'Bad', shape: 'classic', image: 'data:image/svg+xml;base64,PHN2Zy8+', thumb: png, strokes: null })).status).toBe(400);
     expect((await store.practice('user_alice')).filter((p) => !p.autosave).map((p) => p.title)).toEqual(['Doodle']);
     await expect(store.practiceFile('user_eve', pieceId, 'image')).rejects.toThrow();

@@ -129,7 +129,7 @@ export function createCommunityHandler(deps: Dependencies) {
       const limit = recent.get(user);
       if (limit && limit.until > now && limit.count >= 30) throw new CommunityError(429, 'Please wait a minute before trying again.');
       recent.set(user, limit && limit.until > now ? { ...limit, count: limit.count + 1 } : { count: 1, until: now + 60_000 });
-      const big = route === '/photo' ? 600_000 : route === '/avatars' ? 250_000 : route === '/practice' ? 24_000_000 : 8192;
+      const big = route === '/photo' ? 600_000 : route === '/avatars' ? 250_000 : route === '/practice' ? 24_000_000 : route === '/preferences' ? 512_000 : 8192;
       const value = await body(req, big);
       if (route === '/profile' && req.method === 'PUT' && validProfile(value)) { await db.saveProfile(user, { ...value, name: value.name.trim(), bio: value.bio.trim(), links: value.links.map((link) => cleanSocialLink(link)!) }); return send(res, 200, { saved: true }); }
       if (route === '/practice' && req.method === 'PUT' && keys(value, ['id', 'title', 'shape', 'image', 'thumb', 'strokes', 'autosave', 'draftOf']) && (value.id === null || ID.test(String(value.id))) && (value.autosave === undefined || typeof value.autosave === 'boolean') && (value.draftOf === undefined || value.draftOf === null || ID.test(String(value.draftOf))) && text(value.title, 1, 80) && typeof value.shape === 'string' && value.shape in CANVAS_SHAPES) {
@@ -146,7 +146,7 @@ export function createCommunityHandler(deps: Dependencies) {
         const saved = await db.savePractice(user, { id: value.id as string | null, title: (value.title as string).trim(), shape, image: image.bytes, thumb, strokes, autosave: value.autosave === true, draftOf: (value.draftOf as string | null | undefined) ?? null });
         return send(res, 200, { ...saved, strokesKept: value.strokes === null ? null : !!strokes });
       }
-      if (route === '/preferences' && req.method === 'PUT' && keys(value, ['autosaveMinutes', 'interfaceScale'])) return send(res, 200, await db.savePreferences(user, cleanPreferences(value)));
+      if (route === '/preferences' && req.method === 'PUT' && keys(value, ['autosaveMinutes', 'interfaceScale', 'toolView', 'colorPalettes'])) return send(res, 200, await db.savePreferences(user, cleanPreferences(value)));
       if (route === '/photo' && req.method === 'PUT' && keys(value, ['image'])) {
         const photo = decodePhoto(value.image);
         if (!photo) throw new CommunityError(400, 'Use a PNG, JPEG or WebP image under 400 KB.');

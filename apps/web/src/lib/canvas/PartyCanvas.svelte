@@ -593,12 +593,12 @@
   .artwork > canvas.ready { cursor: crosshair; }
   .cursor { position: absolute; width: 18px; height: 18px; border: 2px solid #222; outline: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
   .navigator.inactive { visibility: hidden; pointer-events: none; }
-  .view-controls { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; color: #fff5e4; font-size: 12px; }
-  .view-left, .view-right { display: flex; align-items: center; gap: 6px; zoom: var(--ui-scale, 1); }
+  .view-controls { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px; color: #fff5e4; font-size: 12px; }
+  .view-left, .view-right { display: flex; max-width: 100%; align-items: center; gap: 6px; zoom: var(--ui-scale, 1); }
   button, select { min-height: 32px; border: 1px solid #ad9b73; border-radius: 3px; background: #241a11e8; color: #fff5e4; font: inherit; font-size: 12px; padding: 4px 8px; }
   button:disabled { opacity: .45; }
   .rotate { display: inline-flex; align-items: center; gap: 4px; }
-  .zoom-range { width: 110px; height: 32px; margin: 0; accent-color: #eee935; }
+  .zoom-range { width: 110px; min-width: 0; height: 32px; margin: 0; accent-color: #eee935; }
   .zoom-level { min-width: 72px; }
   :focus-visible { outline: 3px solid #f5ed37; outline-offset: 2px; }
   .navigator { width: 84px; }

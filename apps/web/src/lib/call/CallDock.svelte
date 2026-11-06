@@ -135,4 +135,8 @@
       white-space: nowrap;
     }
   }
+  @media (max-width: 600px) {
+    .dock { width: max-content; max-width: calc(100% - 16px); flex-wrap: wrap; justify-content: center; }
+    .dock .note { white-space: normal; text-align: center; }
+  }
 </style>

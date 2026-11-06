@@ -349,22 +349,59 @@ export interface ScheduledParty {
 export interface PartyHistory { id: string; title: string; endedAt: string; artworkCount: number }
 /** A solo piece from the practice table (never shown to anyone else). */
 export interface PracticePiece { id: string; title: string; shape: string; width: number; height: number; hasStrokes: boolean; createdAt: string; updatedAt: string; autosave: boolean; draftOf: string | null }
+export interface PaletteSwatch { name: string; hex: string }
+export interface ColorPalette {
+  id: string;
+  name: string;
+  colors: PaletteSwatch[];
+  hidden: boolean;
+  favorite: boolean;
+}
+export const MAX_COLOR_PALETTES = 32;
+export const MAX_PALETTE_COLORS = 40;
+
+export function cleanColorPalette(value: unknown): ColorPalette | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<ColorPalette>;
+  if (typeof raw.id !== 'string' || !/^[a-z0-9-]{1,64}$/.test(raw.id)) return null;
+  if (typeof raw.name !== 'string' || !raw.name.trim() || raw.name.trim().length > 60) return null;
+  if (!Array.isArray(raw.colors) || !raw.colors.length || raw.colors.length > MAX_PALETTE_COLORS) return null;
+  const colors: PaletteSwatch[] = [];
+  for (const color of raw.colors) {
+    if (!color || typeof color.name !== 'string' || !color.name.trim() || color.name.trim().length > 48 ||
+        typeof color.hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(color.hex)) return null;
+    colors.push({ name: color.name.trim(), hex: color.hex.toLowerCase() });
+  }
+  return { id: raw.id, name: raw.name.trim(), colors, hidden: raw.hidden === true, favorite: raw.favorite === true };
+}
+
 /** Personal app settings. Missing values fall back to these defaults. */
 export interface StudioPreferences {
   /** Minutes between auto-saves of a practice piece. 0 = off. */
   autosaveMinutes: number;
   /** How big the interface (buttons, panels, text) is drawn: 1 = normal. */
   interfaceScale: number;
+  toolView: 'cutouts' | 'grid';
+  colorPalettes: ColorPalette[];
 }
-export const DEFAULT_PREFERENCES: StudioPreferences = { autosaveMinutes: 2, interfaceScale: 1 };
+export const DEFAULT_PREFERENCES: StudioPreferences = { autosaveMinutes: 2, interfaceScale: 1, toolView: 'cutouts', colorPalettes: [] };
 export const AUTOSAVE_CHOICES = [0, 1, 2, 5, 10, 15] as const;
 export const INTERFACE_SCALES = [0.85, 1, 1.15, 1.3, 1.5] as const;
 /** Keep only known settings with allowed values. */
 export function cleanPreferences(value: unknown): StudioPreferences {
   const raw = (value && typeof value === 'object' ? value : {}) as Partial<StudioPreferences>;
+  const palettes = new Map<string, ColorPalette>();
+  if (Array.isArray(raw.colorPalettes)) {
+    for (const item of raw.colorPalettes.slice(0, MAX_COLOR_PALETTES)) {
+      const palette = cleanColorPalette(item);
+      if (palette) palettes.set(palette.id, palette);
+    }
+  }
   return {
     autosaveMinutes: (AUTOSAVE_CHOICES as readonly number[]).includes(Number(raw.autosaveMinutes)) ? Number(raw.autosaveMinutes) : DEFAULT_PREFERENCES.autosaveMinutes,
-    interfaceScale: (INTERFACE_SCALES as readonly number[]).includes(Number(raw.interfaceScale)) ? Number(raw.interfaceScale) : DEFAULT_PREFERENCES.interfaceScale
+    interfaceScale: (INTERFACE_SCALES as readonly number[]).includes(Number(raw.interfaceScale)) ? Number(raw.interfaceScale) : DEFAULT_PREFERENCES.interfaceScale,
+    toolView: raw.toolView === 'grid' ? 'grid' : 'cutouts',
+    colorPalettes: [...palettes.values()]
   };
 }
 /** A party gallery (archive) the person saved or was part of. */
