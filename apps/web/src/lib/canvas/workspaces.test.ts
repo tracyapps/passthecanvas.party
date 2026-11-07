@@ -21,3 +21,22 @@ it('rejects malformed or future storage instead of silently overwriting it', () 
   const layout = defaultLayout(['brush']); layout.positions.brush = { x: Infinity, y: 0 };
   expect(() => decodeWorkspaces(JSON.stringify({ version: 1, current: layout, views: [] }), ['brush'])).toThrow();
 });
+
+it('preserves the full saved arrangement and gives Default a fresh canvas and supply layout', () => {
+  const ids = ['brush', 'paint'];
+  const favorite = {
+    ...defaultLayout(ids),
+    toolbox: 'favs',
+    positions: { brush: { x: 0.05, y: 0.3 } },
+    frame: { x: 0.4, y: 0.1, width: 0.6, height: 0.9 },
+    rotation: 1
+  };
+  const stored = decodeWorkspaces(JSON.stringify({
+    version: 1, current: favorite, views: [{ id: 'fav-view', name: 'Favs', layout: favorite }], selected: 'fav-view'
+  }), ids);
+  expect(stored.views[0].layout).toEqual(favorite);
+  expect(defaultLayout(ids)).toEqual({
+    positions: {}, order: ids, dock: 'surround', frame: null, rotation: 0, toolbox: 'everything'
+  });
+  expect(stored.views[0].layout.frame?.x).toBe(0.4);
+});

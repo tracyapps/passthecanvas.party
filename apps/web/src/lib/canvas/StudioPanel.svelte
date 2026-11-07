@@ -46,13 +46,6 @@
   <header>
     <button type="button" class="handle" aria-label={`Move ${label}. Drag or use arrow keys.`}
       onpointerdown={down} onpointermove={move} onpointerup={() => start = null} onpointercancel={() => start = null} onkeydown={keyboard}>{title}</button>
-    <details class="position-controls"><summary>Move</summary><div>
-      <button type="button" aria-label={`Move ${label} left`} onclick={() => nudge(-32, 0)}>Left</button>
-      <button type="button" aria-label={`Move ${label} right`} onclick={() => nudge(32, 0)}>Right</button>
-      <button type="button" aria-label={`Move ${label} up`} onclick={() => nudge(0, -32)}>Up</button>
-      <button type="button" aria-label={`Move ${label} down`} onclick={() => nudge(0, 32)}>Down</button>
-      <button type="button" onclick={() => position = null}>Dock panel</button>
-    </div></details>
     <button type="button" class="close" aria-label={`Close ${label}`} onclick={onclose}>Close</button>
   </header>
   <div class="panel-content">{@render children()}</div>
@@ -63,18 +56,16 @@
   .guests { right: 12px; top: 96px; bottom: auto; width: auto; max-width: min(560px, calc(100vw - 24px)); max-height: calc(100svh - 220px); padding: 2px 10px 8px; }
   .guests .handle { font-size: 15px; }
   .notes { left: 12px; right: auto; bottom: 96px; width: min(340px, calc(100vw - 24px)); background: #f3ead9f5; color: #2b1d12; border-color: #b9a483; }
-  .notes button, .notes summary { color: #2b1d12; }
-  .notes .position-controls > div { background: #f3ead9; }
+  .notes button { color: #2b1d12; }
   .arrange { top: calc(var(--header-height, 88px) + 12px); bottom: auto; right: auto; left: calc(50% - 170px); width: min(340px, calc(100vw - 24px)); z-index: 35; }
   .radio { left: min(364px, calc(100vw - 352px)); }
   header { display: flex; align-items: center; gap: 4px; }
-  button, summary { min-height: 44px; border: 0; background: transparent; color: #fff5e6; font: inherit; padding: 8px; }
-  .handle { flex: 1; text-align: left; font-weight: 800; font-size: 19px; cursor: grab; touch-action: none; padding-left: 0; }
-  .close, summary { font-size: 12px; }
-  summary { cursor: pointer; }
-  .position-controls { position: relative; }
-  .position-controls > div { position: absolute; right: 0; top: 44px; z-index: 2; width: 200px; display: grid; grid-template-columns: 1fr 1fr; padding: 6px; background: #2c2118; border: 1px solid #b8a47b; box-shadow: 0 5px 16px #0009; }
-  .position-controls button { border: 1px solid #84714e; margin: 2px; }
+  button { min-height: 44px; border: 0; background: transparent; color: #fff5e6; font: inherit; padding: 8px; }
+  .handle { flex: 1; text-align: left; font-weight: 800; font-size: 19px; cursor: grab; touch-action: none; padding-left: 0; display: flex; flex-direction: column; align-items: stretch; gap: 7px; }
+  .handle::before { content: ''; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 4px); opacity: .45; }
+  .handle:active { cursor: grabbing; }
+  .handle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  .close { font-size: 12px; }
   .panel-content { container-type: inline-size; }
   /* Interface size (Settings): the panel's insides scale; its spot on screen doesn't. */
   .studio-panel > * { zoom: var(--ui-scale, 1); }

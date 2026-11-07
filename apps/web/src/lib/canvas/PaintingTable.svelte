@@ -65,6 +65,7 @@
   export function strokes(): PaintedStroke[] { return canvas?.strokes() ?? []; }
 
   function asset(name: string, extension = 'svg'): string { return images[`./supplies/study-${name}.${extension}`] ?? ''; }
+  const GRID_TILE = { width: 104, height: 144, gap: 8 };
   const supplies: { id: string; name: string; box: number[]; hit?: number[]; tip?: number[]; tool?: PaintingTool; medium?: PaintingMedium }[] = [
     { id: 'acrylic', name: 'Acrylic paints', box: [0, 0, 320, 230], hit: [160, 12, 150, 140], medium: 'acrylic' },
     { id: 'tray', name: 'Color mixing tray', box: [0, 190, 200, 180] },
@@ -92,7 +93,7 @@
   let dock = $state<ToolDock>('surround');
   let gridView = $derived(prefs.toolView === 'grid');
   // The grid reuses the docked layout without overwriting saved cutout positions.
-  let toolDock = $derived(gridView && dock === 'surround' ? 'left' : dock);
+  let toolDock = $derived(dock);
   async function setToolView(view: 'cutouts' | 'grid') {
     try { await savePreferences({ toolView: view }); }
     catch { announcement = 'Tool view changed here. Account sync failed.'; }
@@ -127,6 +128,7 @@
     const saved = savedViews.find(view => view.id === selectedView);
     return saved && JSON.stringify(saved.layout) === JSON.stringify(currentLayout()) ? selectedView : '';
   });
+  let headerView = $derived(activeViewValue || (JSON.stringify(currentLayout()) === JSON.stringify(defaultLayout(supplies.map(supply => supply.id))) ? '' : 'current'));
   let storageReady = $state(false);
   let storageError = $state('');
   let accountLoadedFor = $state<string | null | undefined>();
@@ -200,11 +202,15 @@
   let canvasBox = $derived.by(() => {
     const top = headerHeight + toolbarHeight + 16;
     const scale = Math.min(board.width / 1440, board.height / 1024);
+    // Grid defaults wrap into columns beside the canvas, while placed tiles stay free.
+    const rows = Math.max(1, Math.floor((board.height - headerHeight - 32) / (GRID_TILE.height + GRID_TILE.gap)));
+    const gridWidth = 28 + Math.ceil(shown.length / rows) * (GRID_TILE.width + GRID_TILE.gap);
+    const freeGrid = gridView && toolDock === 'surround';
     // Leave room for the acrylic rack (the widest supply on the left) beside the canvas.
-    const left = toolDock === 'right' ? 24 : toolDock === 'left' || toolDock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
-    const rightRail = toolDock === 'right' || toolDock === 'both' ? Math.min(360, board.width * .3) : toolDock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
+    const left = freeGrid ? gridWidth : toolDock === 'right' ? 24 : toolDock === 'left' || toolDock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
+    const rightRail = freeGrid ? 24 : toolDock === 'right' || toolDock === 'both' ? Math.min(360, board.width * .3) : toolDock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
     const available = Math.max(300, board.width - left - rightRail);
-    const bottomSpace = toolDock !== 'surround' ? 56 : 250 * scale + 20;
+    const bottomSpace = freeGrid || toolDock !== 'surround' ? 56 : 250 * scale + 20;
     const width = Math.min(available, Math.max(260, (board.height - top - bottomSpace) * documentSize.width / documentSize.height));
     return { x: left + (available - width) / 2, y: top, width, height: width * documentSize.height / documentSize.width };
   });
@@ -352,7 +358,13 @@
     const id = crypto.randomUUID(); savedViews = [...savedViews, { id, name, layout: currentLayout() }]; selectedView = id; viewName = ''; announcement = `${name} saved on this browser.`; if (accountState.userId) void saveCloud();
   }
   // ---- toolboxes ----
+  function resetView() {
+    applyLayout(defaultLayout(supplies.map(supply => supply.id)));
+    selectedView = '';
+    announcement = 'Default view restored, including the canvas and all tool positions.';
+  }
   function chooseToolbox(id: string) {
+    if (id === EVERYTHING) { resetView(); return; }
     toolbox = id;
     const box = findToolbox(id, customToolboxes);
     announcement = `${box.name} toolbox: ${shownSupplies(order, box).length} supplies on the table.`;
@@ -404,7 +416,7 @@
     document.getElementById('table-actions')?.hidePopover();
     if (which === 'toolboxes') toolboxesOpen = true; else viewsOpen = true;
   }
-  function loadView(id: string) { const view = savedViews.find(item => item.id === id); if (view) { applyLayout(view.layout); selectedView = id; announcement = `${view.name} restored.`; } }
+  function loadView(id: string) { if (!id) { resetView(); return; } const view = savedViews.find(item => item.id === id); if (view) { applyLayout(view.layout); selectedView = id; announcement = `${view.name} restored.`; } }
   function putDown() {
     selection = { ...selection, tool: null, load: null, wet: false };
     paletteOpen = false;
@@ -452,7 +464,7 @@
   // On the full table, supply buttons don't take pointer events; the table
   // hit-tests each photo's outline instead (shape-masks.ts). Tiles (phones,
   // docked columns) are plain rectangles, so they keep normal buttons.
-  let masked = $derived(!compact && toolDock === 'surround');
+  let masked = $derived(!compact && !gridView && toolDock === 'surround');
   const masks: Record<string, ShapeMask | null> = {};
   let masksStarted = false;
   $effect(() => {
@@ -591,6 +603,15 @@
   async function showSettings() { settingsOpen = true; await tick(); document.getElementById('brush-size')?.focus(); }
   function supplyBox(supply: typeof supplies[number]): SupplyRect {
     const scale = Math.min(board.width / 1440, board.height / 1024);
+    if (gridView) {
+      const { width, height, gap } = GRID_TILE;
+      const index = Math.max(0, shown.indexOf(supply.id));
+      const rows = Math.max(1, Math.floor((board.height - headerHeight - 32) / (height + gap)));
+      const saved = positions[supply.id];
+      const x = saved ? saved.x * board.width : 12 + Math.floor(index / rows) * (width + gap);
+      const y = saved ? saved.y * board.height : headerHeight + 12 + (index % rows) * (height + gap);
+      return constrainSupply({ x, y, width, height }, { x: 0, y: headerHeight, width: board.width, height: Math.max(height, board.height - headerHeight) });
+    }
     const width = supply.box[2] * scale;
     const height = supply.box[3] * scale;
     const saved = positions[supply.id];
@@ -618,8 +639,22 @@
     return constrainSupply({ x, y, width, height }, bounds, tip, frame);
   }
   function startMove(event: PointerEvent, supply: typeof supplies[number]) {
-    if (mode !== 'arrange' || compact || toolDock !== 'surround' || event.button !== 0) return;
-    const box = supplyBox(supply);
+    if (mode !== 'arrange' || compact || event.button !== 0) return;
+    if (toolDock !== 'surround' && !gridView) return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const table = bench.getBoundingClientRect();
+    const box = { x: rect.left - table.left, y: rect.top - table.top };
+    if (toolDock !== 'surround') {
+      // Leaving a column keeps every visible tile and the canvas where they were.
+      const nextPositions = { ...positions };
+      for (const element of supplyGrid.querySelectorAll<HTMLElement>('[data-supply]')) {
+        const bounds = element.getBoundingClientRect();
+        nextPositions[element.dataset.supply!] = { x: (bounds.left - table.left) / board.width, y: (bounds.top - table.top) / board.height };
+      }
+      positions = nextPositions;
+      frameOverride = { ...frameRect };
+      dock = 'surround';
+    }
     target = supply.id;
     dragging = { id: supply.id, x: event.clientX, y: event.clientY, left: box.x, top: box.y, pointer: event.pointerId };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -681,6 +716,7 @@
       <button type="button" aria-pressed={mode === 'paint'} onclick={() => mode = 'paint'}>Paint</button>
       <button type="button" aria-pressed={mode === 'arrange'} onclick={() => { mode = 'arrange'; paletteOpen = false; }}>Arrange &amp; view</button>
     </div>
+    <label class="toolbox-pick"><span>View</span><select value={headerView} onchange={(event) => loadView(event.currentTarget.value)}>{#if headerView === 'current'}<option value="current" disabled>Current arrangement</option>{/if}<option value="">Default</option>{#each savedViews as view (view.id)}<option value={view.id}>{view.name}</option>{/each}</select></label>
     <label class="toolbox-pick"><span>Toolbox</span><select value={activeBox.id} onchange={(event) => chooseToolbox(event.currentTarget.value)}>{#each allToolboxes(customToolboxes) as box (box.id)}<option value={box.id}>{box.name}</option>{/each}</select></label>
     <div class="selected-tool"><span>Tool selected</span><strong>{toolName}</strong></div>
     <div class="selected-color"><span>Current color</span><div class="load-line"><span class="load-swatch" class:empty={!selection.load} aria-hidden="true">{#each selection.load?.colors ?? [] as color}<i style:background={color}></i>{/each}</span><strong>{selection.load ? MEDIUM_NAMES[selection.load.medium] : selection.wet ? 'Water only' : selection.tool === 'eraser' || selection.tool === 'sponge' || selection.tool === 'burnisher' ? 'Not needed' : 'Unloaded'}</strong></div></div>
@@ -722,10 +758,10 @@
             <button type="button" class="right" aria-label="Right" onclick={() => nudge(32, 0)}>→</button>
           </div>
           <label class="arrange-field">Tool view<select value={prefs.toolView} onchange={(event) => setToolView(event.currentTarget.value === 'grid' ? 'grid' : 'cutouts')}><option value="cutouts">Default cutouts</option><option value="grid">Toolbox grid</option></select></label>
-          <label class="arrange-field">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
-          <p class="arrange-hint">{compact || toolDock !== 'surround' ? 'Pick a supply, then use the arrows to reorder it.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>
+          <label class="arrange-field">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Freeform around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
+          <p class="arrange-hint">{compact || toolDock !== 'surround' ? 'Use arrow keys to reorder supplies. Drag a grid tile out of the columns to place it freely.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>
           <div class="arrange-actions">
-            <button type="button" onclick={() => { applyLayout(defaultLayout(supplies.map(supply => supply.id))); selectedView = ''; announcement = 'Layout reset.'; }}>Reset layout</button>
+            <button type="button" onclick={() => { resetView(); }}>Reset layout</button>
             <button type="button" class="primary" onclick={() => mode = 'paint'}>Done</button>
           </div>
           <div class="arrange-actions"><button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button><button type="button" onclick={() => openPanel('views')}>Saved views…</button></div>
@@ -862,7 +898,7 @@
       {@const reason = mode === 'arrange' ? '' : supply.id === 'water' ? takesWater(selection.tool) ? '' : 'Choose a brush or the sponge to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
       <div class="supply" data-tool={supply.tool} data-supply={supply.id} class:chosen={active(supply.id)}
         style:--dock-column={index < Math.ceil(shown.length / 2) ? index % 2 + 1 : (index - Math.ceil(shown.length / 2)) % 2 + 4} style:--dock-row={index < Math.ceil(shown.length / 2) ? Math.floor(index / 2) + 1 : Math.floor((index - Math.ceil(shown.length / 2)) / 2) + 1} style:left={`${box.x}px`} style:top={`${box.y}px`} style:width={`${box.width}px`} style:height={`${box.height}px`}>
-        <PhotoSupply {masked} hovered={hoverId === supply.id} compact={!masked} tile={gridView} moving={mode === 'arrange' && !compact && toolDock === 'surround'} image={supplyImage(supply.id, !masked)} label={mode === 'arrange' ? `Move ${supply.name}` : supply.name} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
+        <PhotoSupply {masked} hovered={hoverId === supply.id} compact={!masked} tile={gridView} moving={mode === 'arrange' && !compact && (gridView || toolDock === 'surround')} image={supplyImage(supply.id, !masked)} label={supply.name} moveLabel={mode === 'arrange' ? `Move ${supply.name}` : undefined} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
           hit={supply.tip ? [supply.tip[0] / supply.box[2] * 100, supply.tip[1] / supply.box[3] * 100, supply.tip[2] / supply.box[2] * 100, supply.tip[3] / supply.box[3] * 100] : supply.hit ? [(supply.hit[0] - supply.box[0]) / supply.box[2] * 100, (supply.hit[1] - supply.box[1]) / supply.box[3] * 100, supply.hit[2] / supply.box[2] * 100, supply.hit[3] / supply.box[3] * 100] : undefined}
           muted={mode === 'paint' && selection.tool !== null && (!!reason || (!!supply.tool && !active(supply.id)))} onclick={() => openSupply(supply)}
           onpointerdown={(event) => startMove(event, supply)} onpointermove={moveSupply} onpointerup={() => dragging = null} onkeydown={(event) => supplyKey(event, supply.id)} />
@@ -980,10 +1016,9 @@
   .dock-right:not(.compact) .supplies { right: 12px; }
   .dock-both:not(.compact) .supplies { left: 12px; right: 12px; width: auto; grid-template-columns: repeat(2, min(140px, 12vw)) 1fr repeat(2, min(140px, 12vw)); pointer-events: none; }
   .dock-both:not(.compact) .supply { grid-column: var(--dock-column); grid-row: var(--dock-row); }
-  .grid-view .supplies { background: #261c14; border: 1px solid #897451; border-radius: 6px; padding: 8px; }
   .grid-view.docked:not(.compact) .supplies { z-index: 6; }
-  .grid-view.docked:not(.compact) .supply, .grid-view.compact .supply { height: auto !important; aspect-ratio: 1; min-height: 72px; }
-  .grid-view.dock-both:not(.compact) .supplies { background: transparent; border: 0; z-index: auto; }
+  .grid-view.docked:not(.compact) .supply, .grid-view.compact .supply { height: 144px !important; min-height: 144px; }
+  .grid-view.dock-both:not(.compact) .supplies { z-index: auto; }
   .docked:not(.compact) .supply { position: relative; inset: auto !important; width: 100% !important; height: 128px !important; }
   .party-bar { flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-end; }
   .party-bar:empty { display: none; }

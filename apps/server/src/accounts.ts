@@ -48,9 +48,24 @@ function validToolboxes(value: unknown): boolean {
   if (!Array.isArray(value) || value.length > 20) return false;
   const ids = new Set<string>();
   for (const box of value) {
-    if (!record(box) || !hasKeys(box, ['id', 'name', 'supplies']) || !shortText(box.id) || !box.id || ids.has(box.id)) return false;
+    if (!record(box) || !hasKeys(box, ['id', 'name', 'supplies', 'rows', 'paletteIds']) || !shortText(box.id) || !box.id || ids.has(box.id)) return false;
     if (typeof box.name !== 'string' || !box.name.trim() || box.name.length > 40) return false;
     if (!Array.isArray(box.supplies) || box.supplies.length > 32 || !box.supplies.every(shortText)) return false;
+    if (box.rows !== undefined) {
+      if (!Array.isArray(box.rows) || box.rows.length > 8) return false;
+      const placed = new Set<string>();
+      for (const row of box.rows) {
+        if (!Array.isArray(row) || row.length > 3) return false;
+        for (const id of row) {
+          if (!shortText(id) || placed.has(id)) return false;
+          placed.add(id);
+        }
+      }
+      if (box.supplies.length !== placed.size || !box.supplies.every(id => placed.has(id))) return false;
+    }
+    if (box.paletteIds !== undefined && (!Array.isArray(box.paletteIds) || box.paletteIds.length > 3 ||
+      !box.paletteIds.every(id => typeof id === 'string' && /^[a-z0-9-]{1,64}$/.test(id)) ||
+      new Set(box.paletteIds).size !== box.paletteIds.length)) return false;
     ids.add(box.id);
   }
   return true;

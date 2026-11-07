@@ -178,3 +178,28 @@ describe('pressure curves', () => {
     expect(pressureFactor(PRESSURE.round.width, 1)).toBeGreaterThan(pressureFactor(PRESSURE.detail.width, 1));
   });
 });
+
+it('keeps drawing work bounded for representative strokes', () => {
+  // Allow roughly 25% growth over the recorded Nov 2026 baseline.
+  const fixtures = [
+    ['round acrylic', loaded('round'), 1400],
+    ['flat watercolor', loaded('flat', 'watercolor'), 6400],
+    ['airbrush', loaded('airbrush'), 1250],
+    ['wet sponge', dipInWater(selectTool(emptySelection(), 'sponge')), 3500],
+    ['burnisher', selectTool(emptySelection(), 'burnisher'), 1350],
+  ] as const;
+
+  for (const [name, selection, budget] of fixtures) {
+    const { ctx, marks } = recordingCanvas();
+    const size = 30;
+    const spacing = stampSpacing(selection, size);
+    expect(spacing, name).toBeGreaterThanOrEqual(0.5);
+    // A 120-unit stroke with a fixed seed sequence and varied pressure.
+    for (let index = 0; index * spacing <= 120; index++) {
+      const distance = index * spacing;
+      const pressure = 0.2 + (distance / 120) * 0.7;
+      drawMark(ctx, selection, size, { x: 120 + distance, y: 80, pressure }, 0, index);
+    }
+    expect(marks.length, `${name} recorded Canvas 2D operations`).toBeLessThanOrEqual(budget);
+  }
+});

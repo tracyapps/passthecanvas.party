@@ -30,3 +30,17 @@ For an app-supported split, start with a native companion. Today the [party serv
 Use an older laptop, a phone as the only device, and an iPad with Pencil plus finger gestures. On each, compare avatar or audio-only, camera with visible guests, and room-to-canvas transitions. Run short marks, long fast curves, touch-to-pinch, blending and erasing across owned turns, a late join to a large canvas history, and a snapshot at pass. Exercise keyboard and screen reader controls at both narrow and wide layouts.
 
 Record p50 and p95 frame gaps and stamp/composite time from the same scripted sequence. Use high-speed external capture for true pen-to-pixel latency if available. Distinguish that from remote stroke arrival, which includes network and batching. Start by looking for marks within one or two display refreshes locally and for long stalls during input or pass. Check that one-device painting, turn completion, snapshot recovery, and media controls all still work in the lower-cost configuration. Actual hardware results are still pending.
+
+## Automated regression checks
+
+GitHub's Checks workflow runs `npm test`, then builds and runs `npm run check:perf`. Run the same asset checks locally with `npm run build && npm run check:perf`.
+
+| Check | Baseline | Budget |
+| --- | ---: | ---: |
+| App shell JavaScript and CSS, gzipped | 77.0 KiB | 95 KiB |
+| Join screen and painting table JavaScript and CSS, gzipped | 294.4 KiB | 360 KiB |
+| Compact tool WebPs, combined | 97.1 KiB | 120 KiB |
+
+The code budgets use the build manifest to count shared static files once. A separate check keeps the 360° room out of the party's static dependencies. The image budget includes thumbnails inlined into the JavaScript, so the rows measure different aspects of the build and should be read separately. CI prints sizes on every run. If an intentional feature exceeds a budget, record the new size and the reason for adjusting the limit.
+
+The brush unit suite counts Canvas 2D calls for repeatable strokes with varying pressure. It covers round acrylic, flat watercolor, airbrush, wet sponge, and burnishing. Each fixture has about 25% headroom so a small intentional change can pass. The counts catch growth in drawing work from extra stamps or more expensive brushes without relying on runner speed. Canvas rasterization, memory, video decode, and pen-to-pixel latency still need browser and device measurements.

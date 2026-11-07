@@ -814,3 +814,31 @@ account preferences store and browser copy.
 See [device performance research](DEVICE-PERFORMANCE.md) for the single-device
 performance priorities and the tablet companion design to evaluate after
 measuring the live party.
+
+### 2026-11-06 — Performance regression checks in CI
+
+Use build size, room lazy-loading, and recorded drawing operations as the first
+automated signals. The budgets have headroom over the current build and use no
+wall-clock thresholds, so slower CI runners do not create timing failures.
+[Baselines and commands](DEVICE-PERFORMANCE.md#automated-regression-checks).
+
+### 2026-11-06 — Complete view resets and movable grid tiles
+
+The header now exposes named saved views and a Default reset. Default and the
+Everything toolbox restore tool positions, order, canvas frame, rotation and
+supply selection together. Other toolbox choices still filter supplies, while
+named views restore an entire arrangement.
+
+Grid tiles use compact images with labels in their own space. On wide screens,
+the freeform arrangement starts in wrapping columns beside the canvas, and
+artists can drag individual tiles around the desk. Dragging a grid tile out of
+a docked column preserves the visible positions and canvas frame, then switches
+to freeform placement. Compact screens retain the wrapping flow and keyboard
+reordering. Positions use the existing workspace storage format.
+
+Panel headers have a textured grab strip. The expanded Move menu and its
+direction/dock buttons were removed. The existing header drag and arrow-key
+movement remain available.
+
+[Desktop window options](FLOATING-TOOLBOX-WINDOWS.md) compare browser popups,
+installed web apps, Document Picture-in-Picture and native desktop hosts.

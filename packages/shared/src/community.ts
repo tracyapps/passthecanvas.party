@@ -381,7 +381,7 @@ export interface StudioPreferences {
   autosaveMinutes: number;
   /** How big the interface (buttons, panels, text) is drawn: 1 = normal. */
   interfaceScale: number;
-  toolView: 'cutouts' | 'grid';
+  toolView: 'cutouts' | 'grid' | 'tray';
   colorPalettes: ColorPalette[];
 }
 export const DEFAULT_PREFERENCES: StudioPreferences = { autosaveMinutes: 2, interfaceScale: 1, toolView: 'cutouts', colorPalettes: [] };
@@ -400,7 +400,7 @@ export function cleanPreferences(value: unknown): StudioPreferences {
   return {
     autosaveMinutes: (AUTOSAVE_CHOICES as readonly number[]).includes(Number(raw.autosaveMinutes)) ? Number(raw.autosaveMinutes) : DEFAULT_PREFERENCES.autosaveMinutes,
     interfaceScale: (INTERFACE_SCALES as readonly number[]).includes(Number(raw.interfaceScale)) ? Number(raw.interfaceScale) : DEFAULT_PREFERENCES.interfaceScale,
-    toolView: raw.toolView === 'grid' ? 'grid' : 'cutouts',
+    toolView: raw.toolView === 'grid' || raw.toolView === 'tray' ? raw.toolView : 'cutouts',
     colorPalettes: [...palettes.values()]
   };
 }
