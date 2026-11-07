@@ -866,3 +866,11 @@ Installability requirements were checked against
 [MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
 The live party still needs a connection. Browser-specific installation and
 installed-window behavior need real-device qualification after deployment.
+
+### 2026-11-07 — Owner SVG palettes in the default library
+
+Added all eleven palettes from `_design/color-palettes`, using filenames for
+stable IDs and display names. Each contains the 21 filled rectangle colors in
+visual reading order, left to right and top to bottom. CSS variables and preview
+outlines are excluded. Swatches use the palette name and a number because the
+source files do not name individual colors. Existing defaults remain available.

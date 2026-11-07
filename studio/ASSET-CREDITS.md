@@ -149,3 +149,10 @@ The brush/star/cat/swirl SVG avatar badges are original code-created artwork in
 
 `site/app-icon-192.png` and `site/app-icon-512.png` are raster exports of the
 existing original project-authored `site/favicon.svg`.
+
+## Owner color palettes — November 7, 2026
+
+The eleven built-in palettes Autumn, Balance, Bold, Fire, Greyed, Muted,
+Pastels, Seashore, Skintones, The Blues and Zen use rectangle fill values from
+Tapps's owner-created SVGs in `_design/color-palettes`, supplied for this app.
+The app stores color values only. CSS variables and preview outlines are excluded.
