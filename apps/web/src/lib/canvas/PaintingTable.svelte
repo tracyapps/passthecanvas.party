@@ -12,13 +12,14 @@
   import AccountControls from '../account/AccountControls.svelte';
   import { accountState, loadAccountWorkspaces, saveAccountWorkspaces } from '../account/account.svelte';
   import PhotoSupply from './PhotoSupply.svelte';
+  import ToolboxTray from './ToolboxTray.svelte';
   import StudioPanel from './StudioPanel.svelte';
   import PartyCanvas from './PartyCanvas.svelte';
   import { addPart, decodeMixes, expand, mixColor, recipeText, rememberMix, removeColor, removePart, totalParts, MAX_PARTS, SAVED_MIXES_KEY, type Recipe, type SavedMix } from './recipes';
   import { prefs, savePreferences } from '../prefs.svelte';
   import { colorLibrary } from './color-library';
   import { PALETTES } from './palettes';
-  import { allToolboxes, EVERYTHING, findToolbox, freshName, isBuiltIn, makeToolbox, MAX_TOOLBOXES, shownSupplies, type Toolbox } from './toolboxes';
+  import { allToolboxes, EVERYTHING, findToolbox, freshName, isBuiltIn, makeToolbox, MAX_TOOLBOXES, shownSupplies, trayRows, type Toolbox } from './toolboxes';
   import { defaultLayout, decodeWorkspaces, gridDestination, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock } from './workspaces';
   import { constrainSupply, type SupplyRect } from './placement';
   import { buildMask, maskHit, type ShapeMask } from './shape-masks';
@@ -86,15 +87,16 @@
     { id: 'airbrush', name: 'Airbrush', box: [1280, 225, 255, 170], tip: [0, 35, 160, 130], tool: 'airbrush' }
   ];
   let bench: HTMLElement;
-  let supplyGrid: HTMLElement;
+  let supplyGrid = $state<HTMLElement>(null!);
   let canvasFrame: HTMLElement;
   let statusStrip: HTMLElement;
   let headerHeight = $state(88);
   let dock = $state<ToolDock>('surround');
+  let trayView = $derived(prefs.toolView === 'tray');
   let gridView = $derived(prefs.toolView === 'grid');
-  // The grid reuses the docked layout without overwriting saved cutout positions.
+  // Layout placement is shared by cutouts and freeform grid tiles.
   let toolDock = $derived(dock);
-  async function setToolView(view: 'cutouts' | 'grid') {
+  async function setToolView(view: 'cutouts' | 'grid' | 'tray') {
     try { await savePreferences({ toolView: view }); }
     catch { announcement = 'Tool view changed here. Account sync failed.'; }
   }
@@ -115,7 +117,10 @@
   // Toolboxes: which supplies are on the table (see toolboxes.ts). Saved with your views.
   let customToolboxes = $state<Toolbox[]>([]);
   let toolbox = $state(EVERYTHING);
+  let order = $state(supplies.map(supply => supply.id));
   let activeBox = $derived(findToolbox(toolbox, customToolboxes));
+  let activeRows = $derived(activeBox.rows ?? trayRows(shownSupplies(order, activeBox)));
+  let traySupplies = $derived(supplies.map(supply => ({ id: supply.id, name: supply.name, image: supplyImage(supply.id, true) })));
   let toolboxesOpen = $state(false);
   let viewsOpen = $state(false);
   let deletingBox = $state(false);
@@ -192,9 +197,10 @@
   let trayReason = $derived(unavailability(selection.tool, trayMedium));
   let solidColor = $derived(mixColor(recipe));
   let paletteId = $state('');
-  let visiblePalettes = $derived(colorLibrary(prefs.colorPalettes).filter((palette) => !palette.hidden)
+  let paletteLibrary = $derived(colorLibrary(prefs.colorPalettes));
+  let visiblePalettes = $derived(paletteLibrary.filter((palette) => !palette.hidden)
     .sort((a, b) => Number(b.favorite) - Number(a.favorite)));
-  let selectedPalette = $derived(visiblePalettes.find((palette) => palette.id === paletteId));
+  let selectedPalette = $derived(paletteLibrary.find((palette) => palette.id === paletteId));
   let availableColors = $derived(selectedPalette?.colors ?? PALETTES[trayOpen ? trayMedium : paletteMedium]);
   // The default canvas window depends only on the screen, the tool dock and the
   // canvas shape. Palettes and settings panels float above it, so opening one
@@ -207,10 +213,10 @@
     const gridWidth = 28 + Math.ceil(shown.length / rows) * (GRID_TILE.width + GRID_TILE.gap);
     const freeGrid = gridView && toolDock === 'surround';
     // Leave room for the acrylic rack (the widest supply on the left) beside the canvas.
-    const left = freeGrid ? gridWidth : toolDock === 'right' ? 24 : toolDock === 'left' || toolDock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
-    const rightRail = freeGrid ? 24 : toolDock === 'right' || toolDock === 'both' ? Math.min(360, board.width * .3) : toolDock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
+    const left = trayView ? Math.min(420, board.width * .34) : freeGrid ? gridWidth : toolDock === 'right' ? 24 : toolDock === 'left' || toolDock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
+    const rightRail = trayView || freeGrid ? 24 : toolDock === 'right' || toolDock === 'both' ? Math.min(360, board.width * .3) : toolDock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
     const available = Math.max(300, board.width - left - rightRail);
-    const bottomSpace = freeGrid || toolDock !== 'surround' ? 56 : 250 * scale + 20;
+    const bottomSpace = trayView || freeGrid || toolDock !== 'surround' ? 56 : 250 * scale + 20;
     const width = Math.min(available, Math.max(260, (board.height - top - bottomSpace) * documentSize.width / documentSize.height));
     return { x: left + (available - width) / 2, y: top, width, height: width * documentSize.height / documentSize.width };
   });
@@ -383,7 +389,29 @@
   function toggleSupply(id: string, on: boolean) {
     const now = new Set(activeBox.supplies);
     if (on) now.add(id); else now.delete(id);
-    editToolbox({ supplies: supplies.map(item => item.id).filter(item => now.has(item)) });
+    const chosen = supplies.map(item => item.id).filter(item => now.has(item));
+    editToolbox({ supplies: chosen, rows: trayRows(chosen) });
+  }
+  function changeTray(rows: string[][], paletteIds: string[]) {
+    if (isBuiltIn(activeBox.id)) {
+      if (customToolboxes.length >= MAX_TOOLBOXES) { announcement = `Up to ${MAX_TOOLBOXES} toolboxes.`; return; }
+      newToolbox();
+    }
+    editToolbox({ rows, paletteIds, supplies: rows.flat() });
+  }
+  function emptyTray() {
+    if (customToolboxes.length >= MAX_TOOLBOXES) { announcement = `Up to ${MAX_TOOLBOXES} toolboxes.`; return; }
+    newToolbox();
+    editToolbox({ rows: [[]], paletteIds: [], supplies: [] });
+  }
+  async function openTrayPalette(id: string) {
+    const medium = (Object.keys(MEDIUM_NAMES) as PaintingMedium[]).find(medium => !unavailability(selection.tool, medium));
+    if (medium) paletteMedium = medium;
+    else { select('round'); paletteMedium = 'acrylic'; }
+    paletteId = id;
+    trayOpen = false;
+    paletteOpen = true;
+    await revealPalette();
   }
   function deleteToolbox() {
     const gone = activeBox.name;
@@ -464,7 +492,7 @@
   // On the full table, supply buttons don't take pointer events; the table
   // hit-tests each photo's outline instead (shape-masks.ts). Tiles (phones,
   // docked columns) are plain rectangles, so they keep normal buttons.
-  let masked = $derived(!compact && !gridView && toolDock === 'surround');
+  let masked = $derived(!compact && !trayView && !gridView && toolDock === 'surround');
   const masks: Record<string, ShapeMask | null> = {};
   let masksStarted = false;
   $effect(() => {
@@ -683,7 +711,6 @@
       positions[target] = { x: (box.x + dx) / board.width, y: (box.y + dy) / board.height };
     }
   }
-  let order = $state(supplies.map(supply => supply.id));
   let shown = $derived(shownSupplies(order, activeBox));
   function supplyKey(event: KeyboardEvent, id: string) {
     if (mode !== 'arrange') return;
@@ -750,16 +777,17 @@
       <!-- Floats over the (locked) canvas so the header and the supplies never shift while you arrange them. -->
       <StudioPanel title="Arrange table" label="arrange table" dock="arrange" flow={compact} onclose={() => mode = 'paint'}>
         <div class="arrange-controls">
-          <label class="arrange-field">Supply<select bind:value={target}>{#each supplies.filter(item => shown.includes(item.id)) as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
+          {#if !trayView}<label class="arrange-field">Supply<select bind:value={target}>{#each supplies.filter(item => shown.includes(item.id)) as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
           <div class="nudge-pad" role="group" aria-label={compact || toolDock !== 'surround' ? 'Reorder the chosen supply' : 'Move the chosen supply'}>
             <button type="button" class="up" aria-label="Up" onclick={() => nudge(0, -32)}>↑</button>
             <button type="button" class="left" aria-label="Left" onclick={() => nudge(-32, 0)}>←</button>
             <button type="button" class="down" aria-label="Down" onclick={() => nudge(0, 32)}>↓</button>
             <button type="button" class="right" aria-label="Right" onclick={() => nudge(32, 0)}>→</button>
           </div>
-          <label class="arrange-field">Tool view<select value={prefs.toolView} onchange={(event) => setToolView(event.currentTarget.value === 'grid' ? 'grid' : 'cutouts')}><option value="cutouts">Default cutouts</option><option value="grid">Toolbox grid</option></select></label>
-          <label class="arrange-field">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Freeform around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
-          <p class="arrange-hint">{compact || toolDock !== 'surround' ? 'Use arrow keys to reorder supplies. Drag a grid tile out of the columns to place it freely.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>
+          {/if}
+          <label class="arrange-field">Tool view<select value={prefs.toolView} onchange={(event) => setToolView(event.currentTarget.value === 'tray' ? 'tray' : event.currentTarget.value === 'grid' ? 'grid' : 'cutouts')}><option value="cutouts">Default cutouts</option><option value="grid">Freeform grid</option><option value="tray">Toolbox tray</option></select></label>
+          {#if !trayView}<label class="arrange-field">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Freeform around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
+          <p class="arrange-hint">{compact || toolDock !== 'surround' ? 'Use arrow keys to reorder supplies. Drag a grid tile out of the columns to place it freely.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>{/if}
           <div class="arrange-actions">
             <button type="button" onclick={() => { resetView(); }}>Reset layout</button>
             <button type="button" class="primary" onclick={() => mode = 'paint'}>Done</button>
@@ -767,6 +795,13 @@
           <div class="arrange-actions"><button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button><button type="button" onclick={() => openPanel('views')}>Saved views…</button></div>
           {@render tableSave()}
         </div>
+      </StudioPanel>
+    {/if}
+    {#if trayView}
+      <StudioPanel title={activeBox.name} label="toolbox tray" dock="toolbox" flow={compact} onclose={() => setToolView('grid')}>
+        <ToolboxTray rows={activeRows} paletteIds={activeBox.paletteIds ?? []} supplies={traySupplies} palettes={paletteLibrary} selected={active}
+          chooseTool={(id) => { const supply = supplies.find(supply => supply.id === id); if (supply) void openSupply(supply); }}
+          choosePalette={openTrayPalette} onchange={changeTray} onnew={emptyTray} />
       </StudioPanel>
     {/if}
     {#if toolboxesOpen}
@@ -784,7 +819,7 @@
                 <label><input type="checkbox" checked={activeBox.supplies.includes(supply.id)} onchange={(event) => toggleSupply(supply.id, event.currentTarget.checked)} /> {supply.name}</label>
               {/each}
             </fieldset>
-            {#if !activeBox.supplies.length}<p class="arrange-hint">Nothing ticked: this toolbox shows every supply until you pick some.</p>{/if}
+            {#if !activeBox.supplies.length && !activeBox.rows}<p class="arrange-hint">Nothing ticked: this toolbox shows every supply until you pick some.</p>{/if}
             <div class="arrange-actions">
               <button type="button" onclick={() => newToolbox()}>Duplicate</button>
               {#if deletingBox}
@@ -852,7 +887,7 @@
       </StudioPanel>
     {/if}
     {#if paletteOpen}
-      <StudioPanel title={trayOpen ? 'Color tray' : MEDIUM_NAMES[paletteMedium]} label="color palette" dock="palette" flow={compact} onclose={() => paletteOpen = false}>
+      <StudioPanel title={trayOpen ? 'Color tray' : MEDIUM_NAMES[paletteMedium]} label="color palette" dock={trayView ? 'bottom' : 'palette'} flow={compact} onclose={() => paletteOpen = false}>
         {#if trayOpen}
           <!-- The well is the picture; the recipe list below is the control. -->
           <div class="mixing-well" style:background-image={`url('${asset('tray')}')`} aria-hidden="true">
@@ -878,6 +913,7 @@
         <label class="medium-choice">Color palette
           <select value={selectedPalette?.id ?? ''} onchange={(event) => paletteId = event.currentTarget.value}>
             <option value="">Studio {MEDIUM_NAMES[trayOpen ? trayMedium : paletteMedium]} colors</option>
+            {#if selectedPalette?.hidden}<option value={selectedPalette.id}>{selectedPalette.name} (tray shortcut)</option>{/if}
             {#each visiblePalettes as palette (palette.id)}<option value={palette.id}>{palette.name}{palette.favorite ? ' (favorite)' : ''}</option>{/each}
           </select>
         </label>
@@ -891,7 +927,7 @@
     {/if}
   </div>
 
-  <section bind:this={supplyGrid} class="supplies" aria-label="Art supplies">
+  {#if !trayView}<section bind:this={supplyGrid} class="supplies" aria-label="Art supplies">
     {#each shown as id, index (id)}
       {@const supply = supplies.find(supply => supply.id === id)!}
       {@const box = supplyBox(supply)}
@@ -904,7 +940,7 @@
           onpointerdown={(event) => startMove(event, supply)} onpointermove={moveSupply} onpointerup={() => dragging = null} onkeydown={(event) => supplyKey(event, supply.id)} />
       </div>
     {/each}
-  </section>
+  </section>{/if}
   <div class="sr-only" role="status">{announcement}</div>
 </main>
 
@@ -912,6 +948,7 @@
   {#if menu}<div class="menu-group">{@render menu()}</div>{/if}
   <div class="menu-group">
     <h2>Table</h2>
+    <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); void setToolView('tray'); }}>Open toolbox tray</button>
     <button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button>
     <button type="button" onclick={() => openPanel('views')}>Saved views…</button>
     <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); mode = 'arrange'; paletteOpen = false; }}>Arrange table…</button>
@@ -1082,7 +1119,7 @@
   .skip { position: absolute; left: 16px; top: -100px; z-index: 50; padding: 12px; background: #fff5e4; color: #21160d; }
   .skip:focus { top: 100px; }
   .wheel-option { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; }
-  .compact { height: auto; min-height: 100svh; overflow: visible; padding: 0 12px 16px; }
+  .compact { height: auto; min-height: 100svh; overflow: visible; padding: 0 12px calc(144px + env(safe-area-inset-bottom, 0px)); }
   .compact .status-strip { position: relative; margin: 0 -12px; min-height: 88px; gap: 12px; flex-wrap: wrap; padding: 12px; }
   .compact .mode { flex: 1 0 auto; }
   .compact .selected-tool { flex: 1; min-width: 120px; }

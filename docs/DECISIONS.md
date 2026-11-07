@@ -842,3 +842,27 @@ movement remain available.
 
 [Desktop window options](FLOATING-TOOLBOX-WINDOWS.md) compare browser popups,
 installed web apps, Document Picture-in-Picture and native desktop hosts.
+
+### 2026-11-06 — Optional installation and configurable toolbox trays
+
+The owner chose an optional installed web app as the desktop direction.
+A standalone manifest and app icons use the same site, account and party paths.
+Installation remains a browser choice. Browser and installed participants use
+the same party server. Multiwindow toolboxes remain a future integration.
+
+Toolbox tray is a third tool view beside cutouts and freeform grid. Starter
+rows distribute tools evenly with at most three per row. Each row is a flex
+layout, so two tools share their row evenly. Artists can add rows, add, replace
+or remove tools and pin up to three palette shortcuts. Larger palettes use two
+rings of color wedges. The discs open the normal color picker.
+
+Rows and palette IDs are optional fields on existing saved toolboxes. Older
+toolboxes get balanced starter rows. Editing a built-in makes a personal copy.
+An explicit empty tray stays empty, while older empty supply lists retain their
+original “show everything” behavior. Tray edits use existing browser and
+account workspace persistence.
+
+Installability requirements were checked against
+[MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
+The live party still needs a connection. Browser-specific installation and
+installed-window behavior need real-device qualification after deployment.

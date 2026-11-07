@@ -50,7 +50,7 @@ export function shownSupplies(order: string[], box: Toolbox): string[] {
 }
 /** A new custom toolbox, starting from another one's supplies. */
 export function makeToolbox(name: string, from: Toolbox, all: string[], id: string = crypto.randomUUID()): Toolbox {
-  const supplies = from.id === EVERYTHING || !from.supplies.length ? [...all] : from.supplies.filter((s) => all.includes(s));
+  const supplies = from.rows ? from.rows.flat() : from.id === EVERYTHING || !from.supplies.length ? [...all] : from.supplies.filter((s) => all.includes(s));
   return {
     id, name: name.trim().slice(0, 40) || 'My toolbox', supplies,
     ...(from.rows ? { rows: from.rows.map(row => [...row]) } : {}),

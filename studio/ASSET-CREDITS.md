@@ -144,3 +144,8 @@ The brush/star/cat/swirl SVG avatar badges are original code-created artwork in
   photo and chroma strip images were used as visual references.
 - `tool-icons.svg` contains original project-authored tool symbols for future
   compact icon controls.
+
+## Installed app icons — November 6, 2026
+
+`site/app-icon-192.png` and `site/app-icon-512.png` are raster exports of the
+existing original project-authored `site/favicon.svg`.

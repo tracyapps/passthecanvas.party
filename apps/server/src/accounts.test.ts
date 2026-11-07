@@ -77,3 +77,13 @@ describe('account workspace boundary', () => {
     expect(validAccountWorkspaces({ ...views, toolboxes: [{ id: 'a', name: '', supplies: [] }] })).toBe(false);
   });
 });
+
+it('accepts bounded toolbox tray rows and rejects inconsistent or oversized trays', () => {
+  const current = { positions: {}, order: ['round', 'pencil'], dock: 'surround', frame: null, rotation: 0, toolbox: 'mine' };
+  const box = { id: 'mine', name: 'Mine', supplies: ['round', 'pencil'], rows: [['round'], ['pencil']], paletteIds: ['studio-earth'] };
+  const value = { version: 1, current, views: [], selected: '', toolboxes: [box] };
+  expect(validAccountWorkspaces(value)).toBe(true);
+  expect(validAccountWorkspaces({ ...value, toolboxes: [{ ...box, rows: [['round', 'round']] }] })).toBe(false);
+  expect(validAccountWorkspaces({ ...value, toolboxes: [{ ...box, rows: [['round']] }] })).toBe(false);
+  expect(validAccountWorkspaces({ ...value, toolboxes: [{ ...box, paletteIds: ['one', 'two', 'three', 'four'] }] })).toBe(false);
+});

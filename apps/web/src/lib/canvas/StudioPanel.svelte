@@ -5,7 +5,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
-  let { title, label, dock = 'bottom', flow = false, onclose, children }: { title: string; label: string; dock?: 'bottom' | 'palette' | 'guests' | 'notes' | 'radio' | 'arrange'; flow?: boolean; onclose: () => void; children: Snippet } = $props();
+  let { title, label, dock = 'bottom', flow = false, onclose, children }: { title: string; label: string; dock?: 'bottom' | 'palette' | 'toolbox' | 'guests' | 'notes' | 'radio' | 'arrange'; flow?: boolean; onclose: () => void; children: Snippet } = $props();
   let panel: HTMLElement;
   // svelte-ignore state_referenced_locally — a panel keeps its label for life
   let position = $state<{ x: number; y: number } | null>(placed.get(label) ?? null);
@@ -41,7 +41,7 @@
     if (step) { event.preventDefault(); nudge(...step); }
   }
 </script>
-<section bind:this={panel} class="studio-panel" class:palette={dock === 'palette'} class:guests={dock === 'guests'} class:notes={dock === 'notes' || dock === 'radio'} class:radio={dock === 'radio'} class:arrange={dock === 'arrange'} class:flow aria-label={label}
+<section bind:this={panel} class="studio-panel" class:palette={dock === 'palette'} class:toolbox={dock === 'toolbox'} class:guests={dock === 'guests'} class:notes={dock === 'notes' || dock === 'radio'} class:radio={dock === 'radio'} class:arrange={dock === 'arrange'} class:flow aria-label={label}
   style={position ? `position:fixed;left:${position.x}px;top:${position.y}px;right:auto;bottom:auto;z-index:30;width:min(calc(400px * var(--ui-scale, 1)), calc(100vw - 16px));max-height:calc(100svh - 16px);` : ''}>
   <header>
     <button type="button" class="handle" aria-label={`Move ${label}. Drag or use arrow keys.`}
@@ -53,6 +53,7 @@
 <style lang="scss">
   .studio-panel { position: fixed; right: 16px; bottom: 32px; width: min(calc(400px * var(--ui-scale, 1)), calc(100vw - 24px)); max-width: calc(100vw - 16px); max-height: calc(100svh - 116px); overflow: auto; padding: 8px 12px 12px; background: #17130fef; color: #fff5e6; border: 1px solid #e6df54; border-radius: 8px; box-shadow: 0 8px 25px #0008; z-index: 12; }
   .palette { left: 12px; top: calc(var(--header-height, 88px) + 16px); bottom: auto; right: auto; width: min(calc(420px * var(--ui-scale, 1)), calc(100vw - 24px)); }
+  .toolbox { max-height: calc(100svh - var(--header-height, 88px) - 36px); left: 12px; top: calc(var(--header-height, 88px) + 12px); bottom: auto; right: auto; width: min(380px, calc(100vw - 24px)); }
   .guests { right: 12px; top: 96px; bottom: auto; width: auto; max-width: min(560px, calc(100vw - 24px)); max-height: calc(100svh - 220px); padding: 2px 10px 8px; }
   .guests .handle { font-size: 15px; }
   .notes { left: 12px; right: auto; bottom: 96px; width: min(340px, calc(100vw - 24px)); background: #f3ead9f5; color: #2b1d12; border-color: #b9a483; }
