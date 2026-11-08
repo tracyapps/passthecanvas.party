@@ -3,7 +3,7 @@
 // them update automatically when messages arrive.
 
 import { partySocketUrl } from './origin';
-import { deviceLabel, type ClientMessage, type DeviceDuty, type LinkRole, type Look, type MyDevice, type PaintedStroke, type PartyState, type Piece, type Presence, type ServerMessage } from '@ptc/shared';
+import { deviceLabel, type ClientMessage, type DeviceDuty, type LinkRole, type Look, type MyDevice, type PaintedStroke, type PartyState, type Piece, type Presence, type ServerMessage, type Stroke } from '@ptc/shared';
 
 /** This tab's seat in a party: enough to rejoin after a dropped connection or a reload. */
 interface SavedSeat {
@@ -82,6 +82,12 @@ export class PartyConnection {
   private leftOnPurpose = false;
   private retries = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Strokes painted while the connection was down. They go out again once
+   * we're back, onto the same canvas in the same round, and join its history.
+   */
+  private outbox: Stroke[] = [];
+  private resend: Stroke[] = [];
   /** Set by the studio: another of your devices asked to pass; finish the stroke and pass. */
   onPassRequest: () => void = () => {};
 
@@ -154,6 +160,8 @@ export class PartyConnection {
   }
 
   private forget() {
+    this.outbox = [];
+    this.resend = [];
     this.connected = false;
     this.reconnecting = false;
     this.state = null;
@@ -179,6 +187,7 @@ export class PartyConnection {
 
   send(message: ClientMessage) {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
+    else if (message.type === 'stroke' && this.youId && !this.leftOnPurpose && this.outbox.length < 5000) this.outbox.push(message.stroke);
   }
 
   get me() {
@@ -224,6 +233,9 @@ export class PartyConnection {
         if (this.reconnecting) this.announcement = 'Reconnected.';
         this.reconnecting = false;
         this.retries = 0;
+        // Anything painted offline waits for this canvas's history (next message).
+        this.resend = this.outbox;
+        this.outbox = [];
         break;
       case 'devices':
         this.devices = message.devices;
@@ -255,9 +267,18 @@ export class PartyConnection {
         if (message.secondsLeft === 30) this.announcement = '30 seconds left';
         if (message.secondsLeft === 10) this.announcement = '10 seconds left';
         break;
-      case 'canvasHistory':
-        this.histories = { ...this.histories, [message.canvasId]: { canvasId: message.canvasId, strokes: message.strokes, complete: message.complete, baseUrl: message.baseUrl } };
+      case 'canvasHistory': {
+        // Strokes painted on this canvas while offline: send them now, and
+        // add them to the history so they stay on screen when it rebuilds.
+        const offline = this.resend.filter((stroke) => stroke.canvasId === message.canvasId);
+        this.resend = [];
+        const round = this.state?.round ?? 0;
+        const strokes = offline.length && this.youId ? [...message.strokes, ...offline.map((stroke) => ({ ...stroke, painterId: this.youId!, round }))] : message.strokes;
+        for (const stroke of offline) this.send({ type: 'stroke', stroke });
+        if (offline.length) this.announcement = 'Reconnected. Your strokes from while you were offline are saved.';
+        this.histories = { ...this.histories, [message.canvasId]: { canvasId: message.canvasId, strokes, complete: message.complete, baseUrl: message.baseUrl } };
         break;
+      }
       case 'stroke':
         this.onStroke(message.stroke);
         break;

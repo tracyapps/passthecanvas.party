@@ -63,5 +63,6 @@ two-computer gate are still unverified.
   two people. Use [PHASE-1-TEST.md](PHASE-1-TEST.md).
 - **Screen readers**: duty changes and reconnects are announced through the
   party live region; check with VoiceOver.
-- Strokes painted while a device is offline are lost (the server's history is
-  the source of truth on rejoin).
+- Strokes painted while offline are kept and sent on reconnect, if it's still
+  the same round and canvas (checked in Chromium: without this they were
+  lost). If the round moved on while you were away, they're dropped.

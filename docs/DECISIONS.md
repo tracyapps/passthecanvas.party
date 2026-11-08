@@ -1006,3 +1006,12 @@ that remain unimplemented or unverified.
 - Local video testing: LiveKit's own dev server (`livekit-server --dev`) plus
   Chromium's fake camera confirmed calls, self-view at your seat, Save data,
   and moving the call to a linked device. Not a substitute for real devices.
+
+### 2026-11-08 — Strokes painted offline survive a reconnect
+
+The browser keeps strokes made while its party socket is down (up to 5,000
+batches). After `welcome`, they wait for the canvas history that follows;
+those for that canvas are sent and added to the rebuilt history, so they stay
+on screen and reach the server, which still checks round, canvas and the
+canvas device as usual. Strokes for a canvas that has since passed on are
+dropped. No protocol change.
