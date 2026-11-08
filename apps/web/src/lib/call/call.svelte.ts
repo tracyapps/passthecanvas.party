@@ -3,6 +3,7 @@
 // microphone only, and only when the guest chose "camera" presence.
 
 import {
+  ConnectionQuality,
   Room,
   RoomEvent,
   Track,
@@ -34,8 +35,18 @@ export class Call {
   localVideo = $state<MediaStreamTrack | null>(null);
   videos = $state<GuestVideo[]>([]);
 
+  /**
+   * Save data: other guests' video is not downloaded (their avatar or
+   * initials show instead); voices still play. Remembered in this browser.
+   */
+  saveData = $state(readSaveData());
+  /** LiveKit thinks our connection is struggling (a hint to turn on Save data). */
+  weakConnection = $state(false);
+
   private room: Room | null = null;
   private speaking = new Set<string>();
+  /** Save data was switched on for a weak connection this call (only once). */
+  private autoSaved = false;
 
   /**
    * Join the party's video room. Fails softly: if the server has no LiveKit
@@ -84,6 +95,7 @@ export class Call {
       });
       this.listenToRoom();
       await this.room.connect(url, token);
+      this.applySaveData();
 
       if (presence === 'camera') {
         await this.room.localParticipant.setMicrophoneEnabled(true);
@@ -129,6 +141,27 @@ export class Call {
     this.refreshLocalVideo();
   }
 
+  /** Turn Save data on or off: (un)subscribe from everyone's camera. */
+  setSaveData(on: boolean) {
+    this.saveData = on;
+    this.note = "";
+    try {
+      localStorage.setItem(SAVE_DATA_KEY, on ? '1' : '0');
+    } catch {
+      // No storage: it just won't be remembered.
+    }
+    this.applySaveData();
+    this.refreshVideos();
+  }
+
+  private applySaveData() {
+    if (!this.room) return;
+    for (const participant of this.room.remoteParticipants.values()) {
+      const camera = participant.getTrackPublication(Track.Source.Camera) as RemoteTrackPublication | undefined;
+      camera?.setSubscribed(!this.saveData);
+    }
+  }
+
   leave() {
     this.room?.disconnect();
     this.room = null;
@@ -137,6 +170,8 @@ export class Call {
     this.localVideo = null;
     this.micOn = true;
     this.camOn = true;
+    this.weakConnection = false;
+    this.autoSaved = false;
   }
 
   // ---------- internals ----------
@@ -157,6 +192,24 @@ export class Call {
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
       this.speaking = new Set(speakers.map((s) => s.identity));
       this.refreshVideos();
+    });
+    // New cameras follow Save data too.
+    room.on(RoomEvent.TrackPublished, (publication) => {
+      if (publication.source === Track.Source.Camera && this.saveData) publication.setSubscribed(false);
+    });
+    // A weak connection drops guests' video once, automatically, so voices
+    // stay clear (see ACCESSIBILITY.md). Turning Save data off again wins:
+    // we don't switch it back on during this call.
+    room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+      if (participant.identity !== room.localParticipant.identity) return;
+      this.weakConnection = quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost;
+      if (this.weakConnection && !this.saveData && !this.autoSaved) {
+        this.autoSaved = true;
+        this.saveData = true;
+        this.applySaveData();
+        this.refreshVideos();
+        this.note = "Weak connection: guests' video is paused so voices stay clear. Turn Save data off to bring it back.";
+      }
     });
     room.on(RoomEvent.Disconnected, () => {
       if (this.status === 'in-call') this.leave();
@@ -183,6 +236,18 @@ export class Call {
     // LiveKit wraps tracks; the browser-facing MediaStreamTrack is what <video> wants.
     this.localVideo = publication?.videoTrack?.mediaStreamTrack ?? null;
   }
+}
+
+const SAVE_DATA_KEY = 'ptc-save-data';
+/** Save data starts on when the browser asks for it (Data Saver), or when chosen before. */
+function readSaveData(): boolean {
+  try {
+    const saved = localStorage.getItem(SAVE_DATA_KEY);
+    if (saved !== null) return saved === '1';
+  } catch {
+    // fall through
+  }
+  return Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData);
 }
 
 /** The participant's camera track, or null when it's off or not subscribed. */

@@ -11,14 +11,21 @@
     inRoom: boolean; // currently looking at the 360° room?
     onToggleRoom: () => void;
     onLeave: () => void;
+    /** The call is on another of your devices (its name), so this one stays out of it. */
+    elsewhere?: string | null;
+    /** Open "Use another device". */
+    onDevices?: () => void;
   }
-  let { call, inRoom, onToggleRoom, onLeave }: Props = $props();
+  let { call, inRoom, onToggleRoom, onLeave, elsewhere = null, onDevices }: Props = $props();
 
   let videoReady = $derived(call.status === 'in-call');
 </script>
 
 <nav class="dock" aria-label="Call controls">
-  {#if call.status === 'unavailable' || call.status === 'error'}
+  {#if elsewhere}
+    <!-- One call per artist: video and mic live on the device that holds the call. -->
+    <button type="button" class="where" onclick={onDevices}>Video is on your {elsewhere}</button>
+  {:else if call.status === 'unavailable' || call.status === 'error'}
     <!-- Keep the honest reason visible; the party works without video. -->
     <p class="note" role="status">{call.note || 'Video is unavailable.'}</p>
   {:else if call.status === 'connecting'}
@@ -48,6 +55,20 @@
       {:else}
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
       {/if}
+    </button>
+  {/if}
+
+  {#if !elsewhere && call.status === 'in-call'}
+    {#if call.note}<p class="note" role="status">{call.note}</p>{/if}
+    <!-- Save data: guests' video stops downloading (avatars show instead); voices keep playing. -->
+    <button
+      type="button"
+      aria-pressed={call.saveData}
+      aria-label="Save data (hide guests' video, keep voices)"
+      title="Save data"
+      onclick={() => call.setSaveData(!call.saveData)}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h2M9 18v-4M14 18v-8M19 18V6"/>{#if call.saveData}<path d="M3 3l18 18"/>{/if}</svg>
     </button>
   {/if}
 
@@ -115,6 +136,12 @@
     button[aria-pressed='false'] {
       color: $cream-muted;
       background: rgb(243 234 217 / 0.06);
+    }
+
+    .where {
+      padding: 0 0.875rem;
+      font-size: 0.875rem;
+      white-space: nowrap;
     }
 
     .leave {

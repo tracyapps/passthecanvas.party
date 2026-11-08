@@ -76,6 +76,7 @@ docs/                plan, roadmap, architecture, decisions
 ## 7. How the pieces talk
 
 - The **party server** is the source of truth for turn order, the timer, who sits where, and chat. Clients never decide whose turn it is.
+- **One artist can use several devices** (`Session` in `apps/server/src/party.ts`): the server gives `canvas` to one device and `call` to one device. Only the canvas device's strokes count; only the call device joins LiveKit. Devices rejoin with a private per-device key. See `docs/PARTY-READINESS.md`.
 - **Only the current painter's strokes are accepted.** The server drops strokes from anyone else.
 - Strokes travel as small messages of brush *stamps* (see `packages/shared/src/paint.ts`), never as video. Each turn paints its own layer; blenders and the eraser only touch the painter's own turns. Late joiners replay the party's stroke `history`, then the live strokes.
 - **Video and audio go through LiveKit only.** The party server just mints LiveKit access tokens.

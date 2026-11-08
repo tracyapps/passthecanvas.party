@@ -98,7 +98,7 @@
       const name = NAMES[(i + shuffle * 7) % NAMES.length]!;
       const id = `demo-${i + 1}`;
       const onCamera = Math.random() * 100 < cameraShare;
-      nextMembers.push({ id, name, presence: onCamera ? 'camera' : 'avatar', isHost: false, spotId: spot.id, canvasShape: 'classic', watching: false, initialsColor: INITIALS_COLOR_KEYS[i % INITIALS_COLOR_KEYS.length]!, hasLook: false });
+      nextMembers.push({ id, name, presence: onCamera ? 'camera' : 'avatar', isHost: false, spotId: spot.id, canvasShape: 'classic', watching: false, initialsColor: INITIALS_COLOR_KEYS[i % INITIALS_COLOR_KEYS.length]!, hasLook: false, away: false });
       if (onCamera) {
         const track = makeFakeVideoTrack(name[0]!, i + shuffle);
         liveTracks.push(track);

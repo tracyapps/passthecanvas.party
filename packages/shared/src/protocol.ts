@@ -33,6 +33,64 @@ export interface Member {
   initialsColor: InitialsColor;
   /** They shared a picture for avatar mode (a cutout or photo); see the `looks` messages. */
   hasLook: boolean;
+  /**
+   * Every device of theirs lost its connection a while ago. Their seat is
+   * kept for a grace period; an away artist sits out the next round.
+   */
+  away: boolean;
+}
+
+// ---------- your devices (one artist, several screens) ----------
+
+/**
+ * One artist can use more than one device or window: a tablet for the canvas,
+ * a laptop or phone for the room and video. The server gives each duty to
+ * exactly one device: `canvas` (the only device whose strokes count) and
+ * `call` (the only device that joins the video call as this artist).
+ */
+export type DeviceDuty = 'canvas' | 'call';
+/** What a new linked device takes over: the canvas, or the room and video. */
+export type LinkRole = 'canvas' | 'room';
+export const LINK_ROLES: LinkRole[] = ['canvas', 'room'];
+
+/** One of your devices, as the server sees it. Sent only to you. */
+export interface MyDevice {
+  id: string;
+  label: string; // "iPad", "Mac", "Mac (window)"…
+  canvas: boolean;
+  call: boolean;
+  online: boolean;
+}
+
+/** Link codes: 6 letters and digits, no look-alikes (no I, O, 0, 1). */
+export const LINK_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const LINK_CODE = /^[A-HJ-NP-Z2-9]{6}$/;
+/** A link code works once, for this long. */
+export const LINK_SECONDS = 300;
+/** At most this many devices per artist. */
+export const MAX_DEVICES = 4;
+
+/** Tidy a typed code: capitals, no spaces or dashes. */
+export function normalizeLinkCode(raw: string): string {
+  return String(raw ?? '').toUpperCase().replace(/[\s-]/g, '');
+}
+
+/** A short, friendly device name from the browser's user agent. */
+export function deviceLabel(userAgent: string, touchPoints = 0): string {
+  const ua = String(userAgent ?? '');
+  if (/iPad/.test(ua) || (/Macintosh/.test(ua) && touchPoints > 1)) return 'iPad';
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/Android/.test(ua)) return /Mobile/.test(ua) ? 'Android phone' : 'Android tablet';
+  if (/CrOS/.test(ua)) return 'Chromebook';
+  if (/Macintosh|Mac OS X/.test(ua)) return 'Mac';
+  if (/Windows/.test(ua)) return 'Windows PC';
+  if (/Linux/.test(ua)) return 'Linux computer';
+  return 'Browser';
+}
+
+/** A device label from a browser: printable, short. */
+export function cleanDeviceLabel(raw: unknown): string {
+  return String(raw ?? '').replace(/[^\p{L}\p{N} ()'.,+-]/gu, '').trim().slice(0, 40) || 'Browser';
 }
 
 /**
@@ -101,7 +159,20 @@ export interface PartyState {
 // ---------- browser → server ----------
 
 export type ClientMessage =
-  | { type: 'join'; name: string; presence: Presence; look?: Look }
+  | { type: 'join'; name: string; presence: Presence; look?: Look; device?: string }
+  /** Back after a dropped connection or a reload: the private key from `welcome`. */
+  | { type: 'rejoin'; memberId: string; deviceId: string; key: string }
+  /** Join as one of an artist's devices, with a code from `makeLink`. */
+  | { type: 'redeemLink'; code: string; device?: string }
+  /** Make a one-time code for another device or window. */
+  | { type: 'makeLink'; role: LinkRole }
+  | { type: 'cancelLink' }
+  /** "Paint here" / "Video here": move a duty to this device. */
+  | { type: 'takeDuty'; duty: DeviceDuty }
+  /** Disconnect one of your other devices (its key stops working). */
+  | { type: 'unlinkDevice'; deviceId: string }
+  /** Leaving on purpose: this device goes now (and you, if it was your last). */
+  | { type: 'leave' }
   | { type: 'start' } // host only
   | { type: 'setMyCanvas'; shape: CanvasShape } // anyone, lobby only: the shape of your own canvas
   | { type: 'setTurnSeconds'; seconds: number } // host only, lobby only
@@ -124,7 +195,19 @@ export type ClientMessage =
 // ---------- server → browser ----------
 
 export type ServerMessage =
-  | { type: 'welcome'; youId: string; state: PartyState }
+  /**
+   * You're in. `session` is private to this device: keep it (in this tab
+   * only) to rejoin after a dropped connection or a reload.
+   */
+  | { type: 'welcome'; youId: string; state: PartyState; session: { deviceId: string; key: string } }
+  /** Your devices and which one holds the canvas and the call. Sent only to you. */
+  | { type: 'devices'; youDeviceId: string; devices: MyDevice[] }
+  /** Your one-time link code (null: cancelled, used or expired). */
+  | { type: 'linkCode'; link: { code: string; role: LinkRole; expiresAt: number } | null }
+  /** The canvas device should finish its stroke and pass (another of your devices asked). */
+  | { type: 'passRequest' }
+  /** A join, rejoin or link was refused. The browser goes back to the join screen. */
+  | { type: 'rejected'; reason: 'rejoin' | 'link' | 'full'; message: string }
   | { type: 'state'; state: PartyState }
   /** A stroke on a canvas you are watching. */
   | { type: 'stroke'; stroke: PaintedStroke }

@@ -16,7 +16,8 @@
     "@photo-sphere-viewer/markers-plugin": "^5.15.1",
     "@ptc/shared": "*",
     "livekit-client": "^2.23.0",
-    "three": "~0.185.1"
+    "three": "~0.185.1",
+    "uqr": "^0.1.3"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

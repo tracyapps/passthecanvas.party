@@ -960,3 +960,58 @@ save/reload against a PostgreSQL test fixture, failed account saves and retry,
 and 360px/1440px layouts. Test authentication was used; this does not qualify
 live Clerk or physical devices. See PARTY-READINESS.md for launch requirements
 that remain unimplemented or unverified.
+
+### 2026-11-08 — Party readiness: linked devices, windows, reconnecting
+
+- **One artist, several devices.** The party server keeps a session per member
+  with up to 4 devices. It hands out two duties: `canvas` (only that device's
+  strokes and snapshots count) and `call` (only that device joins LiveKit,
+  because the member id is the LiveKit identity and two joins would kick each
+  other). Other devices mirror the canvas. Pressing Pass elsewhere sends a
+  `passRequest` to the canvas device so the last stroke is flushed first.
+- **Pairing** follows the Nov 4 plan: a QR code plus a 6-character code (no
+  look-alike characters), one use, 5 minutes, one artist in one party, never
+  account access. The QR opens `/?party=…#link=CODE` (fragment, so the code
+  stays out of server logs); typed codes go through `/?link` →
+  `GET /api/link/:code` → the same URL. 20 tries per address per 10 minutes.
+- **Separate windows** use the same link (`…&window=1`), opened with
+  `window.open` from the click, instead of a `BroadcastChannel` sync. One
+  mechanism covers windows and devices, and the server stays the source of truth.
+- **Reconnecting.** Each device gets a private rejoin key (server stores a
+  SHA-256 hash), saved in that tab's `sessionStorage`. Drops get a 45 s grace
+  before duties move; with no device left the artist is `away` (sits out the
+  next round, loses the host role) and leaves after 2 min in the lobby or
+  15 min in a game. A duplicated tab replaces the older one, which is told why.
+  An explicit `leave` message frees the seat at once.
+- **A new linked device opens on its job** (a room-and-video device opens the
+  room). Handing a duty over never moves your view; it is announced instead.
+- **New dependency: `uqr`** (MIT, ~20 KB, no dependencies) to encode QR codes.
+  We draw the SVG ourselves, so it carries a proper label.
+- Room self-view: the room's seat markers now get your own camera track too.
+
+### 2026-11-08 — Gallery pieces open from the room; Save data
+
+- **Click a piece in the 360° gallery** to open it up close (credits,
+  time-lapse). Hit-testing is pure math on the placed quads (`pieceAt` in
+  `leanLayout.ts`, unwrapped across the back seam, unit-tested). The pointer
+  becomes a zoom cursor over a piece. Keyboard and screen-reader users get the
+  same thing from **Look closer** in the "On display" list. Works in saved
+  galleries (`?archive=`) and the party's own gallery.
+- **Save data** (call dock): unsubscribes from other guests' cameras, so only
+  their voices download and their avatar or initials show. Our own camera is
+  untouched (that's Switch to avatar). Remembered per browser; starts on when
+  the browser's Data Saver is on. When LiveKit rates our connection Poor or
+  Lost, it switches on by itself once per call (ACCESSIBILITY.md promises
+  this) and the dock says so; turning it off again is respected.
+- Local video testing: LiveKit's own dev server (`livekit-server --dev`) plus
+  Chromium's fake camera confirmed calls, self-view at your seat, Save data,
+  and moving the call to a linked device. Not a substitute for real devices.
+
+### 2026-11-08 — Strokes painted offline survive a reconnect
+
+The browser keeps strokes made while its party socket is down (up to 5,000
+batches). After `welcome`, they wait for the canvas history that follows;
+those for that canvas are sent and added to the rebuilt history, so they stay
+on screen and reach the server, which still checks round, canvas and the
+canvas device as usual. Strokes for a canvas that has since passed on are
+dropped. No protocol change.

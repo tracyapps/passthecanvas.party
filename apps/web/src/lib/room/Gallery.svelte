@@ -14,7 +14,7 @@
   import { Viewer, events } from '@photo-sphere-viewer/core';
   import type { ArtFile, ArtRegion } from '@ptc/shared';
   import ArtLayer from './ArtLayer.svelte';
-  import { planGallery, type GalleryPiece, type HangMode } from './leanLayout';
+  import { pieceAt, planGallery, type GalleryPiece, type HangMode } from './leanLayout';
   import { hangsFor } from './hangs';
   import { renderCurrentView } from './exportView';
   import { decodeGallery, galleryUrl, type GalleryData } from './galleryLink';
@@ -30,8 +30,10 @@
     partyMode?: HangMode;
     /** Set for the host only: send a new hang mode to the party. */
     onpartymode?: (mode: HangMode) => void;
+    /** Open a piece up close (its credits and time-lapse), by its seed. Click it in the room, or use the list. */
+    onpiece?: (seed: string) => void;
   }
-  let { room = 'cream-city', artwork, onback, partyMode, onpartymode }: Props = $props();
+  let { room = 'cream-city', artwork, onback, partyMode, onpartymode, onpiece }: Props = $props();
   /** Guests at a party see the host's choice but can't change it. */
   let locked = $derived(partyMode !== undefined && !onpartymode);
 
@@ -146,6 +148,23 @@
       moveInertia: !reducedMotion
     });
     viewer.addEventListener(events.ReadyEvent.type, () => (viewerReady = true));
+    // Click a real piece in the room to look at it up close.
+    viewer.addEventListener(events.ClickEvent.type, (event) => {
+      if (!onpiece || !realArt) return;
+      const click = (event as events.ClickEvent).data;
+      const yaw = ((((click.yaw / DEG) + 180) % 360) + 360) % 360 - 180;
+      const hit = pieceAt(placements, yaw, click.pitch / DEG);
+      const piece = hit ? pieces[hit.pieceIndex] : undefined;
+      if (piece?.url) onpiece(piece.seed);
+    });
+    // Over a piece, the pointer says it can be opened.
+    container.addEventListener('pointermove', (event) => {
+      if (!onpiece || !realArt || !viewer) return;
+      const rect = container.getBoundingClientRect();
+      const spot = viewer.dataHelper.viewerCoordsToSphericalCoords({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+      const yaw = ((((spot.yaw / DEG) + 180) % 360) + 360) % 360 - 180;
+      container.classList.toggle('over-piece', !!pieceAt(placements, yaw, spot.pitch / DEG));
+    });
   });
 
   onDestroy(() => viewer?.destroy());
@@ -265,7 +284,7 @@
     <section class="captions" aria-label="On display">
       <h2>On display</h2>
       <ol>
-        {#each pieces as piece (piece.seed)}<li>{piece.caption ?? piece.seed}{#if piece.url}{' · '}<a href={partyUrl(piece.url)} download>Download</a>{/if}</li>{/each}
+        {#each pieces as piece (piece.seed)}<li>{piece.caption ?? piece.seed}{#if piece.url}{' · '}{#if onpiece}<button type="button" class="link-button" onclick={() => onpiece(piece.seed)}>Look closer<span class="sr-only">: {piece.caption ?? 'this piece'}</span></button>{' · '}{/if}<a href={partyUrl(piece.url)} download>Download</a>{/if}</li>{/each}
       </ol>
     </section>
   {/if}
@@ -303,6 +322,19 @@
     gap: 0.75rem;
   }
 
+  .viewer:global(.over-piece) {
+    cursor: zoom-in;
+  }
+  .link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    min-height: 24px;
+  }
   .captions {
     h2 {
       margin: 0 0 0.5rem;

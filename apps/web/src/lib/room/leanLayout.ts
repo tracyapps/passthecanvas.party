@@ -109,3 +109,24 @@ export function planGallery(art: ArtRegion[], pieces: GalleryPiece[], mode: Hang
   }
   return placements;
 }
+
+/**
+ * Which placed piece is at this spot in the room (yaw/pitch degrees)? Null if
+ * none. The quad is unwrapped around the back seam, then tested as a polygon.
+ */
+export function pieceAt(placements: Placement[], yaw: number, pitch: number): Placement | null {
+  for (const placement of placements) {
+    const anchor = placement.quad[0]?.yaw ?? 0;
+    const unwrap = (value: number) => value + 360 * Math.round((anchor - value) / 360);
+    const points = placement.quad.map((corner) => [unwrap(corner.yaw), corner.pitch] as const);
+    const x = unwrap(yaw);
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const [xi, yi] = points[i]!;
+      const [xj, yj] = points[j]!;
+      if (yi > pitch !== yj > pitch && x < ((xj - xi) * (pitch - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    if (inside) return placement;
+  }
+  return null;
+}
