@@ -59,9 +59,7 @@
   {/if}
 
   {#if !elsewhere && call.status === 'in-call'}
-    {#if call.weakConnection && !call.saveData}
-      <button type="button" class="where" onclick={() => call.setSaveData(true)}>Weak connection: turn off guests' video?</button>
-    {/if}
+    {#if call.note}<p class="note" role="status">{call.note}</p>{/if}
     <!-- Save data: guests' video stops downloading (avatars show instead); voices keep playing. -->
     <button
       type="button"

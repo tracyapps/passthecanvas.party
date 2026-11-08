@@ -326,6 +326,8 @@
 
 
 <div class="studio">
+  <!-- One heading names the page for screen readers; the party strip shows the same name visually. -->
+  <header class="sr-only"><h1>Pass the Canvas party{game ? `: ${game.partyId}` : ''}. {view === 'room' ? 'The room' : view === 'gallery' ? 'The gallery' : 'Your painting table'}</h1></header>
   {#if view === 'gallery' && game}
     <!-- Loaded only when opened: the gallery shares the 360° viewer. -->
     {#await import('./room/Gallery.svelte')}
@@ -336,6 +338,8 @@
         partyMode={game.galleryMode} onpartymode={isHost ? (mode) => party.send({ type: 'setGalleryMode', mode }) : undefined} />
     {/await}
   {:else if view === 'room'}
+    <!-- The painting table (hidden now) has its own <main>; the room is this view's main area. -->
+    <main class="room-main">
     <!-- Loaded only when opened: the 360° viewer (three.js) is the heaviest part of the app. -->
     {#await import('./room/RoomView.svelte')}
       <p class="loading">Opening the room…</p>
@@ -359,6 +363,7 @@
         />
       {/key}
     {/await}
+    </main>
   {/if}
 
   <!-- The table stays mounted in the room and gallery too, so the canvas keeps

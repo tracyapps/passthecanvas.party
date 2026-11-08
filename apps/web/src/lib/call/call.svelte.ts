@@ -45,6 +45,8 @@ export class Call {
 
   private room: Room | null = null;
   private speaking = new Set<string>();
+  /** Save data was switched on for a weak connection this call (only once). */
+  private autoSaved = false;
 
   /**
    * Join the party's video room. Fails softly: if the server has no LiveKit
@@ -142,6 +144,7 @@ export class Call {
   /** Turn Save data on or off: (un)subscribe from everyone's camera. */
   setSaveData(on: boolean) {
     this.saveData = on;
+    this.note = "";
     try {
       localStorage.setItem(SAVE_DATA_KEY, on ? '1' : '0');
     } catch {
@@ -168,6 +171,7 @@ export class Call {
     this.micOn = true;
     this.camOn = true;
     this.weakConnection = false;
+    this.autoSaved = false;
   }
 
   // ---------- internals ----------
@@ -193,9 +197,19 @@ export class Call {
     room.on(RoomEvent.TrackPublished, (publication) => {
       if (publication.source === Track.Source.Camera && this.saveData) publication.setSubscribed(false);
     });
+    // A weak connection drops guests' video once, automatically, so voices
+    // stay clear (see ACCESSIBILITY.md). Turning Save data off again wins:
+    // we don't switch it back on during this call.
     room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
       if (participant.identity !== room.localParticipant.identity) return;
       this.weakConnection = quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost;
+      if (this.weakConnection && !this.saveData && !this.autoSaved) {
+        this.autoSaved = true;
+        this.saveData = true;
+        this.applySaveData();
+        this.refreshVideos();
+        this.note = "Weak connection: guests' video is paused so voices stay clear. Turn Save data off to bring it back.";
+      }
     });
     room.on(RoomEvent.Disconnected, () => {
       if (this.status === 'in-call') this.leave();

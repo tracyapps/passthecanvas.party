@@ -104,7 +104,7 @@
   {/if}
 
   {#if party.otherDevices.length}
-    <h3>Your other devices</h3>
+    <h2>Your other devices</h2>
     <ul>
       {#each party.otherDevices as device (device.id)}
         <li>
@@ -117,7 +117,7 @@
 
   {#if link && qr}
     <section class="code" aria-labelledby="link-title">
-      <h3 id="link-title">{link.role === 'canvas' ? 'Paint on your other device' : 'Room and video on your other device'}</h3>
+      <h2 id="link-title">{link.role === 'canvas' ? 'Paint on your other device' : 'Room and video on your other device'}</h2>
       <p>Scan this with its camera, or open <strong>{location.host}/?link</strong> and type the code.</p>
       <svg class="qr" viewBox={`0 0 ${qr.size} ${qr.size}`} role="img" aria-label="QR code that opens this party on your other device" shape-rendering="crispEdges">
         <rect width={qr.size} height={qr.size} fill="#fff" />
@@ -128,14 +128,14 @@
       <button type="button" class="plain" onclick={cancel}>Cancel code</button>
     </section>
   {:else}
-    <h3>Add a device</h3>
+    <h2>Add a device</h2>
     <p class="hint">It joins your seat, not the party as someone new. You stay one artist with one canvas.</p>
     <div class="row">
       <button type="button" onclick={() => makeLink('canvas')}>Paint on a tablet</button>
       <button type="button" onclick={() => makeLink('room')}>Room and video on a phone or laptop</button>
     </div>
     {#if canOpenWindows}
-      <h3>Two windows on this computer</h3>
+      <h2>Two windows on this computer</h2>
       <div class="row">
         <button type="button" onclick={() => openWindow('canvas')}>Open the canvas in its own window</button>
         <button type="button" onclick={() => openWindow('room')}>Open the room in its own window</button>
@@ -153,10 +153,10 @@
     display: grid;
     gap: 0.75rem;
   }
-  p, h3, ul {
+  p, h2, ul {
     margin: 0;
   }
-  h3 {
+  h2 {
     font-size: 0.9375rem;
   }
   .row {

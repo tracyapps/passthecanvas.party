@@ -42,7 +42,7 @@ When `prefers-reduced-motion: reduce` is on:
 ## Connection and device
 
 - Phones get smaller panoramas and fewer simultaneous video tiles.
-- Video drops to audio + avatar automatically on weak connections.
+- Video drops to audio + avatar automatically on weak connections (**Save data** in the call dock; it switches on once per call when LiveKit rates the connection poor, says so, and stays off if you turn it off).
 - The canvas sends strokes, not video, so it stays crisp on bad wifi.
 
 ## Testing checklist (per feature)
@@ -52,3 +52,18 @@ When `prefers-reduced-motion: reduce` is on:
 - [ ] 200% zoom, no horizontal scroll at 320px
 - [ ] Reduced motion on
 - [ ] Automated check (axe) clean
+
+## Automated check, Nov 8, 2026
+
+axe-core (WCAG 2.0–2.2 A/AA + best practice) on the link-code page, join
+form, party lobby, painting, reveal, **Use another device** panel, call dock
+and 360° room, at 1440px and on an iPhone SE (320px): clean, with one known
+exception.
+
+- `meta-viewport` (critical in axe): the painting table sets
+  `user-scalable=no` so a pinch moves the canvas instead of zooming the page.
+  This is deliberate (see the comment in `PaintingTable.svelte`): keyboard
+  zoom still works and Settings has an interface size. iOS Safari ignores
+  `user-scalable=no` anyway. Revisit if testers who zoom find it a barrier.
+- Fixed in this pass: the party had no level-one heading and the room had no
+  main landmark; the devices panel skipped a heading level.

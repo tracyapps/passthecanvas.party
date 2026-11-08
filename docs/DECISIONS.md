@@ -1001,7 +1001,8 @@ that remain unimplemented or unverified.
   their voices download and their avatar or initials show. Our own camera is
   untouched (that's Switch to avatar). Remembered per browser; starts on when
   the browser's Data Saver is on. When LiveKit rates our connection Poor or
-  Lost, the dock offers it once in words.
+  Lost, it switches on by itself once per call (ACCESSIBILITY.md promises
+  this) and the dock says so; turning it off again is respected.
 - Local video testing: LiveKit's own dev server (`livekit-server --dev`) plus
   Chromium's fake camera confirmed calls, self-view at your seat, Save data,
   and moving the call to a linked device. Not a substitute for real devices.

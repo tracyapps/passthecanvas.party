@@ -116,8 +116,8 @@ See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, how linked de
 - [ ] Full playback: every mark recorded per piece (Railway-hosted store), scrubbable play bar, contributor name/avatar shown while their part plays
 - [ ] Auto-edited video export (TikTok-style "magic" picks: interesting pause points) with artist controls to move/add pause + slow spots; music bed; social sharing
 
-- [ ] Accessibility pass: keyboard stamp-mode painting, screen-reader turn announcements, captions plan
-- [~] Low bandwidth: **Save data** in the call dock stops downloading guests' video (avatars show, voices play); starts on with the browser's Data Saver; a weak-connection hint offers it *(Nov 8)*. Open: smaller room/supply assets on phones.
+- [~] Accessibility pass: keyboard stamp-mode painting and turn announcements exist; automated axe pass clean on party screens *(Nov 8, see ACCESSIBILITY.md)*. Open: VoiceOver run on real devices, captions plan
+- [~] Low bandwidth: **Save data** in the call dock stops downloading guests' video (avatars show, voices play); starts on with the browser's Data Saver; switches on by itself once on a weak connection *(Nov 8)*. Open: smaller room/supply assets on phones.
 - [ ] Deploy: web on a static host/CDN, party server on a small VPS or Fly/Render, domain `passthecanvas.party`
 
 ---
