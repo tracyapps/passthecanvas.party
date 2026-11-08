@@ -1,6 +1,6 @@
 <!--
   The party's painting table: photographic supplies around the shared canvas,
-  movable tool/palette panels, Paint / Arrange & view, saved layouts.
+  movable tool/palette panels and saved layouts.
   Everyone sees the same canvas; only the current painter can mark it. While
   you wait, you can still pick up tools, load paint and arrange your table.
   The parent (Studio) wires it to the party: strokes out via `onstroke`,
@@ -11,19 +11,19 @@
   import type { PaintedStroke, Stroke } from '@ptc/shared';
   import AccountControls from '../account/AccountControls.svelte';
   import { accountState, loadAccountWorkspaces, saveAccountWorkspaces } from '../account/account.svelte';
-  import { SUPPLIES as supplies, GRID_TILE, supplyAsset as asset, supplyImage as imageForSupply } from './supplies';
+  import { SUPPLIES as supplies, supplyAsset as asset, supplyImage as imageForSupply } from './supplies';
   import PhotoSupply from './PhotoSupply.svelte';
   import StudioPanel from './StudioPanel.svelte';
   import WorkspaceManager from './WorkspaceManager.svelte';
   import WorkspaceDrawer from './WorkspaceDrawer.svelte';
-  import { workspaceGeometry, designPoint, viewTransform, canvasTop } from './workspace-geometry';
+  import { workspaceGeometry } from './workspace-geometry';
   import PartyCanvas from './PartyCanvas.svelte';
   import { addPart, decodeMixes, expand, mixColor, recipeText, rememberMix, removeColor, removePart, totalParts, MAX_PARTS, SAVED_MIXES_KEY, type Recipe, type SavedMix } from './recipes';
   import { prefs, savePreferences } from '../prefs.svelte';
   import { colorLibrary } from './color-library';
   import { PALETTES } from './palettes';
   import { EVERYTHING, findToolbox, shownSupplies, type Toolbox } from './toolboxes';
-  import { defaultLayout, decodeWorkspaces, gridDestination, layoutMatches, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock, type WorkspaceSurface } from './workspaces';
+  import { defaultLayout, decodeWorkspaces, layoutMatches, workspaceForDevice, WORKSPACE_KEY, type WorkspaceLayout, type SavedWorkspace, type ToolDock, type WorkspaceSurface } from './workspaces';
   import { type SupplyRect } from './placement';
   import { buildMask, maskHit, type ShapeMask } from './shape-masks';
   import { emptySelection, selectTool, loadPaint, dipInWater, isBrush, takesWater, unavailability,
@@ -68,8 +68,6 @@
   export function strokes(): PaintedStroke[] { return canvas?.strokes() ?? []; }
 
   let bench: HTMLElement;
-  let supplyGrid = $state<HTMLElement>(null!);
-  let canvasFrame: HTMLElement;
   let statusStrip: HTMLElement;
   let headerHeight = $state(88);
   let dock = $state<ToolDock>('surround');
@@ -84,7 +82,7 @@
   let rotation = $state(0);
   let viewReset = $state(0);
   let toolbarHeight = $state(110);
-  /** A canvas window you've resized by its edges, in pixels. Null = the default for this screen. */
+  /** Saved canvas frame in design pixels. Null uses the default for this screen. */
   let frameOverride = $state<{ x: number; y: number; width: number; height: number } | null>(null);
   let documentSize = $derived(canvasSize);
   let savedViews = $state<SavedWorkspace[]>([]);
@@ -133,7 +131,6 @@
   let windowHeight = $state(innerHeight);
   let compact = $derived(windowWidth <= 1100 || windowHeight <= 720 || windowWidth / windowHeight < 1.35);
   let selection = $state(emptySelection());
-  let mode = $state<'paint' | 'arrange'>('paint');
   let size = $state(24);
   let intensities = $state({ airbrush: 50, burnisher: 50 });
   let hasIntensity = $derived(selection.tool === 'airbrush' || selection.tool === 'burnisher');
@@ -150,14 +147,11 @@
   let trayMode = $state<'solid' | 'multicolor'>('multicolor');
   let trayMedium = $state<'acrylic' | 'watercolor'>('acrylic');
   let announcement = $state('');
-  let target = $state('acrylic');
   let layoutSurface = $state<WorkspaceSurface>();
   let viewSupplies = $state<string[] | null>(null);
   let positions = $state<Record<string, { x: number; y: number }>>({});
-  let dragging: { id: string; x: number; y: number; left: number; top: number; pointer: number } | null = null;
   let toolName = $derived(selection.tool ? TOOL_NAMES[selection.tool] : 'None');
-  let status = $derived(mode === 'arrange' ? 'Canvas locked. Arrange supplies or explore the artwork.'
-    : !canDraw ? `${waitingNote} Get your tools ready while you wait.`
+  let status = $derived(!canDraw ? `${waitingNote} Get your tools ready while you wait.`
     : !selection.tool ? 'Choose a tool to begin. Drag the canvas (or hold Space) to move around.'
     : selection.tool === 'burnisher' ? 'Smudge & intensify. Only your own turn will change.'
     : selection.tool === 'sponge' && selection.wet ? 'Wet sponge: pushes paint around in runny, textured patches.'
@@ -179,54 +173,6 @@
   let geometry = $derived(workspaceGeometry({ ...currentLayout(), surface: layoutSurface }, liveSurface, documentSize.width / documentSize.height));
   let canvasBox = $derived(geometry.frame);
   let frameRect = $derived(geometry.frame);
-  /** Keep a resized window on screen and at a usable size. */
-  function fitFrame(rect: { x: number; y: number; width: number; height: number }, edge: Edge) {
-    const minW = 260, minH = 200, top = canvasTop(liveSurface);
-    let { x, y, width, height } = rect;
-    if (edge === 'left') { const right = x + width; x = Math.max(0, Math.min(right - minW, x)); width = right - x; }
-    if (edge === 'top') { const bottom = y + height; y = Math.max(top, Math.min(bottom - minH, y)); height = bottom - y; }
-    width = Math.max(minW, Math.min(board.width - x, width));
-    height = Math.max(minH, Math.min(board.height - y - 8, height));
-    return { x, y, width, height };
-  }
-  type Edge = 'top' | 'right' | 'bottom' | 'left' | 'corner';
-  const EDGES: Edge[] = ['top', 'right', 'bottom', 'left'];
-  let edgeDrag: { edge: Edge; x: number; y: number; rect: { x: number; y: number; width: number; height: number }; pointer: number } | null = null;
-  function moveEdge(edge: Edge, rect: { x: number; y: number; width: number; height: number }, dx: number, dy: number) {
-    const next = { ...rect };
-    if (edge === 'left') { next.x += dx; next.width -= dx; }
-    if (edge === 'right' || edge === 'corner') next.width += dx;
-    if (edge === 'top') { next.y += dy; next.height -= dy; }
-    if (edge === 'bottom' || edge === 'corner') next.height += dy;
-    const fitted = fitFrame(next, edge);
-    if (layoutSurface && dock === 'surround') {
-      const point = designPoint(fitted.x, fitted.y, layoutSurface, liveSurface);
-      const fit = viewTransform(layoutSurface, liveSurface);
-      frameOverride = { ...point, width: fitted.width / fit.scale, height: fitted.height / fit.scale };
-    } else if (layoutSurface) {
-      frameOverride = {
-        x: fitted.x / liveSurface.width * layoutSurface.width,
-        y: fitted.y / liveSurface.height * layoutSurface.height,
-        width: fitted.width / liveSurface.width * layoutSurface.width,
-        height: fitted.height / liveSurface.height * layoutSurface.height
-      };
-    } else frameOverride = fitted;
-  }
-  function startEdge(event: PointerEvent, edge: Edge) {
-    if (event.button !== 0) return;
-    edgeDrag = { edge, x: event.clientX, y: event.clientY, rect: { ...frameRect }, pointer: event.pointerId };
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  }
-  function dragEdge(event: PointerEvent) {
-    if (edgeDrag && event.pointerId === edgeDrag.pointer) moveEdge(edgeDrag.edge, edgeDrag.rect, event.clientX - edgeDrag.x, event.clientY - edgeDrag.y);
-  }
-  function edgeKey(event: KeyboardEvent, edge: Edge) {
-    const steps: Record<string, [number, number]> = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
-    const step = steps[event.key];
-    if (!step) return;
-    event.preventDefault();
-    moveEdge(edge, frameRect, step[0], step[1]);
-  }
   onMount(() => {
     const measureBoard = () => {
       // Switching to the room hides this desk. Keep its last real dimensions.
@@ -245,7 +191,11 @@
     readMixes();
     const syncViews = (event: StorageEvent) => {
       if (event.key !== browserKey(accountState.userId) || !event.newValue) return;
-      try { savedViews = decodeWorkspaces(event.newValue, supplies.map(supply => supply.id)).views; } catch { /* keep the open desk when external storage is invalid */ }
+      try {
+        const stored = decodeWorkspaces(event.newValue, supplies.map(supply => supply.id));
+        savedViews = stored.views;
+        if (stored.selected !== selectedView) { applyLayout(stored.current); selectedView = stored.selected; }
+      } catch { /* keep the open desk when external storage is invalid */ }
     };
     window.addEventListener('storage', syncViews);
     const unlockZoom = lockPageZoom();
@@ -302,7 +252,12 @@
     try {
       const remote = await loadAccountWorkspaces();
       if (accountState.userId !== userId) return;
-      if (remote !== null) { restoreWorkspace(remote); accountMessage = 'Account views restored. Changes to this arrangement save automatically.'; }
+      if (remote !== null) {
+        const account = decodeWorkspaces(JSON.stringify(remote), supplies.map(item => item.id));
+        const local = localStorage.getItem(browserKey(userId));
+        restoreWorkspace(workspaceForDevice(account, local ? decodeWorkspaces(local, supplies.map(item => item.id)) : undefined));
+        accountMessage = 'Account views restored. Changes to this arrangement save automatically.';
+      }
       else accountMessage = 'Your table will be saved to your account as you change it.';
       cloudLoaded = true;
       cloudEnabled = true;
@@ -336,8 +291,8 @@
   $effect(() => {
     const value = workspaceState();
     if (!cloudEnabled || !accountState.userId || accountSyncing || !storageReady || JSON.stringify(value) === untrack(() => layoutSavedJson)) return;
-    // Wait for a pause (and never mid-drag) before saving the table to your account.
-    const timer = setTimeout(() => { if (!dragging && !edgeDrag) void saveCloud(value); }, 2000);
+    // Wait for a pause before saving the table to your account.
+    const timer = setTimeout(() => void saveCloud(value), 2000);
     return () => clearTimeout(timer);
   });
   function resetView() {
@@ -349,7 +304,7 @@
   async function updateViews(views: SavedWorkspace[]) {
     if (accountState.userId) {
       if (!cloudLoaded || accountSyncing) throw new Error('Account views are unavailable. Your edits are still here. Try again after reconnecting.');
-      const value = { ...workspaceState(), views: $state.snapshot(views) };
+      const value = { ...workspaceState(), views: $state.snapshot(views), selected: views.some(view => view.id === selectedView) ? selectedView : '' };
       await saveCloud(value, true);
     }
     savedViews = views;
@@ -366,6 +321,7 @@
   }
   function openViews() {
     document.getElementById('table-actions')?.hidePopover();
+    document.getElementById('view-options')?.hidePopover();
     viewsOpen = true;
   }
   function loadView(id: string) { if (!id) { resetView(); return; } const view = savedViews.find(item => item.id === id); if (view) { applyLayout(view.layout); selectedView = id; announcement = `${view.name} restored.`; } }
@@ -407,7 +363,7 @@
     };
   }
   function emptySpace(event: MouseEvent) {
-    if (event.target !== bench || dragging) return;
+    if (event.target !== bench) return;
     // A click on the tabletop picks up whatever supply's shape is under it, or puts the tool down.
     const supply = supplyAt(event.clientX, event.clientY);
     if (supply) void openSupply(supply); else putDown();
@@ -434,7 +390,7 @@
     }
   }
   /** Stacking on the table: what's drawn on top is picked first. */
-  function layerOf(id: string): number { return mode === 'arrange' ? 6 : active(id) ? 4 : id === 'burnisher' ? 3 : 2; }
+  function layerOf(id: string): number { return active(id) ? 4 : id === 'burnisher' ? 3 : 2; }
   function supplyAt(clientX: number, clientY: number): typeof supplies[number] | null {
     if (!masked) return null;
     const table = bench.getBoundingClientRect();
@@ -450,18 +406,7 @@
     }
     return null;
   }
-  function tablePointerDown(event: PointerEvent) {
-    if (event.target !== bench || event.button !== 0) return;
-    const supply = supplyAt(event.clientX, event.clientY);
-    if (supply && mode === 'arrange') {
-      const box = supplyBox(supply);
-      target = supply.id;
-      dragging = { id: supply.id, x: event.clientX, y: event.clientY, left: box.x, top: box.y, pointer: event.pointerId };
-      bench.setPointerCapture(event.pointerId);
-    }
-  }
   function tablePointerMove(event: PointerEvent) {
-    if (dragging) { moveSupply(event); return; }
     if (event.pointerType !== 'mouse') return;
     hoverId = event.target === bench ? supplyAt(event.clientX, event.clientY)?.id ?? null : null;
   }
@@ -495,7 +440,6 @@
     document.querySelector<HTMLButtonElement>('[aria-label="Move color palette. Drag or use arrow keys."]')?.focus();
   }
   async function openSupply(supply: typeof supplies[number]) {
-    if (mode === 'arrange') { target = supply.id; return; }
     if (supply.id === 'water') { rinse(); return; }
     if (supply.id === 'tray') { trayOpen = true; paletteOpen = true; await revealPalette(); return; }
     if (supply.tool) select(supply.tool);
@@ -557,68 +501,8 @@
   function supplyBox(supply: typeof supplies[number]): SupplyRect {
     return geometry.boxes[supply.id] ?? { x: 0, y: headerHeight, width: 100, height: 144 };
   }
-  function placeSupply(id: string, x: number, y: number) {
-    const surface = layoutSurface ?? liveSurface;
-    const point = layoutSurface ? designPoint(x, y, layoutSurface, liveSurface) : { x, y };
-    positions[id] = { x: point.x / surface.width, y: point.y / surface.height };
-  }
-  function startMove(event: PointerEvent, supply: typeof supplies[number]) {
-    if (mode !== 'arrange' || compact || event.button !== 0) return;
-    if (toolDock !== 'surround' && !gridView) return;
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const table = bench.getBoundingClientRect();
-    const box = { x: rect.left - table.left, y: rect.top - table.top };
-    if (toolDock !== 'surround') {
-      // Leaving a column keeps every visible tile and the canvas where they were.
-      const nextPositions = { ...positions };
-      for (const element of supplyGrid.querySelectorAll<HTMLElement>('[data-supply]')) {
-        const bounds = element.getBoundingClientRect();
-        const surface = layoutSurface ?? liveSurface;
-        const point = layoutSurface ? designPoint(bounds.left - table.left, bounds.top - table.top, layoutSurface, liveSurface) : { x: bounds.left - table.left, y: bounds.top - table.top };
-        nextPositions[element.dataset.supply!] = { x: point.x / surface.width, y: point.y / surface.height };
-      }
-      positions = nextPositions;
-      if (layoutSurface) {
-        const point = designPoint(frameRect.x, frameRect.y, layoutSurface, liveSurface);
-        const fit = viewTransform(layoutSurface, liveSurface);
-        frameOverride = { ...point, width: frameRect.width / fit.scale, height: frameRect.height / fit.scale };
-      } else frameOverride = { ...frameRect };
-      dock = 'surround';
-    }
-    target = supply.id;
-    dragging = { id: supply.id, x: event.clientX, y: event.clientY, left: box.x, top: box.y, pointer: event.pointerId };
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  }
-  function moveSupply(event: PointerEvent) {
-    if (!dragging || event.pointerId !== dragging.pointer) return;
-    placeSupply(dragging.id, dragging.left + event.clientX - dragging.x, dragging.top + event.clientY - dragging.y);
-  }
-  function nudge(dx: number, dy: number) {
-    const supply = supplies.find(supply => supply.id === target)!;
-    if (compact || toolDock !== 'surround') {
-      // On the flowing layout, reorder rather than pushing controls offscreen.
-      // Reorder among the supplies this toolbox shows; hidden ones keep their place after them.
-      const list = [...shown];
-      const index = list.indexOf(target);
-      if (index < 0) return;
-      const columns = toolDock === 'both' && !compact ? 2 : Math.max(1, getComputedStyle(supplyGrid).gridTemplateColumns.split(' ').length);
-      const split = Math.ceil(list.length / 2);
-      const offset = toolDock === 'both' && !compact && index >= split ? split : 0;
-      const count = toolDock === 'both' && !compact ? offset ? list.length - split : split : list.length;
-      const next = gridDestination(index - offset, count, columns, dx, dy) + offset;
-      list.splice(index, 1); list.splice(next, 0, target);
-      order = [...list, ...order.filter(id => !list.includes(id))];
-    } else {
-      const box = supplyBox(supply);
-      placeSupply(target, box.x + dx, box.y + dy);
-    }
-  }
   let shown = $derived(viewSupplies ? order.filter(id => viewSupplies!.includes(id)) : shownSupplies(order, activeBox));
-  function supplyKey(event: KeyboardEvent, id: string) {
-    if (mode !== 'arrange') return;
-    const moves: Record<string, [number, number]> = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] };
-    if (moves[event.key]) { event.preventDefault(); target = id; nudge(...moves[event.key]); }
-  }
+
 </script>
 
 {#if viewsOpen}
@@ -647,21 +531,17 @@
 {/snippet}
 
 <!-- The main element only deselects on its own empty tabletop, never a child's click. -->
-<main bind:this={bench} onpointerdown={tablePointerDown} onpointermove={tablePointerMove} onpointerup={() => (dragging = null)} onpointercancel={() => (dragging = null)} onpointerleave={() => (hoverId = null)} class:pointing={!!hoverId} class="workbench" class:compact class:grid-view={gridView} class:docked={toolDock !== 'surround'} class:dock-left={toolDock === 'left'} class:dock-right={toolDock === 'right'} class:dock-both={toolDock === 'both'} class:arranging={mode === 'arrange'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
+<main bind:this={bench} onpointermove={tablePointerMove} onpointerleave={() => (hoverId = null)} class:pointing={!!hoverId} class="workbench" class:compact class:grid-view={gridView} class:docked={toolDock !== 'surround'} class:dock-left={toolDock === 'left'} class:dock-right={toolDock === 'right'} class:dock-both={toolDock === 'both'} style:--wood={`url('${asset('wood', 'webp')}')`} style:--header-height={`${headerHeight}px`}>
   <a class="skip" href="#shared-canvas">Skip to canvas</a>
   <header bind:this={statusStrip} class="status-strip">
-    <div class="mode" role="group" aria-label="Workspace mode">
-      <button type="button" aria-pressed={mode === 'paint'} onclick={() => mode = 'paint'}>Paint</button>
-      <button type="button" aria-pressed={mode === 'arrange'} onclick={() => { mode = 'arrange'; paletteOpen = false; }}>Arrange &amp; view</button>
-    </div>
-    <details class="view-control">
-      <summary>View · {savedViews.find(view => view.id === selectedView)?.name ?? 'Current arrangement'}{selectedView && !activeViewValue ? ' · modified' : ''}</summary>
-      <div>
-        {#each savedViews as view (view.id)}<button type="button" aria-current={activeViewValue === view.id ? 'true' : undefined} onclick={(event) => { loadView(view.id); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{view.name}</button>{/each}
-        <button type="button" onclick={(event) => { viewsOpen = true; const control = event.currentTarget.closest('details'); control?.removeAttribute('open'); control?.querySelector('summary')?.focus(); }}>Manage saved views…</button>
-        <button type="button" onclick={(event) => { resetView(); event.currentTarget.closest('details')?.removeAttribute('open'); }}>Reset studio layout</button>
+    <div class="view-control">
+      <button type="button" popovertarget="view-options">View · {savedViews.find(view => view.id === selectedView)?.name ?? 'Current arrangement'}{selectedView && !activeViewValue ? ' · modified' : ''}</button>
+      <div id="view-options" popover aria-label="Saved views">
+        {#each savedViews as view (view.id)}<button type="button" aria-current={activeViewValue === view.id ? 'true' : undefined} onclick={() => { loadView(view.id); document.getElementById('view-options')?.hidePopover(); }}>{view.name}</button>{/each}
+        <button type="button" onclick={openViews}>Manage saved views…</button>
+        <button type="button" onclick={() => { resetView(); document.getElementById('view-options')?.hidePopover(); }}>Reset studio layout</button>
       </div>
-    </details>
+    </div>
     {#if selectedView && !activeViewValue}<button type="button" disabled={layoutSaving || accountSyncing} onclick={() => void saveSelectedView()}>Save view changes</button>{/if}
     <div class="selected-tool"><span>Tool selected</span><strong>{toolName}</strong></div>
     <div class="selected-color"><span>Current color</span><div class="load-line"><span class="load-swatch" class:empty={!selection.load} aria-hidden="true">{#each selection.load?.colors ?? [] as color}<i style:background={color}></i>{/each}</span><strong>{selection.load ? MEDIUM_NAMES[selection.load.medium] : selection.wet ? 'Water only' : selection.tool === 'eraser' || selection.tool === 'sponge' || selection.tool === 'burnisher' ? 'Not needed' : 'Unloaded'}</strong></div></div>
@@ -676,45 +556,13 @@
     <button type="button" class="menu-button" popovertarget="table-actions" aria-label="Painting table menu">Menu</button>
   </header>
 
-  <section bind:this={canvasFrame} class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
+  <section class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
     style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface', 'webp')}')`} style:--frame-x={`${frameRect.x}px`} style:--frame-y={`${frameRect.y}px`} style:--frame-width={`${frameRect.width}px`} style:--frame-height={`${frameRect.height}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height}>
-    <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {mode} {canDraw} {painterId} {round} {canvasKey} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={compact ? Math.min(board.width - 24, windowHeight * .58 * documentSize.width / documentSize.height) : canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => { if (height > 0) toolbarHeight = height; }} {onstroke} />
-    {#if !compact}
-      <!-- Drag any edge (or the corner) to resize the canvas window; arrow keys work too. -->
-      {#each EDGES as edge (edge)}
-        <button type="button" class={`edge edge-${edge}`} aria-label={`Resize the canvas window from its ${edge} edge. Drag or use arrow keys.`}
-          onpointerdown={(event) => startEdge(event, edge)} onpointermove={dragEdge} onpointerup={() => edgeDrag = null} onpointercancel={() => edgeDrag = null} onkeydown={(event) => edgeKey(event, edge)}></button>
-      {/each}
-      <button type="button" class="corner" aria-label="Resize the canvas window. Drag or use arrow keys."
-        onpointerdown={(event) => startEdge(event, 'corner')} onpointermove={dragEdge} onpointerup={() => edgeDrag = null} onpointercancel={() => edgeDrag = null} onkeydown={(event) => edgeKey(event, 'corner')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m6 20 14-14M12 20l8-8M18 20l2-2" /></svg></button>
-    {/if}
+    <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {canDraw} {painterId} {round} {canvasKey} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => { if (height > 0) toolbarHeight = height; }} {onstroke} />
   </section>
 
   <div class="panels">
-    {#if mode === 'arrange'}
-      <!-- Floats over the (locked) canvas so the header and the supplies never shift while you arrange them. -->
-      <StudioPanel title="Arrange table" label="arrange table" dock="arrange" flow={compact} onclose={() => mode = 'paint'}>
-        <div class="arrange-controls">
-          <label class="arrange-field">Supply<select bind:value={target}>{#each supplies.filter(item => shown.includes(item.id)) as supply}<option value={supply.id}>{supply.name}</option>{/each}</select></label>
-          <div class="nudge-pad" role="group" aria-label={compact || toolDock !== 'surround' ? 'Reorder the chosen supply' : 'Move the chosen supply'}>
-            <button type="button" class="up" aria-label="Up" onclick={() => nudge(0, -32)}>↑</button>
-            <button type="button" class="left" aria-label="Left" onclick={() => nudge(-32, 0)}>←</button>
-            <button type="button" class="down" aria-label="Down" onclick={() => nudge(0, 32)}>↓</button>
-            <button type="button" class="right" aria-label="Right" onclick={() => nudge(32, 0)}>→</button>
-          </div>
-          <label class="arrange-field">Tool view<select value={gridView ? 'grid' : 'cutouts'} onchange={(event) => setToolView(event.currentTarget.value === 'grid' ? 'grid' : 'cutouts')}><option value="cutouts">Default cutouts</option><option value="grid">Freeform grid</option></select></label>
-          <label class="arrange-field">Tools<select aria-label="Tool placement" bind:value={dock}><option value="surround">Freeform around canvas</option><option value="both">Columns both sides</option><option value="left">Columns on left</option><option value="right">Columns on right</option></select></label>
-          <p class="arrange-hint">{compact || toolDock !== 'surround' ? 'Use arrow keys to reorder supplies. Drag a grid tile out of the columns to place it freely.' : 'Drag supplies on the table, or pick one and use the arrows.'} Painting is locked while arranging.</p>
-          <div class="arrange-actions">
-            <button type="button" onclick={() => { resetView(); }}>Reset layout</button>
-            <button type="button" class="primary" onclick={() => mode = 'paint'}>Done</button>
-          </div>
-          <div class="arrange-actions"><button type="button" onclick={openViews}>Saved views…</button></div>
-          {@render tableSave()}
-        </div>
-      </StudioPanel>
-    {/if}
-    {#if mode === 'paint' && selection.tool && settingsOpen}
+    {#if selection.tool && settingsOpen}
       <StudioPanel title={toolName} label="brush settings" flow={compact} onclose={() => settingsOpen = false}>
         {#if selection.tool === 'burnisher'}<p class="palette-caption">Smudge &amp; intensify existing color with a dry polishing pad. Works only on your marks; no paint loading needed.</p>{/if}
         <div class="tool-grid">
@@ -768,17 +616,17 @@
     {/if}
   </div>
 
-  <section bind:this={supplyGrid} class="supplies" aria-label="Art supplies">
+  <section class="supplies" aria-label="Art supplies">
     {#each shown as id, index (id)}
       {@const supply = supplies.find(supply => supply.id === id)!}
       {@const box = supplyBox(supply)}
-      {@const reason = mode === 'arrange' ? '' : supply.id === 'water' ? takesWater(selection.tool) ? '' : 'Choose a brush or the sponge to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
+      {@const reason = supply.id === 'water' ? takesWater(selection.tool) ? '' : 'Choose a brush or the sponge to dip in water.' : supply.medium && !supply.tool ? unavailability(selection.tool, supply.medium) : ''}
       <div class="supply" data-tool={supply.tool} data-supply={supply.id} class:chosen={active(supply.id)}
         style:--dock-column={index < Math.ceil(shown.length / 2) ? index % 2 + 1 : (index - Math.ceil(shown.length / 2)) % 2 + 4} style:--dock-row={index < Math.ceil(shown.length / 2) ? Math.floor(index / 2) + 1 : Math.floor((index - Math.ceil(shown.length / 2)) / 2) + 1} style:left={`${box.x}px`} style:top={`${box.y}px`} style:width={`${box.width}px`} style:height={`${box.height}px`}>
-        <PhotoSupply {masked} hovered={hoverId === supply.id} compact={!masked} tile={gridView} moving={mode === 'arrange' && !compact && (gridView || toolDock === 'surround')} image={supplyImage(supply.id, !masked)} label={supply.name} moveLabel={mode === 'arrange' ? `Move ${supply.name}` : undefined} selected={mode === 'arrange' ? target === supply.id : active(supply.id)} unavailableReason={reason}
+        <PhotoSupply {masked} hovered={hoverId === supply.id} compact={!masked} tile={gridView} image={supplyImage(supply.id, !masked)} label={supply.name} selected={active(supply.id)} unavailableReason={reason}
           hit={supply.tip ? [supply.tip[0] / supply.box[2] * 100, supply.tip[1] / supply.box[3] * 100, supply.tip[2] / supply.box[2] * 100, supply.tip[3] / supply.box[3] * 100] : supply.hit ? [(supply.hit[0] - supply.box[0]) / supply.box[2] * 100, (supply.hit[1] - supply.box[1]) / supply.box[3] * 100, supply.hit[2] / supply.box[2] * 100, supply.hit[3] / supply.box[3] * 100] : undefined}
-          muted={mode === 'paint' && selection.tool !== null && (!!reason || (!!supply.tool && !active(supply.id)))} onclick={() => openSupply(supply)}
-          onpointerdown={(event) => startMove(event, supply)} onpointermove={moveSupply} onpointerup={() => dragging = null} onkeydown={(event) => supplyKey(event, supply.id)} />
+          muted={selection.tool !== null && (!!reason || (!!supply.tool && !active(supply.id)))} onclick={() => openSupply(supply)}
+          />
       </div>
     {/each}
   </section>
@@ -790,7 +638,6 @@
   <div class="menu-group">
     <h2>Table</h2>
     <button type="button" onclick={openViews}>Saved views…</button>
-    <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); mode = 'arrange'; paletteOpen = false; }}>Arrange table…</button>
     {@render tableSave()}
   </div>
   <div class="menu-group">
@@ -815,9 +662,6 @@
   /* The table is an app surface: no text selection or iOS callouts while you reach for tools (form fields still select). */
   .workbench { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; position: relative; width: 100%; height: 100svh; overflow: clip; isolation: isolate; background-image: linear-gradient(#1e0f0599, #1e0f0599), var(--wood); background-size: auto, 1000px; }
   .status-strip { position: absolute; inset: 0 0 auto; min-height: calc(72px * var(--ui-scale, 1)); display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 20px; background: #0c0806ed; z-index: 40; }
-  .mode { display: flex; gap: 4px; }
-  .mode button { border: 1px solid #81704f; }
-  .mode button[aria-pressed='true'] { background: #e8ddbc; color: #21160d; font-weight: 700; }
   .selected-tool > span, .selected-color > span { display: block; font-size: 12px; text-transform: uppercase; margin-bottom: 4px; color: #e8ddcc; }
   .selected-tool strong { font-family: $font-display; font-size: clamp(18px, 1.6vw, 26px); text-transform: uppercase; }
   .load-line { display: flex; align-items: center; gap: 10px; font-size: 14px; }
@@ -829,19 +673,8 @@
   .primary { border-color: #e6df54; font-weight: 700; }
   button:disabled { opacity: 0.5; }
   .canvas-frame { position: absolute; left: var(--frame-x); top: var(--frame-y); width: var(--frame-width); height: var(--frame-height); background: transparent; z-index: 5; }
-  .edge { position: absolute; z-index: 3; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; touch-action: none; }
-  .edge-top, .edge-bottom { left: 12px; right: 12px; height: 14px; cursor: ns-resize; }
-  .edge-left, .edge-right { top: 12px; bottom: 12px; width: 14px; cursor: ew-resize; }
-  .edge-top { top: -7px; } .edge-bottom { bottom: -7px; } .edge-left { left: -7px; } .edge-right { right: -7px; }
-  .edge::after { content: ''; position: absolute; inset: 5px; border-radius: 2px; background: #f1ec35; opacity: 0; transition: opacity .15s; }
-  .edge:hover::after, .edge:focus-visible::after { opacity: .9; }
-  .edge:focus-visible { outline: none; }
-  .corner { position: absolute; right: -6px; bottom: -6px; z-index: 4; display: grid; place-items: center; width: 32px; height: 32px; min-height: 32px; padding: 0; cursor: nwse-resize; touch-action: none; background: #1c150fe8; }
-  @media (prefers-reduced-motion: reduce) { .edge::after { transition: none; } }
-  .arranging .supply { z-index: 6; }
   .supply { position: absolute; pointer-events: none; z-index: 2; }
   .workbench.pointing { cursor: pointer; }
-  .arranging.pointing { cursor: grab; }
   .supply.chosen { z-index: 4; }
   /* The burnishing pad is small and rests on the sponge and paint box: keep it on top so it's easy to pick up. */
   .supply[data-supply='burnisher'] { z-index: 3; }
@@ -923,19 +756,12 @@
   .status-strip > *, .table-menu > * { zoom: var(--ui-scale, 1); }
   .menu-button { flex: none; margin-left: auto; min-height: 40px; padding: 6px 16px; font-size: 14px; }
   .account-group :global(.account-controls) { font-size: 13px; }
-  .arrange-controls { display: grid; gap: 10px; }
-  .arrange-field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; font-size: 13px; }
-  .arrange-field select { width: 100%; }
-  .nudge-pad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-areas: '. up .' 'left down right'; gap: 4px; justify-content: center; }
-  .nudge-pad button { padding: 0; font-size: 20px; line-height: 1; }
-  .nudge-pad .up { grid-area: up; } .nudge-pad .left { grid-area: left; } .nudge-pad .down { grid-area: down; } .nudge-pad .right { grid-area: right; }
   .view-control { position: relative; font-size: 13px; }
-  .view-control summary { padding: 10px; min-height: 44px; border: 1px solid #9d8c67; border-radius: 4px; cursor: pointer; }
-  .view-control > div { position: absolute; top: 100%; left: 0; z-index: 60; min-width: 240px; max-height: 60svh; overflow: auto; padding: 6px; background: #21180f; border: 1px solid #9d8c67; display: grid; gap: 4px; }
+  .view-control > button { padding: 10px; min-height: 44px; border: 1px solid #9d8c67; border-radius: 4px; cursor: pointer; }
+  .view-control > div { position: fixed; inset: calc(var(--header-height) + 4px) auto auto 12px; margin: 0; width: min(320px, calc(100vw - 24px)); max-height: min(60svh, calc(100svh - var(--header-height) - 16px)); overflow: auto; padding: 6px; color: #fff5e4; background: #21180f; border: 1px solid #9d8c67; }
+  .view-control > div:popover-open { display: grid; gap: 4px; }
   .view-control button { text-align: left; }
   .wheel-option input { width: 18px; height: 18px; accent-color: #eee935; }
-  .arrange-hint { margin: 0; font-size: 12px; line-height: 1.45; }
-  .arrange-actions { display: flex; gap: 8px; justify-content: space-between; }
   .workbench :global(input), .workbench :global(textarea) { -webkit-user-select: text; user-select: text; }
   .table-menu { position: fixed; inset: 96px 16px auto auto; width: min(calc(280px * var(--ui-scale, 1)), calc(100vw - 32px)); max-height: calc(100svh - 112px); overflow: auto; margin: 0; background: #21180f; color: #fff5e4; border: 1px solid #aa976a; border-radius: 6px; padding: 14px 16px 16px; box-shadow: 0 10px 28px #000a; }
   .table-menu h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #e8ddcc; margin: 0 0 6px; }
@@ -949,10 +775,9 @@
   .wheel-option { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; }
   .compact { height: auto; min-height: 100svh; overflow: visible; padding: 0 12px calc(144px + env(safe-area-inset-bottom, 0px)); }
   .compact .status-strip { position: relative; margin: 0 -12px; min-height: 88px; gap: 12px; flex-wrap: wrap; padding: 12px; }
-  .compact .mode { flex: 1 0 auto; }
   .compact .selected-tool { flex: 1; min-width: 120px; }
   .compact .selected-color { flex: 1; }
-  .compact .canvas-frame { position: relative; inset: auto; width: min(100%, calc(58svh * var(--canvas-aspect))); height: auto; aspect-ratio: var(--canvas-ratio); margin: var(--toolbar-space) auto 32px; }
+  .compact .canvas-frame { position: relative; inset: auto; width: min(100%, var(--frame-width)); height: var(--frame-height); margin: var(--toolbar-space) auto 32px; }
   .compact .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); align-items: start; gap: 12px; margin-bottom: 16px; }
   .compact .panels:empty { display: none; }
   .compact .supplies { display: grid; grid-template-columns: repeat(auto-fit, minmax(clamp(100px, 13vw, 168px), 1fr)); gap: 12px 8px; }

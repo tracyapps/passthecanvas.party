@@ -44,6 +44,8 @@ export class Call {
   weakConnection = $state(false);
 
   private room: Room | null = null;
+  /** Leaving or handing video away invalidates every unfinished join. */
+  private generation = 0;
   private speaking = new Set<string>();
   /** Save data was switched on for a weak connection this call (only once). */
   private autoSaved = false;
@@ -55,6 +57,7 @@ export class Call {
    */
   async join(partyId: string, name: string, identity: string, presence: Presence) {
     if (this.status === 'connecting' || this.status === 'in-call') return;
+    const generation = ++this.generation;
     this.status = 'connecting';
     this.note = '';
 
@@ -64,6 +67,7 @@ export class Call {
     try {
       const params = new URLSearchParams({ party: partyId, name, identity });
       const response = await fetch(partyUrl(`/api/token?${params}`));
+      if (generation !== this.generation) return;
       if (response.status === 503) {
         this.status = 'unavailable';
         this.note = 'Video is not set up on the server yet.';
@@ -72,10 +76,12 @@ export class Call {
       if (!response.ok) throw new Error(`token endpoint said ${response.status}`);
       ({ token, url } = await response.json());
     } catch {
+      if (generation !== this.generation) return;
       this.status = 'error';
       this.note = 'Could not reach the video server.';
       return;
     }
+    if (generation !== this.generation) return;
     if (!url) {
       this.status = 'unavailable';
       this.note = 'Video is not set up on the server yet.';
@@ -83,23 +89,28 @@ export class Call {
     }
 
     // 2. Connect, then publish mic + camera (avatar guests join quietly).
+    let room: Room | null = null;
     try {
       // The camera, mic and speakers chosen in the device check, if any.
       const devices = savedDevices();
-      this.room = new Room({
+      room = new Room({
         adaptiveStream: true,
         dynacast: true,
         ...(devices.cameraId ? { videoCaptureDefaults: { deviceId: devices.cameraId } } : {}),
         ...(devices.micId ? { audioCaptureDefaults: { deviceId: devices.micId } } : {}),
         ...(devices.speakerId ? { audioOutput: { deviceId: devices.speakerId } } : {})
       });
-      this.listenToRoom();
-      await this.room.connect(url, token);
+      this.room = room;
+      this.listenToRoom(room);
+      await room.connect(url, token);
+      if (generation !== this.generation) { void room.disconnect(); return; }
       this.applySaveData();
 
       if (presence === 'camera') {
-        await this.room.localParticipant.setMicrophoneEnabled(true);
-        await this.room.localParticipant.setCameraEnabled(true);
+        await room.localParticipant.setMicrophoneEnabled(true);
+        if (generation !== this.generation) { void room.disconnect(); return; }
+        await room.localParticipant.setCameraEnabled(true);
+        if (generation !== this.generation) { void room.disconnect(); return; }
       } else {
         this.micOn = false;
         this.camOn = false;
@@ -108,37 +119,60 @@ export class Call {
       this.refreshVideos();
       this.status = 'in-call';
     } catch (error) {
+      if (generation !== this.generation) { void room?.disconnect(); return; }
       console.warn('[call]', error);
       this.status = 'error';
       this.note = 'Could not join video. Check camera and microphone permissions.';
-      this.room?.disconnect();
       this.room = null;
+      void room?.disconnect();
     }
   }
 
   /** Swap camera ↔ avatar mid-party. Coming on camera turns the mic on too; going to avatar leaves the mic as it was. */
   async setPresence(presence: Presence) {
-    if (!this.room) return;
-    this.camOn = presence === 'camera';
-    if (this.camOn && !this.micOn) {
-      this.micOn = true;
-      await this.room.localParticipant.setMicrophoneEnabled(true);
+    const room = this.room;
+    if (!room) return;
+    try {
+      const camera = presence === 'camera';
+      if (camera && !this.micOn) {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        if (this.room !== room) { void room.disconnect(); return; }
+        this.micOn = true;
+      }
+      await room.localParticipant.setCameraEnabled(camera);
+      if (this.room !== room) { void room.disconnect(); return; }
+      this.camOn = camera;
+      this.refreshLocalVideo();
+    } catch {
+      if (this.room === room) this.note = 'Camera or microphone could not be changed. Check their permissions.';
     }
-    await this.room.localParticipant.setCameraEnabled(this.camOn);
-    this.refreshLocalVideo();
   }
 
   async toggleMic() {
-    if (!this.room) return;
-    this.micOn = !this.micOn;
-    await this.room.localParticipant.setMicrophoneEnabled(this.micOn);
+    const room = this.room;
+    if (!room) return;
+    try {
+      const on = !this.micOn;
+      await room.localParticipant.setMicrophoneEnabled(on);
+      if (this.room !== room) { void room.disconnect(); return; }
+      this.micOn = on;
+    } catch {
+      if (this.room === room) this.note = 'Microphone could not be changed. Check its permission.';
+    }
   }
 
   async toggleCam() {
-    if (!this.room) return;
-    this.camOn = !this.camOn;
-    await this.room.localParticipant.setCameraEnabled(this.camOn);
-    this.refreshLocalVideo();
+    const room = this.room;
+    if (!room) return;
+    try {
+      const on = !this.camOn;
+      await room.localParticipant.setCameraEnabled(on);
+      if (this.room !== room) { void room.disconnect(); return; }
+      this.camOn = on;
+      this.refreshLocalVideo();
+    } catch {
+      if (this.room === room) this.note = 'Camera could not be changed. Check its permission.';
+    }
   }
 
   /** Turn Save data on or off: (un)subscribe from everyone's camera. */
@@ -163,8 +197,10 @@ export class Call {
   }
 
   leave() {
-    this.room?.disconnect();
+    this.generation += 1;
+    const room = this.room;
     this.room = null;
+    void room?.disconnect();
     this.status = 'off';
     this.videos = [];
     this.localVideo = null;
@@ -176,10 +212,10 @@ export class Call {
 
   // ---------- internals ----------
 
-  private listenToRoom() {
-    const room = this.room!;
+  private listenToRoom(room: Room) {
     // One refresh after every event keeps this simple; parties are small.
     const refresh = () => {
+      if (this.room !== room) return;
       this.refreshVideos();
       this.refreshLocalVideo();
     };
@@ -190,17 +226,20 @@ export class Call {
     room.on(RoomEvent.TrackMuted, refresh);
     room.on(RoomEvent.TrackUnmuted, refresh);
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      if (this.room !== room) return;
       this.speaking = new Set(speakers.map((s) => s.identity));
       this.refreshVideos();
     });
     // New cameras follow Save data too.
     room.on(RoomEvent.TrackPublished, (publication) => {
+      if (this.room !== room) return;
       if (publication.source === Track.Source.Camera && this.saveData) publication.setSubscribed(false);
     });
     // A weak connection drops guests' video once, automatically, so voices
     // stay clear (see ACCESSIBILITY.md). Turning Save data off again wins:
     // we don't switch it back on during this call.
     room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+      if (this.room !== room) return;
       if (participant.identity !== room.localParticipant.identity) return;
       this.weakConnection = quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost;
       if (this.weakConnection && !this.saveData && !this.autoSaved) {
@@ -212,7 +251,7 @@ export class Call {
       }
     });
     room.on(RoomEvent.Disconnected, () => {
-      if (this.status === 'in-call') this.leave();
+      if (this.room === room && this.status === 'in-call') this.leave();
     });
   }
 

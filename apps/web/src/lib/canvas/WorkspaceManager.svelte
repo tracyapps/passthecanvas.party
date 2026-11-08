@@ -9,7 +9,7 @@
   import type { Toolbox } from './toolboxes';
   import { shownSupplies, findToolbox } from './toolboxes';
   import { SUPPLIES } from './supplies';
-  import { workspaceGeometry, canvasTop } from './workspace-geometry';
+  import { workspaceGeometry, canvasTop, compactSurface, layoutForSurface } from './workspace-geometry';
   import WorkspacePreview from './WorkspacePreview.svelte';
 
   let {
@@ -50,15 +50,25 @@
   let note = $state('');
   let nameInput = $state<HTMLInputElement>();
   let dirty = $derived(!!draft && JSON.stringify(draft) !== baseline);
-  let viewport = $derived(
-    device === 'phone'
-      ? { ...desktop, width: 360, height: 800, headerHeight: 160 }
-      : device === 'tablet'
-        ? { ...desktop, width: 1024, height: 768, headerHeight: 120 }
-        : device === 'wide'
-          ? { ...desktop, width: 1920, height: 1080 }
-          : (draft?.layout.surface ?? desktop)
-  );
+  let viewport = $derived(draft?.layout.surface ?? desktop);
+  let flowing = $derived(compactSurface(viewport) || draft?.layout.dock !== 'surround');
+  function changeSize(value: string) {
+    if (!draft) return;
+    device = value;
+    const surface = value === 'phone' ? { ...desktop, width: 360, height: 800, headerHeight: 160 }
+      : value === 'tablet' ? { ...desktop, width: 1024, height: 768, headerHeight: 120 }
+      : value === 'wide' ? { ...desktop, width: 1920, height: 1080 } : desktop;
+    draft.layout = layoutForSurface(draft.layout, surface);
+  }
+  function reorder(direction: number) {
+    if (!draft || target === 'canvas') return;
+    const shown = draft.layout.order.filter(id => draft!.layout.supplies?.includes(id));
+    const index = shown.indexOf(target);
+    const next = index + direction;
+    if (index < 0 || next < 0 || next >= shown.length) return;
+    [shown[index], shown[next]] = [shown[next], shown[index]];
+    draft.layout = { ...draft.layout, order: [...shown, ...draft.layout.order.filter(id => !shown.includes(id))] };
+  }
   let selectedRect = $derived(
     draft
       ? target === 'canvas'
@@ -301,7 +311,7 @@
       <p>
         {draft
           ? 'Arrange the desk, then save your view.'
-          : 'Choose a view or build a new arrangement.'}
+          : 'Create views for different screen sizes, then choose one on each device.'}
       </p>
     </div>
     <div class="actions">
@@ -406,13 +416,13 @@
               >
             </form>
           {:else}<h3>{view.name}</h3>{/if}
-          <p>{view.layout.toolView === 'grid' ? 'Square buttons' : 'Full cutout images'}</p>
+          <p>{view.layout.toolView === 'grid' ? 'Square buttons' : 'Full cutout images'} · {view.layout.surface?.width ?? desktop.width} × {view.layout.surface?.height ?? desktop.height}</p>
           <div class="actions">
             <button
               type="button"
               disabled={saving}
               aria-label={`Apply ${view.name}`}
-              onclick={() => onapply(view)}>Use view</button
+              onclick={() => onapply(view)}>Use on this device</button
             >
             <button
               type="button"
@@ -456,7 +466,7 @@
             >{saving ? 'Saving…' : 'Save view'}</button
           >
           <button type="button" disabled={saving || dirty} onclick={() => draft && onapply(draft)}
-            >Use view</button
+            >Use on this device</button
           >
           <button
             type="button"
@@ -482,26 +492,28 @@
       <div class="editor-layout">
         <div class="desk-preview">
           <label
-            >Device preview<select bind:value={device}
-              ><option value="saved">Saved design size</option><option value="wide"
+            >Edit for screen size<select value={device} disabled={saving} onchange={(event) => changeSize(event.currentTarget.value)}
+              ><option value="saved" disabled>Design · {viewport.width} × {viewport.height}</option><option value="desktop">Desktop · 1440 × 900</option><option value="wide"
                 >Wide desktop · 1920 × 1080</option
               ><option value="tablet">Tablet · 1024 × 768</option><option value="phone"
                 >Phone · 360 × 800</option
               ></select
             ></label
           >
+          <div class="desk-size" style:--preview-aspect={viewport.width / viewport.height}>
           <WorkspacePreview
             layout={draft.layout}
             {viewport}
-            editable={device === 'saved' && !saving}
+            editable={!saving}
             selected={target}
             onselect={(id) => (target = id)}
             onchange={(layout) => draft && (draft.layout = layout)}
           />
+          </div>
           <p class="hint">
-            Drag tools and the canvas to arrange them. Use arrow keys or position fields for precise
-            adjustments. Device previews show responsive placement without changing the saved
-            design.
+            {#if compactSurface(viewport)}Drag tools or use the order buttons to arrange them. Set the canvas width and height below.{:else}Drag tools and the canvas to arrange them. Use arrow keys or position fields for precise adjustments.{/if}
+            Save to keep this size and arrangement. Duplicate a view to create another size.
+            Each device remembers the view you choose here.
           </p>
         </div>
         <aside class="controls" aria-label="View display settings">
@@ -521,7 +533,7 @@
                 ><option value={3}>270°</option></select
               ></label
             >
-            <label
+            {#if !compactSurface(viewport)}<label
               >Placement<select bind:value={draft.layout.dock}
                 ><option value="surround">Freeform desk</option><option value="left"
                   >Columns on left</option
@@ -529,7 +541,7 @@
                   >Columns both sides</option
                 ></select
               ></label
-            >
+            >{/if}
             <label
               >Move or size<select bind:value={target}
                 ><option value="canvas">Canvas frame</option
@@ -538,8 +550,12 @@
                   >{/each}</select
               ></label
             >
-            {#if selectedRect}<div class="numbers">
-                {#each ['x', 'y', 'width', 'height'] as field}{#if target === 'canvas' || field === 'x' || field === 'y'}<label
+            {#if flowing && target !== 'canvas'}<div class="actions">
+              <button type="button" onclick={() => reorder(-1)} disabled={draft.layout.order.filter(id => draft!.layout.supplies?.includes(id)).indexOf(target) <= 0}>Move earlier</button>
+              <button type="button" onclick={() => reorder(1)} disabled={draft.layout.order.filter(id => draft!.layout.supplies?.includes(id)).at(-1) === target}>Move later</button>
+            </div>{/if}
+            {#if selectedRect && (!flowing || target === 'canvas')}<div class="numbers">
+                {#each ['x', 'y', 'width', 'height'] as field}{#if (target === 'canvas' && (!compactSurface(viewport) || field === 'width' || field === 'height')) || (!flowing && (field === 'x' || field === 'y'))}<label
                       >{field}<input
                         type="number"
                         min="0"
@@ -714,6 +730,14 @@
   }
   .desk-preview > label {
     margin-bottom: 8px;
+  }
+  .desk-size {
+    width: 100%;
+    max-width: calc(65svh * var(--preview-aspect));
+    margin-inline: auto;
+  }
+  .desk-preview .hint {
+    color: #e4d7bf;
   }
   .controls {
     display: grid;

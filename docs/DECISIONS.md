@@ -1015,3 +1015,72 @@ those for that canvas are sent and added to the rebuilt history, so they stay
 on screen and reach the server, which still checks round, canvas and the
 canvas device as usual. Strokes for a canvas that has since passed on are
 dropped. No protocol change.
+
+
+### 2026-11-08 — Editable screen sizes and a view choice per device
+
+The saved-view editor's screen-size selector now changes the editable design
+surface. Artists can create or duplicate named views for desktop (1440 × 900),
+wide desktop (1920 × 1080), tablet (1024 × 768) and phone (360 × 800), then save
+each independently. Gallery cards include the design dimensions. Compact designs
+keep tools in a wrapping flow: visibility, display style, order, canvas dimensions
+and rotation are editable, with drag, arrow-key and button paths for reordering.
+Free positioning remains available on desktop designs. Compact canvas dimensions
+now apply to the real painting table as well as the editor; desktop designs still
+use the automatic compact fallback when opened on a narrow screen.
+
+Named views remain in the existing account workspace library. “Use on this
+device” stores the active arrangement in this browser's account-scoped workspace;
+loading account views preserves that arrangement instead of applying another
+device's current desk. This is a browser choice, not hardware identification or
+an automatic assignment by screen width. Browsers without a local arrangement
+start from the account's existing desk. No party protocol or account data format
+change is needed.
+
+The owner retired the Paint / Arrange toggle. Live arrangement controls and the
+duplicate Arrange menu entry are removed. View → Manage saved views is the layout
+editor. The View dropdown uses a native popover so floating party panels cannot
+cover its actions. Canvas navigation (pan, zoom and rotation) still works.
+
+Local checks cover saved compact geometry, size conversion, visibility/order
+comparison and preserving device arrangements when loading shared account views.
+Browser checks and remaining qualification are recorded in PARTY-READINESS.md.
+
+
+### 2026-11-08 — Separate device jobs and screen choices
+
+The owner approved managing painting, camera/mic and screen choices separately
+from any linked device, including the required shared-message changes. “Your
+devices” in the call dock opens a native dialog from the room or canvas. The
+existing table-menu entry opens the same dialog. It offers one selector for
+painting, one for camera/mic and a Canvas/Room selector for every linked screen.
+Screen choice never moves video or painting. A screen without the call shows
+avatars in the room. Matching device labels are numbered within the artist's
+list so two phones or two windows can be distinguished.
+
+The server validates assignment targets inside the sender's own session and
+requires the target to be online. `takeDuty` accepts an optional `deviceId`
+(omitted still means the sender). `setDeviceScreen` and `MyDevice.screen` keep
+screen choices through socket reconnects and reloads. Multiple devices can show
+the room. A newly linked room device still starts in the room with the call;
+its jobs and screen can then be reassigned separately.
+
+Painting handoffs, including linking a new painting device, first send
+`finishCanvasHandoff` to the current painter. It flushes its stroke before
+`canvasHandoffReady`; ordered messages on that socket keep the final batch
+accepted before ownership changes. A private handoff ID binds the source and
+target, and expires after five seconds. An expired or unanswered request does
+not move painting. If the old device is already offline, painting can move
+straight to a connected target. UI success waits for server state; failures,
+disconnects and an eight-second confirmation timeout leave the real assignments
+visible and retryable.
+
+Camera/mic handoffs invalidate unfinished token requests, LiveKit connects and
+media-start operations. Late results and old room events cannot revive the old
+call or disconnect a newer one. Camera/avatar changes on a separate screen now
+reach the device holding the call. No video or audio is recorded.
+
+Deploy the shared types, server and web changes together and reload older party
+pages before using the new controls. Older pages cannot acknowledge a painting
+handoff, so the server keeps painting where it is rather than dropping its tail.
+Local evidence and remaining hardware checks are in PARTY-READINESS.md.

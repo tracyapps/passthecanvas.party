@@ -40,3 +40,20 @@ it('preserves the full saved arrangement and gives Default a fresh canvas and su
   });
   expect(stored.views[0].layout.frame?.x).toBe(0.4);
 });
+
+
+it('shares saved views while keeping each device on its own arrangement', async () => {
+  const { workspaceForDevice } = await import('./workspaces');
+  const phone = { ...defaultLayout(['brush']), supplies: ['brush'], surface: { width: 360, height: 800, headerHeight: 160, toolbarHeight: 80 } };
+  const desktop = defaultLayout(['brush']);
+  const views = [{ id: 'phone', name: 'Phone', layout: phone }, { id: 'desktop', name: 'Desktop', layout: desktop }];
+  const remote = { version: 1 as const, current: desktop, selected: 'desktop', views };
+  const local = { version: 1 as const, current: phone, selected: 'phone', views: [] };
+  const restored = workspaceForDevice(remote, local);
+  expect(restored.current).toEqual(phone);
+  expect(restored.selected).toBe('phone');
+  expect(restored.views).toEqual(views);
+  expect(workspaceForDevice(remote).current).toEqual(desktop);
+  expect(workspaceForDevice({ ...remote, views: [views[1]] }, local).selected).toBe('');
+  expect(workspaceForDevice(remote, { ...local, selected: '' }).selected).toBe('');
+});

@@ -47,6 +47,21 @@ export function designPoint(
   return { x: (x - fit.x) / fit.scale, y: (y - fit.y) / fit.scale };
 }
 
+/** Turn the visible arrangement at a new size into an editable saved design. */
+export function layoutForSurface(layout: WorkspaceLayout, surface: WorkspaceSurface): WorkspaceLayout {
+  const geometry = workspaceGeometry(layout, surface);
+  return {
+    ...layout,
+    surface: { ...surface },
+    positions: Object.fromEntries(Object.entries(geometry.boxes).map(([id, box]) =>
+      [id, { x: box.x / surface.width, y: box.y / surface.height }])),
+    frame: {
+      x: geometry.frame.x / surface.width, y: geometry.frame.y / surface.height,
+      width: geometry.frame.width / surface.width, height: geometry.frame.height / surface.height,
+    },
+  };
+}
+
 export function workspaceGeometry(
   layout: WorkspaceLayout,
   target: WorkspaceSurface,
@@ -98,12 +113,17 @@ export function workspaceGeometry(
       height: layout.frame.height * height,
     };
   if (compact) {
-    const w = Math.min(width - 24, height * 0.58 * aspect);
+    // Only a design made for a compact screen controls its flowing canvas size.
+    // Desktop designs retain the comfortable automatic phone/tablet fallback.
+    const sized = layout.surface && compactSurface(layout.surface) && layout.frame;
+    const w = sized
+      ? Math.max(120, Math.min(width - 24, layout.frame!.width * width))
+      : Math.min(width - 24, height * 0.58 * aspect);
     frame = {
       x: (width - w) / 2,
       y: headerHeight + toolbarHeight + 28,
       width: w,
-      height: w / aspect,
+      height: sized ? Math.max(120, Math.min(height, layout.frame!.height * height)) : w / aspect,
     };
   }
   const boxes: Record<string, SupplyRect> = {};

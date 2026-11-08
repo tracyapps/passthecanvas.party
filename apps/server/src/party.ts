@@ -20,6 +20,7 @@ import {
   MAX_DEVICES,
   normalizeLinkCode,
   type DeviceDuty,
+  type DeviceScreen,
   type MyDevice,
   canvasOwnerFor,
   clampTurnSeconds,
@@ -67,6 +68,7 @@ const GAME_AWAY_MS = Number(process.env.GAME_AWAY_SECONDS ?? 15 * 60) * 1000;
 interface Device {
   id: string;
   label: string;
+  screen: DeviceScreen;
   keyHash: Buffer;
   ws: WebSocket | null;
   /** When it went offline (null while connected). */
@@ -78,6 +80,7 @@ interface Session {
   devices: Map<string, Device>;
   canvas: string | null;
   call: string | null;
+  canvasHandoff: { id: string; from: string; to: string; expiresAt: number } | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   awayTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -233,7 +236,7 @@ class Party {
     const clean = cleanLook(look);
     this.state.members.push({ id, name, presence: presence === 'avatar' ? 'avatar' : 'camera', isHost, spotId: null, canvasShape: DEFAULT_CANVAS_SHAPE, watching, initialsColor: clean.initialsColor, hasLook: !!clean.image, away: false });
     if (clean.image) this.looks.set(id, clean.image);
-    const session: Session = { devices: new Map(), canvas: null, call: null, graceTimer: null, awayTimer: null };
+    const session: Session = { devices: new Map(), canvas: null, call: null, canvasHandoff: null, graceTimer: null, awayTimer: null };
     this.sessions.set(id, session);
     const { device, key } = this.newDevice(session, ws, label);
     session.canvas = device.id;
@@ -248,7 +251,7 @@ class Party {
 
   private newDevice(session: Session, ws: WebSocket, label?: string) {
     const key = randomBytes(24).toString('base64url');
-    const device: Device = { id: randomUUID(), label: cleanDeviceLabel(label), keyHash: hashKey(key), ws, offlineAt: null };
+    const device: Device = { id: randomUUID(), label: cleanDeviceLabel(label), screen: 'canvas', keyHash: hashKey(key), ws, offlineAt: null };
     session.devices.set(device.id, device);
     return { device, key };
   }
@@ -303,11 +306,14 @@ class Party {
     }
     if (session.devices.size >= MAX_DEVICES) return 'full';
     const { device, key } = this.newDevice(session, ws, label);
-    if (ticket.role === 'canvas') session.canvas = device.id;
-    else session.call = device.id;
+    if (ticket.role === 'room') {
+      session.call = device.id;
+      device.screen = 'room';
+    }
     this.comeBack(ticket.memberId, session);
     this.sendToMember(ticket.memberId, { type: 'linkCode', link: null });
     this.welcome(ticket.memberId, device, key);
+    if (ticket.role === 'canvas') this.moveCanvas(ticket.memberId, session, device);
     this.broadcastState();
     return { memberId: ticket.memberId, deviceId: device.id };
   }
@@ -510,7 +516,32 @@ class Party {
 
       case 'takeDuty': {
         if (msg.duty !== 'canvas' && msg.duty !== 'call') return;
-        session[msg.duty as DeviceDuty] = fromDevice;
+        const target = this.assignmentDevice(session, fromDevice, msg.deviceId);
+        if (!target) return;
+        if (msg.duty === 'canvas') {
+          this.moveCanvas(fromId, session, target);
+          return;
+        }
+        session.call = target.id;
+        this.sendDevices(fromId);
+        return;
+      }
+
+      case 'setDeviceScreen': {
+        if (msg.screen !== 'canvas' && msg.screen !== 'room') return;
+        const target = this.assignmentDevice(session, fromDevice, msg.deviceId);
+        if (!target) return;
+        target.screen = msg.screen;
+        this.sendDevices(fromId);
+        return;
+      }
+
+      case 'canvasHandoffReady': {
+        const handoff = session.canvasHandoff;
+        if (!handoff || handoff.id !== msg.handoffId || handoff.from !== fromDevice || session.canvas !== fromDevice) return;
+        session.canvasHandoff = null;
+        const target = this.assignmentDevice(session, fromDevice, handoff.to);
+        if (target && Date.now() <= handoff.expiresAt) session.canvas = target.id;
         this.sendDevices(fromId);
         return;
       }
@@ -933,11 +964,39 @@ class Party {
     if (ws) this.send(ws, msg);
   }
 
+  /** Resolve only within this artist's session; an offline device cannot take a job. */
+  private assignmentDevice(session: Session, from: string, requested: unknown): Device | undefined {
+    const id = requested === undefined ? from : requested;
+    const target = typeof id === 'string' ? session.devices.get(id) : undefined;
+    if (target?.ws && target.ws.readyState === target.ws.OPEN) return target;
+    const sender = session.devices.get(from)?.ws;
+    if (sender) this.send(sender, { type: 'error', message: 'That device is no longer connected to your seat. Reconnect it and try again.' });
+    return undefined;
+  }
+
+  private moveCanvas(memberId: string, session: Session, target: Device) {
+    session.canvasHandoff = null;
+    if (session.canvas === target.id) {
+      this.sendDevices(memberId);
+      return;
+    }
+    const previous = session.canvas ? session.devices.get(session.canvas) : undefined;
+    if (previous?.ws && previous.ws.readyState === previous.ws.OPEN) {
+      // Messages on the old socket arrive in order: final paint first, acknowledgement next.
+      const id = randomUUID();
+      session.canvasHandoff = { id, from: previous.id, to: target.id, expiresAt: Date.now() + 5000 };
+      this.send(previous.ws, { type: 'finishCanvasHandoff', handoffId: id });
+      return;
+    }
+    session.canvas = target.id;
+    this.sendDevices(memberId);
+  }
+
   /** Each of an artist's devices learns the list, and which duties it holds. */
   private sendDevices(memberId: string) {
     const session = this.sessions.get(memberId);
     if (!session) return;
-    const devices: MyDevice[] = [...session.devices.values()].map((d) => ({ id: d.id, label: d.label, canvas: session.canvas === d.id, call: session.call === d.id, online: !!d.ws }));
+    const devices: MyDevice[] = [...session.devices.values()].map((d) => ({ id: d.id, label: d.label, canvas: session.canvas === d.id, call: session.call === d.id, screen: d.screen, online: !!d.ws }));
     for (const device of session.devices.values()) {
       if (device.ws) this.send(device.ws, { type: 'devices', youDeviceId: device.id, devices });
     }

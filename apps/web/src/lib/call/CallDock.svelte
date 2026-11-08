@@ -5,6 +5,8 @@
 -->
 <script lang="ts">
   import type { Call } from './call.svelte';
+  import Icon from '../ui/Icon.svelte';
+  import { devicesIcon } from '../ui/icons';
 
   interface Props {
     call: Call;
@@ -24,7 +26,7 @@
 <nav class="dock" aria-label="Call controls">
   {#if elsewhere}
     <!-- One call per artist: video and mic live on the device that holds the call. -->
-    <button type="button" class="where" onclick={onDevices}>Video is on your {elsewhere}</button>
+    <button type="button" class="where" onclick={onDevices}>Camera and mic: {elsewhere}</button>
   {:else if call.status === 'unavailable' || call.status === 'error'}
     <!-- Keep the honest reason visible; the party works without video. -->
     <p class="note" role="status">{call.note || 'Video is unavailable.'}</p>
@@ -81,6 +83,8 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
   </button>
 
+  {#if onDevices}<button type="button" aria-label="Your devices" onclick={onDevices}><Icon src={devicesIcon} /></button>{/if}
+
   <button type="button" class="leave" aria-label="Leave the party" onclick={onLeave}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
   </button>
@@ -92,6 +96,7 @@
 
   .dock {
     position: fixed;
+    z-index: 30;
     left: 50%;
     bottom: 1rem;
     transform: translateX(-50%);
@@ -165,5 +170,6 @@
   @media (max-width: 600px) {
     .dock { width: max-content; max-width: calc(100% - 16px); flex-wrap: wrap; justify-content: center; }
     .dock .note { white-space: normal; text-align: center; }
+    .dock .where { white-space: normal; overflow-wrap: anywhere; }
   }
 </style>

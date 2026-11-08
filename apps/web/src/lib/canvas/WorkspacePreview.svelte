@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { workspaceGeometry, designPoint, canvasTop } from './workspace-geometry';
+  import { workspaceGeometry, designPoint, canvasTop, viewTransform } from './workspace-geometry';
   import { SUPPLIES, supplyAsset, supplyImage } from './supplies';
   import type { WorkspaceLayout, WorkspaceSurface } from './workspaces';
   let {
@@ -75,6 +75,9 @@
       event.button !== 0
     )
       return;
+    // Capturing a drag prevents the browser's usual click focus; keep arrow keys usable.
+    // Focus first so a numeric field commits before the selected item changes.
+    (event.currentTarget as HTMLElement).focus({ preventScroll: true });
     onselect?.(id === 'resize' ? 'canvas' : id);
     const rect = id === 'canvas' || id === 'resize' ? geometry.frame : geometry.boxes[id];
     drag = { id, x: event.clientX, y: event.clientY, rect: { ...rect }, pointer: event.pointerId };
@@ -93,7 +96,7 @@
     const current =
       drag.id === 'canvas' || drag.id === 'resize' ? geometry.frame : geometry.boxes[drag.id];
     if (drag.id === 'resize') {
-      const fitScale = viewport.width / source.width;
+      const fitScale = viewTransform(source, viewport).scale;
       const width = Math.max(260, drag.rect.width + (event.clientX - drag.x) * factor);
       const height = Math.max(200, drag.rect.height + (event.clientY - drag.y) * factor);
       onchange?.({
@@ -144,7 +147,19 @@
       ArrowUp: [0, -10],
       ArrowDown: [0, 10],
     };
-    if (!editable || geometry.compact || !steps[event.key]) return;
+    if (!editable || !steps[event.key]) return;
+    if (geometry.compact || layout.dock !== 'surround') {
+      if (id === 'canvas') return;
+      event.preventDefault();
+      const shown = layout.order.filter(id => layout.supplies?.includes(id) ?? true);
+      const index = shown.indexOf(id);
+      const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+      const next = index + direction;
+      if (index < 0 || next < 0 || next >= shown.length) return;
+      [shown[index], shown[next]] = [shown[next], shown[index]];
+      onchange?.({ ...layout, order: [...shown, ...layout.order.filter(id => !shown.includes(id))] });
+      return;
+    }
     event.preventDefault();
     move(id, steps[event.key][0], steps[event.key][1]);
   }
@@ -289,9 +304,9 @@
     position: absolute;
     transform: translate(-50%, -50%);
     z-index: 4;
-    width: 24px;
-    height: 24px;
-    min-height: 24px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
     padding: 3px;
     background: #32281c;
     border: 1px solid #ffee48;

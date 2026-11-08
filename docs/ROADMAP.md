@@ -59,6 +59,7 @@ The whole game loop, accessible, without the fancy room yet.
 
 ### The paint box (started Oct 2026)
 
+- [x] Editable desktop, wide, tablet and phone saved-view designs; independent browser view selection; layout editing through the View dropdown (Nov 8).
 - [x] Saved-view manager in the account area and an in-session drawer, with geometry previews, tool visibility, display mode, frame editing and device previews (Nov 8).
 
 - [ ] Toolbox tray and standalone toolbox windows are paused and removed from the current painting UI (Nov 8). Earlier implementation is historical; saved layouts and cutout/grid views remain the current workspace scope.
@@ -106,6 +107,7 @@ The owner's priority: the painting should feel like real art supplies, and the m
 
 See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, how linked devices work and what is verified. The Phase 1 gate remains open.
 
+- [x] Assign painting and camera/mic from any linked device; independently choose Canvas or Room on each screen; confirmed handoffs and a room-accessible device dialog (Nov 8, local verification).
 - [x] Companion devices: one artist and seat, canvas on iPad/tablet, room and video on laptop or phone. QR + typed code pairing, server-owned canvas/call duties, mirroring, pass handoff, unlink *(Nov 8; locally tested, not on real hardware)*
 - [x] Separate room/video and canvas windows for the same participant (**Open … in its own window**), same link mechanism *(Nov 8)*
 - [x] Reconnect: seats survive dropped connections and reloads (private per-device rejoin keys, grace period, away state) *(Nov 8)*

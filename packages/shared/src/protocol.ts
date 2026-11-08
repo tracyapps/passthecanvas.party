@@ -49,6 +49,8 @@ export interface Member {
  * `call` (the only device that joins the video call as this artist).
  */
 export type DeviceDuty = 'canvas' | 'call';
+/** What this screen shows, independently of painting and camera/mic ownership. */
+export type DeviceScreen = 'canvas' | 'room';
 /** What a new linked device takes over: the canvas, or the room and video. */
 export type LinkRole = 'canvas' | 'room';
 export const LINK_ROLES: LinkRole[] = ['canvas', 'room'];
@@ -59,6 +61,7 @@ export interface MyDevice {
   label: string; // "iPad", "Mac", "Mac (window)"…
   canvas: boolean;
   call: boolean;
+  screen: DeviceScreen;
   online: boolean;
 }
 
@@ -167,8 +170,11 @@ export type ClientMessage =
   /** Make a one-time code for another device or window. */
   | { type: 'makeLink'; role: LinkRole }
   | { type: 'cancelLink' }
-  /** "Paint here" / "Video here": move a duty to this device. */
-  | { type: 'takeDuty'; duty: DeviceDuty }
+  /** Move a duty to one of your connected devices; omitted id means this device. */
+  | { type: 'takeDuty'; duty: DeviceDuty; deviceId?: string }
+  | { type: 'setDeviceScreen'; screen: DeviceScreen; deviceId?: string }
+  /** The old canvas device flushed its final stroke before handing painting over. */
+  | { type: 'canvasHandoffReady'; handoffId: string }
   /** Disconnect one of your other devices (its key stops working). */
   | { type: 'unlinkDevice'; deviceId: string }
   /** Leaving on purpose: this device goes now (and you, if it was your last). */
@@ -202,6 +208,7 @@ export type ServerMessage =
   | { type: 'welcome'; youId: string; state: PartyState; session: { deviceId: string; key: string } }
   /** Your devices and which one holds the canvas and the call. Sent only to you. */
   | { type: 'devices'; youDeviceId: string; devices: MyDevice[] }
+  | { type: 'finishCanvasHandoff'; handoffId: string }
   /** Your one-time link code (null: cancelled, used or expired). */
   | { type: 'linkCode'; link: { code: string; role: LinkRole; expiresAt: number } | null }
   /** The canvas device should finish its stroke and pass (another of your devices asked). */

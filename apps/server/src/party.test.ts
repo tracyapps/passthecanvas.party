@@ -115,6 +115,8 @@ describe('linked devices', () => {
     const code = laptop.last('linkCode')!.link!.code;
     const second = connect(party);
     second.say({ type: 'redeemLink', code, device: 'iPad' });
+    const handoff = laptop.last('finishCanvasHandoff');
+    if (handoff) laptop.say({ type: 'canvasHandoffReady', handoffId: handoff.handoffId });
     return { party, laptop, bob, second, code };
   }
 
@@ -169,6 +171,81 @@ describe('linked devices', () => {
     expect(second.last('devices')!.devices.find((d) => d.id === second.last('devices')!.youDeviceId)).toMatchObject({ canvas: false, call: true });
     laptop.say({ type: 'takeDuty', duty: 'call' });
     expect(second.last('devices')!.devices.find((d) => d.id === second.last('devices')!.youDeviceId)).toMatchObject({ call: false });
+  });
+
+  it('assigns the call remotely without changing what either screen shows', () => {
+    const { laptop, second } = linked('canvas');
+    const secondId = second.last('devices')!.youDeviceId;
+    laptop.say({ type: 'takeDuty', duty: 'call', deviceId: secondId });
+    expect(laptop.last('devices')!.devices.find(d => d.id === secondId)).toMatchObject({ call: true, canvas: true, screen: 'canvas' });
+    expect(laptop.last('devices')!.devices.filter(d => d.call)).toHaveLength(1);
+    laptop.say({ type: 'setDeviceScreen', deviceId: secondId, screen: 'room' });
+    expect(second.last('devices')!.devices.find(d => d.id === secondId)).toMatchObject({ call: true, canvas: true, screen: 'room' });
+    expect(laptop.last('devices')!.devices.find(d => d.id !== secondId)?.screen).toBe('canvas');
+  });
+
+  it('flushes the previous canvas before moving painting, and rejects stale acknowledgements', () => {
+    const { laptop, second, bob } = linked('canvas');
+    laptop.say({ type: 'start' });
+    const canvasId = laptop.last('state')!.state.assignments[laptop.last('welcome')!.youId]!;
+    const laptopId = laptop.last('devices')!.youDeviceId;
+    laptop.say({ type: 'takeDuty', duty: 'canvas', deviceId: laptopId });
+    const handoff = second.last('finishCanvasHandoff')!;
+    expect(handoff).toBeDefined();
+    expect(laptop.last('devices')!.devices.find(d => d.id === laptopId)?.canvas).toBe(false);
+    bob.say({ type: 'watch', canvasId });
+    second.say({ type: 'stroke', stroke: stroke(canvasId, 'final-ipad-batch') });
+    expect(bob.last('stroke')?.stroke.id).toBe('final-ipad-batch');
+    laptop.say({ type: 'canvasHandoffReady', handoffId: handoff.handoffId });
+    expect(laptop.last('devices')!.devices.find(d => d.id === laptopId)?.canvas).toBe(false);
+    second.say({ type: 'canvasHandoffReady', handoffId: handoff.handoffId });
+    expect(laptop.last('devices')!.devices.find(d => d.id === laptopId)?.canvas).toBe(true);
+    expect(laptop.last('devices')!.devices.filter(d => d.canvas)).toHaveLength(1);
+    const count = bob.inbox.filter(m => m.type === 'stroke').length;
+    second.say({ type: 'stroke', stroke: stroke(canvasId, 'late-ipad-batch') });
+    expect(bob.inbox.filter(m => m.type === 'stroke')).toHaveLength(count);
+  });
+
+  it('refuses expired painting handoffs and targets which have disconnected', () => {
+    const { laptop, second } = linked('canvas');
+    laptop.say({ type: 'takeDuty', duty: 'canvas' });
+    const expired = second.last('finishCanvasHandoff')!;
+    vi.advanceTimersByTime(5001);
+    second.say({ type: 'canvasHandoffReady', handoffId: expired.handoffId });
+    expect(second.last('devices')!.devices.find(d => d.id === second.last('devices')!.youDeviceId)?.canvas).toBe(true);
+    laptop.say({ type: 'takeDuty', duty: 'canvas' });
+    const pending = second.last('finishCanvasHandoff')!;
+    laptop.close();
+    second.say({ type: 'canvasHandoffReady', handoffId: pending.handoffId });
+    expect(second.last('devices')!.devices.find(d => d.id === second.last('devices')!.youDeviceId)?.canvas).toBe(true);
+  });
+
+  it('cannot assign another artist, a missing device or an offline device', () => {
+    const { laptop, second, bob } = linked('canvas');
+    const otherArtist = bob.last('devices')!.youDeviceId;
+    const before = laptop.last('devices')!.devices;
+    for (const deviceId of [otherArtist, 'missing', 42, null]) {
+      laptop.say({ type: 'takeDuty', duty: 'call', deviceId });
+      laptop.say({ type: 'setDeviceScreen', screen: 'room', deviceId });
+    }
+    expect(laptop.last('devices')!.devices).toEqual(before);
+    expect(bob.last('devices')!.devices[0]).toMatchObject({ canvas: true, call: true, screen: 'canvas' });
+    const secondId = second.last('devices')!.youDeviceId;
+    second.close();
+    laptop.say({ type: 'takeDuty', duty: 'call', deviceId: secondId });
+    expect(laptop.last('devices')!.devices.find(d => d.id === secondId)?.call).toBe(false);
+    expect(laptop.last('error')).toBeDefined();
+  });
+
+  it('keeps the screen choice across reconnects and ignores invalid choices', () => {
+    const { party, laptop, second } = linked('room');
+    const welcome = second.last('welcome')!;
+    laptop.say({ type: 'setDeviceScreen', deviceId: welcome.session.deviceId, screen: 'canvas' });
+    laptop.say({ type: 'setDeviceScreen', deviceId: welcome.session.deviceId, screen: 'invalid' });
+    second.close();
+    const back = connect(party);
+    back.say({ type: 'rejoin', memberId: welcome.youId, deviceId: welcome.session.deviceId, key: welcome.session.key });
+    expect(back.last('devices')!.devices.find(d => d.id === welcome.session.deviceId)).toMatchObject({ screen: 'canvas', call: true });
   });
 
   it('when a device stays gone, its duty moves to one that is here', () => {

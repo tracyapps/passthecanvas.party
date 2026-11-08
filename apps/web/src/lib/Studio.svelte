@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { CANVAS_SHAPES, INITIALS_COLORS, durationText, creditLine, moveInOrder, roundsFor, turnLengthText, type CanvasShape, type OrderMode, type Piece } from '@ptc/shared';
+  import { CANVAS_SHAPES, INITIALS_COLORS, durationText, creditLine, moveInOrder, roundsFor, turnLengthText, type DeviceScreen, type CanvasShape, type OrderMode, type Piece } from '@ptc/shared';
   import type { PartyConnection } from './party/connection.svelte';
   import { Call } from './call/call.svelte';
   import CallDock from './call/CallDock.svelte';
@@ -23,7 +23,7 @@
   import PartyRadio from './radio/PartyRadio.svelte';
   import type { GalleryPiece } from './room/leanLayout';
   import TimingControls from './party/TimingControls.svelte';
-  import DevicesPanel from './party/DevicesPanel.svelte';
+  import DevicesDialog from './party/DevicesDialog.svelte';
   import { accountRequest, accountState } from './account/account.svelte';
   import { studio } from './account/studio/studio.svelte';
   import { partyUrl } from './party/origin';
@@ -113,9 +113,22 @@
   let holdsCall = $derived(party.holds('call'));
   let canvasDevice = $derived(party.devices.find((d) => d.canvas)?.label ?? 'other device');
   let callDevice = $derived(party.devices.find((d) => d.call)?.label ?? 'other device');
-  // A newly linked device opens on what it's for: the room for a room-and-
-  // video device, the canvas for a painting device. Later changes (handing a
-  // duty over) are announced but never move you; the room and canvas toggle does.
+  // Screen choice is separate from camera/mic and painting ownership.
+  let lastScreen = '';
+  $effect(() => {
+    const device = party.devices.find(device => device.id === party.youDeviceId);
+    if (!device) return;
+    const screen = device.screen ?? (holdsCall && !holdsCanvas ? 'room' : 'canvas');
+    const choice = `${device.id}/${screen}`;
+    if (lastScreen === choice) return;
+    lastScreen = choice;
+    view = screen === 'room' ? 'room' : 'paint';
+  });
+  function showScreen(screen: DeviceScreen) {
+    view = screen === 'room' ? 'room' : 'paint';
+    if (party.youDeviceId) lastScreen = `${party.youDeviceId}/${screen}`;
+    party.send({ type: 'setDeviceScreen', screen });
+  }
   let lastJob = '';
   $effect(() => {
     if (!party.youDeviceId) return;
@@ -123,8 +136,7 @@
     if (job === lastJob) return;
     const first = lastJob === '';
     lastJob = job;
-    if (first && holdsCall && !holdsCanvas) view = 'room';
-    if (!first) party.announcement = holdsCanvas && holdsCall ? 'This device has the canvas and the video again.' : holdsCanvas ? `You paint here. The room and video are on your ${callDevice}.` : holdsCall ? `The room and video are here. You paint on your ${canvasDevice}.` : 'This device is following along.';
+    if (!first) party.announcement = holdsCanvas && holdsCall ? 'This device handles painting, camera and microphone.' : holdsCanvas ? `You paint here. Camera and microphone are on your ${callDevice}.` : holdsCall ? `Camera and microphone are here. You paint on your ${canvasDevice}.` : 'This device is following along.';
   });
 
   $effect(() => {
@@ -132,6 +144,10 @@
     if (!current) return;
     party.onStroke = (stroke) => current.applyRemote(stroke);
     party.onPassRequest = () => pass();
+    party.onCanvasHandoff = (handoffId) => {
+      current.finishStroke();
+      party.send({ type: 'canvasHandoffReady', handoffId });
+    };
     party.onSnapshotRequest = (round, canvasId) => {
       if (canvasId === viewId) party.send({ type: 'snapshot', round, canvasId, pngDataUrl: current.snapshot() });
     };
@@ -146,6 +162,15 @@
     if (!me || !partyId) return;
     if (holdsCall && call.status === 'off') void call.join(partyId, me.name, me.id, me.presence);
     else if (!holdsCall && call.status !== 'off') call.leave();
+  });
+
+  // Camera/avatar changes made on another screen also reach the device with the call.
+  let appliedPresence = '';
+  $effect(() => {
+    if (!holdsCall || call.status !== 'in-call' || !me) { appliedPresence = ''; return; }
+    if (appliedPresence === me.presence) return;
+    appliedPresence = me.presence;
+    void call.setPresence(me.presence);
   });
 
   onDestroy(() => call.leave());
@@ -191,6 +216,7 @@
       : game.phase === 'lobby' ? (isHost ? 'Pick your seat in the room and your canvas shape, then start when everyone is here.' : 'Pick your seat in the room and your canvas shape. The host starts the game.')
       : game.phase === 'passing' ? 'Passing the canvases…'
       : game.phase === 'reveal' ? 'All rounds done.'
+      : !holdsCanvas && party.isPainting ? `Painting is on your ${canvasDevice}. This screen follows your canvas.`
       : me?.watching ? `You joined after the start, so you're watching ${whose(viewPiece)}.`
       : party.myCanvasId && !party.isPainting ? `Passed. Waiting for ${waitingCount} ${waitingCount === 1 ? 'artist' : 'artists'} to finish.`
       : game.overtime ? "Time's up. Finish your stroke, then pass."
@@ -234,7 +260,7 @@
     party.announcement = `${nameOf(id)} is now number ${order.indexOf(id) + 1} of ${order.length}.`;
   }
 
-  /** The devices panel shares the palette dock: it takes the place of setup, invite and timing. */
+  /** Device assignments stay available while looking at either the room or canvas. */
   function openDevices(open: boolean) {
     devicesOpen = open;
     if (open) setupOpen = inviteOpen = timingOpen = false;
@@ -295,7 +321,6 @@
   function swapPresence() {
     const next = me?.presence === 'camera' ? 'avatar' : 'camera';
     party.send({ type: 'setPresence', presence: next });
-    void call.setPresence(next);
     party.announcement = next === 'camera' ? 'Camera on.' : 'Camera off. Your avatar is showing.';
   }
 
@@ -434,7 +459,7 @@
           <button type="button" aria-pressed={guestsOpen} onclick={() => { guestsOpen = !guestsOpen; closeMenu(); }}>{guestsOpen ? 'Hide guests' : 'Show guests'}</button>
           <button type="button" aria-pressed={inviteOpen} onclick={() => { inviteOpen = !inviteOpen; closeMenu(); }}>Invite people</button>
           <button type="button" aria-pressed={devicesOpen} onclick={() => { openDevices(!devicesOpen); closeMenu(); }}>Use another device</button>
-          <button type="button" onclick={() => { view = 'room'; closeMenu(); }}>{game.phase === 'lobby' ? 'Pick a seat in the room' : 'Go to the room'}</button>
+          <button type="button" onclick={() => { showScreen('room'); closeMenu(); }}>{game.phase === 'lobby' ? 'Pick a seat in the room' : 'Go to the room'}</button>
           {#if artwork.length}<button type="button" onclick={() => { view = 'gallery'; closeMenu(); }}>Open the gallery</button>{/if}
           <button type="button" onclick={leave}>Leave the party</button>
         {/snippet}
@@ -468,11 +493,6 @@
         </StudioPanel>
       {/if}
 
-      {#if devicesOpen}
-        <StudioPanel title="Use another device" label="your devices" dock="palette" flow={innerWidth <= 1100} onclose={() => (devicesOpen = false)}>
-          <DevicesPanel {party} partyId={game.partyId} />
-        </StudioPanel>
-      {/if}
       {#if isHost && timingOpen && (game.phase === 'painting' || game.phase === 'passing')}
         <StudioPanel title="Timing" label="party timing" dock="palette" flow={innerWidth <= 1100} onclose={() => (timingOpen = false)}>
           <TimingControls {party} {game} />
@@ -560,8 +580,12 @@
     <p class="loading">Pulling up a chair…</p>
   {/if}
 
+  {#if devicesOpen && game}
+    <DevicesDialog {party} partyId={game.partyId} onclose={() => (devicesOpen = false)} />
+  {/if}
+
   {#if view !== 'gallery'}
-    <CallDock {call} inRoom={view === 'room'} elsewhere={holdsCall ? null : callDevice} onToggleRoom={() => (view = view === 'paint' ? 'room' : 'paint')} onDevices={() => { view = 'paint'; openDevices(true); }} onLeave={leave} />
+    <CallDock {call} inRoom={view === 'room'} elsewhere={holdsCall ? null : callDevice} onToggleRoom={() => showScreen(view === 'paint' ? 'room' : 'canvas')} onDevices={() => openDevices(true)} onLeave={leave} />
   {/if}
 
   {#if game?.phase === 'passing'}

@@ -18,6 +18,15 @@ export interface WorkspaceLayout {
 export interface SavedWorkspace { id: string; name: string; layout: WorkspaceLayout }
 export interface WorkspaceState { version: 1; current: WorkspaceLayout; views: SavedWorkspace[]; selected: string; toolboxes?: Toolbox[] }
 export const WORKSPACE_KEY = 'ptc-painting-workspaces-v1';
+/** Views travel with the account; the active arrangement belongs to this browser. */
+export function workspaceForDevice(account: WorkspaceState, device?: WorkspaceState): WorkspaceState {
+  if (!device) return account;
+  return {
+    ...account,
+    current: device.current,
+    selected: account.views.some(view => view.id === device.selected) ? device.selected : '',
+  };
+}
 export function defaultLayout(ids: string[]): WorkspaceLayout {
   return { positions: {}, order: [...ids], dock: 'surround', frame: null, rotation: 0, toolbox: EVERYTHING };
 }
@@ -105,6 +114,10 @@ function sameValue(left: unknown, right: unknown): boolean {
 }
 export function layoutMatches(saved: WorkspaceLayout, current: WorkspaceLayout): boolean {
   return Object.entries(saved).every(([key, value]) => {
+    // Visibility is a set; the separate order field controls placement.
+    if (key === 'supplies' && Array.isArray(value) && current.supplies) {
+      return value.length === current.supplies.length && value.every(id => current.supplies!.includes(id));
+    }
     if (key === 'frame' && value && current.frame) {
       return Object.entries(value).every(([field, number]) => number === current.frame![field as keyof NonNullable<WorkspaceLayout['frame']>]);
     }

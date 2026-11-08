@@ -22,7 +22,6 @@
     selection: PaintingSelection;
     size: number;
     intensity?: number;
-    mode?: 'paint' | 'arrange';
     /** Is it your turn? */
     canDraw: boolean;
     /** Your party member id and the current round: they name your turn's layer. */
@@ -41,7 +40,7 @@
     ontoolbarheight?: (height: number) => void;
     onstroke?: (stroke: Stroke) => void;
   }
-  let { selection, size, intensity = 0.5, mode = 'paint', canDraw, painterId, round, label, wheelZoom = false, canvasKey, documentWidth, documentHeight, baseWidth = 800, rotation = $bindable(0), fitVersion = 0, ontoolbarheight, onstroke }: Props = $props();
+  let { selection, size, intensity = 0.5, canDraw, painterId, round, label, wheelZoom = false, canvasKey, documentWidth, documentHeight, baseWidth = 800, rotation = $bindable(0), fitVersion = 0, ontoolbarheight, onstroke }: Props = $props();
 
   let element: HTMLCanvasElement;
   let viewport: HTMLDivElement;
@@ -54,7 +53,7 @@
   let fitted = $derived(fitCamera(view, frame));
   let atFit = $derived(Math.abs(view.zoom - fitted.zoom) < 0.001 && Math.abs(view.x) < 0.5 && Math.abs(view.y) < 0.5);
   let didFit = $state(false);
-  let painting = $derived(mode === 'paint' && canDraw);
+  let painting = $derived(canDraw);
   function fitView() { return fitCamera(view, frame); }
   const ZOOM_LEVELS = [0.25, 0.5, 1, 1.5, 2, 3, 4, 6];
   function zoomView(camera: CanvasCamera, zoom: number, x = 0.5, y = 0.5) { return zoomCamera(camera, zoom, frame, x * frame.width, y * frame.height); }
@@ -110,7 +109,7 @@
   let spaceHeld = $state(false);
   let panning = $state(false);
   /** A plain drag moves the view when it can't paint: no tool, nothing loaded, or not your turn. */
-  let dragPans = $derived(spaceHeld || mode === 'arrange' || !painting || !canPaint(selection));
+  let dragPans = $derived(spaceHeld || !painting || !canPaint(selection));
   let pinch: { distance: number; midpointX: number; midpointY: number; view: CanvasCamera } | null = null;
   let spray: ReturnType<typeof setInterval> | undefined;
 
@@ -150,7 +149,7 @@
       redraw();
     });
   });
-  // Turn over, tool down or Arrange mode: finish (and send) any stroke in progress.
+  // Turn over or tool down: finish (and send) any stroke in progress.
   $effect(() => {
     if (!painting || selection.tool === null) untrack(stopStroke);
   });
@@ -546,7 +545,7 @@
     oncontextmenu={(event) => event.preventDefault()} onwheel={wheel}>
     <div class="paper" style:width={`${documentWidth * frame.scale * view.zoom}px`} style:height={`${documentHeight * frame.scale * view.zoom}px`} style:--edge={`${9 * view.zoom}px`} style:transform={`translate(-50%, -50%) translate(${view.x}px, ${view.y}px) rotate(${rotation * 90}deg)`}><div class="artwork">
       <canvas bind:this={element} width={documentWidth} height={documentHeight} tabindex="0" aria-roledescription="painting surface"
-        aria-label={`${label} ${painting ? (selection.tool ? TOOL_NAMES[selection.tool] : 'No tool') + ' in hand.' : mode === 'arrange' ? 'Canvas locked while arranging.' : 'View only.'}`}
+        aria-label={`${label} ${painting ? (selection.tool ? TOOL_NAMES[selection.tool] : 'No tool') + ' in hand.' : 'View only.'}`}
         aria-describedby="painting-keyboard-help" class:ready={painting && canPaint(selection) && !spaceHeld}
         onkeydown={keyboard} onfocus={() => { focused = true; keyboardPainting = element.matches(':focus-visible'); }} onblur={() => focused = false}></canvas>
       {#if focused && painting && keyboardPainting}<span class="cursor" aria-hidden="true" style:left={`${cursor.x / documentWidth * 100}%`} style:top={`${cursor.y / documentHeight * 100}%`}></span>{/if}
@@ -576,7 +575,7 @@
   </div>
 </div>
 {#if perfOn}<p class="perf" aria-hidden="true">{perfText || 'Paint to measure…'}</p>{/if}
-<p id="painting-keyboard-help" class="sr-only">On your turn, arrows move the cursor, Enter stamps and Shift+arrows draws. When it isn't your turn, or in Arrange and view, arrows pan. Plus and minus zoom. Alt+arrows pan in either mode. Hold Space and drag to pan, or drag with no tool in hand. Right-drag pans; two fingers pan and pinch to zoom. Tab leaves the canvas. Earlier painters' turns are protected.</p>
+<p id="painting-keyboard-help" class="sr-only">On your turn, arrows move the cursor, Enter stamps and Shift+arrows draws. When it isn't your turn, arrows pan. Plus and minus zoom. Alt+arrows always pan. Hold Space and drag to pan, or drag with no tool in hand. Right-drag pans; two fingers pan and pinch to zoom. Tab leaves the canvas. Earlier painters' turns are protected.</p>
 <span class="sr-only" role="status">{announcement}</span>
 
 <style lang="scss">

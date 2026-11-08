@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { designPoint, projectRect, workspaceGeometry } from './workspace-geometry';
+import { designPoint, projectRect, workspaceGeometry, layoutForSurface } from './workspace-geometry';
 import { defaultLayout, decodeWorkspaces, mergeViewEdits, layoutMatches } from './workspaces';
 
 const source = { width: 1440, height: 1000, headerHeight: 100, toolbarHeight: 80 };
@@ -78,4 +78,38 @@ it('recognizes a restored view when storage changes the frame property order', (
   const saved = { ...layout, frame: { width: 0.5, height: 0.6, x: 0.35, y: 0.2 } };
   expect(layoutMatches(saved, layout)).toBe(true);
   expect(layoutMatches(saved, { ...layout, positions: { round: { x: 0.4, y: 0.3 } } })).toBe(false);
+});
+
+
+it('uses saved compact canvas dimensions and tool order without letting a desktop view overflow a phone', () => {
+  const phone = { width: 360, height: 800, headerHeight: 160, toolbarHeight: 80 };
+  const compact = { ...layout, surface: phone, supplies: ['pencil', 'round'], order: ['pencil', 'round'], frame: { width: 0.8, height: 0.3 } };
+  const geometry = workspaceGeometry(compact, phone);
+  expect(geometry.frame.width).toBe(288);
+  expect(geometry.frame.height).toBe(240);
+  expect(geometry.boxes.pencil.x).toBeLessThan(geometry.boxes.round.x);
+  expect(geometry.boxes.pencil.y).toBeGreaterThan(geometry.frame.y + geometry.frame.height);
+  expect(workspaceGeometry(layout, phone).frame.width).toBe(336);
+  expect(workspaceGeometry({ ...compact, frame: { width: 2, height: 2 } }, phone).frame.width).toBe(336);
+});
+
+
+it('turns a phone design into a separately editable tablet design without changing its source', () => {
+  const phone = { width: 360, height: 800, headerHeight: 160, toolbarHeight: 80 };
+  const tablet = { width: 1024, height: 768, headerHeight: 120, toolbarHeight: 80 };
+  const original = { ...layout, surface: phone, frame: { width: 0.8, height: 0.3 } };
+  const copy = layoutForSurface(original, tablet);
+  const stored = decodeWorkspaces(JSON.stringify({ version: 1, current: copy, views: [{ id: 'phone', name: 'Phone', layout: original }, { id: 'tablet', name: 'Tablet', layout: copy }] }), ['round', 'pencil']);
+  expect(stored.views[0].layout.surface).toEqual(phone);
+  expect(stored.views[1].layout.surface).toEqual(tablet);
+  expect(workspaceGeometry(stored.views[1].layout, tablet).frame.width).toBeCloseTo(819.2);
+  expect(workspaceGeometry(stored.views[1].layout, tablet).frame.height).toBeCloseTo(230.4);
+  expect(original.frame).toEqual({ width: 0.8, height: 0.3 });
+});
+
+it('does not mark an applied view modified because its visibility list follows the tool order', () => {
+  const saved = { ...layout, supplies: ['round', 'pencil'], order: ['pencil', 'round'] };
+  expect(layoutMatches(saved, { ...saved, supplies: ['pencil', 'round'] })).toBe(true);
+  expect(layoutMatches(saved, { ...saved, supplies: ['pencil'] })).toBe(false);
+  expect(layoutMatches(saved, { ...saved, order: ['round', 'pencil'] })).toBe(false);
 });

@@ -10,6 +10,7 @@
     defaultLayout,
     decodeWorkspaces,
     mergeViewEdits,
+    workspaceForDevice,
     WORKSPACE_KEY,
     type WorkspaceState,
     type SavedWorkspace,
@@ -58,13 +59,7 @@
             const saved = decodeWorkspaces(JSON.stringify(remote), ids);
             const browser = localStorage.getItem(key());
             // Keep the active browser desk while bringing the account's view library into sync.
-            workspace = browser
-              ? {
-                  ...decodeWorkspaces(browser, ids),
-                  views: saved.views,
-                  toolboxes: saved.toolboxes,
-                }
-              : saved;
+            workspace = workspaceForDevice(saved, browser ? decodeWorkspaces(browser, ids) : undefined);
             localStorage.setItem(key(), JSON.stringify($state.snapshot(workspace)));
           }
           accountReady = true;
@@ -102,7 +97,7 @@
           const merged = mergeViewEdits(latest, before, after);
           if (accountState.userId !== owner) throw new Error('Your signed-in account changed.');
           await saveAccountWorkspaces(merged, owner);
-          next = { ...localState(), views: merged.views };
+          next = workspaceForDevice(merged, localState());
         });
       queue = save.catch(() => {});
       await save;
@@ -120,25 +115,7 @@
       };
       localStorage.setItem(key(), JSON.stringify(next));
       workspace = next;
-      note = `${view.name} will open the next time you enter the painting table.`;
-      if (accountReady && user) {
-        const owner = user;
-        queue = queue
-          .catch(() => {})
-          .then(async () => {
-            if (accountState.userId !== owner) return;
-            const remote = await loadAccountWorkspaces();
-            const latest = remote === null ? next : decodeWorkspaces(JSON.stringify(remote), ids);
-            if (accountState.userId !== owner) return;
-            await saveAccountWorkspaces(
-              { ...latest, current: next.current, selected: next.selected },
-              owner
-            );
-          })
-          .catch(() => {
-            note = 'The view is selected on this browser. Account sync failed.';
-          });
-      }
+      note = `${view.name} will open on this device the next time you enter the painting table.`;
     } catch {
       note = 'The view could not be selected.';
     }

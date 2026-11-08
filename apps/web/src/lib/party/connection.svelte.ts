@@ -57,6 +57,8 @@ export class PartyConnection {
   chatOpen = false;
   /** Short message for the screen-reader live region. */
   announcement = $state('');
+  lastError = $state('');
+  errorVersion = $state(0);
   /**
    * The latest canvas history per canvas id. $state.raw: these are big
    * arrays that are replaced whole, never edited, so no deep tracking.
@@ -90,6 +92,8 @@ export class PartyConnection {
   private resend: Stroke[] = [];
   /** Set by the studio: another of your devices asked to pass; finish the stroke and pass. */
   onPassRequest: () => void = () => {};
+  /** Finish painting before the server gives this job to another device. */
+  onCanvasHandoff: (handoffId: string) => void = () => {};
 
   /** Set by the studio: strokes on the canvas you're looking at. */
   onStroke: (stroke: PaintedStroke) => void = () => {};
@@ -241,6 +245,9 @@ export class PartyConnection {
         this.devices = message.devices;
         this.youDeviceId = message.youDeviceId;
         break;
+      case 'finishCanvasHandoff':
+        this.onCanvasHandoff(message.handoffId);
+        break;
       case 'linkCode':
         this.link = message.link;
         break;
@@ -307,6 +314,9 @@ export class PartyConnection {
         this.archiveDeleteKey = message.deleteKey;
         break;
       case 'error':
+        this.lastError = message.message;
+        this.errorVersion += 1;
+        this.announcement = message.message;
         console.warn('[party]', message.message);
         break;
     }
