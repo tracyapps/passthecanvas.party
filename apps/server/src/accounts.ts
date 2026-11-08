@@ -24,7 +24,16 @@ function hasKeys(value: Record<string, unknown>, keys: string[]): boolean {
   return Object.keys(value).every(key => keys.includes(key));
 }
 function validLayout(value: unknown): boolean {
-  if (!record(value) || !hasKeys(value, ['positions', 'order', 'dock', 'frame', 'rotation', 'toolbox'])) return false;
+  if (!record(value) || !hasKeys(value, ['positions', 'order', 'dock', 'frame', 'rotation', 'toolbox', 'toolView', 'supplies', 'surface'])) return false;
+  if (value.toolView !== undefined && !['cutouts', 'grid', 'tray'].includes(String(value.toolView))) return false;
+  if (value.supplies !== undefined && (!Array.isArray(value.supplies) || value.supplies.length > 32 || !value.supplies.every(shortText))) return false;
+  if (value.surface !== undefined) {
+    const surface = value.surface;
+    if (!record(surface) || !hasKeys(surface, ['width', 'height', 'headerHeight', 'toolbarHeight'])) return false;
+    if (![surface.width, surface.height].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 1 && n <= 16384)) return false;
+    if (typeof surface.headerHeight !== 'number' || !Number.isFinite(surface.headerHeight) || surface.headerHeight < 0 || surface.headerHeight >= Number(surface.height)) return false;
+    if (typeof surface.toolbarHeight !== 'number' || !Number.isFinite(surface.toolbarHeight) || surface.toolbarHeight < 0 || surface.toolbarHeight > 600) return false;
+  }
   if (value.toolbox !== undefined && !shortText(value.toolbox)) return false;
   if (!record(value.positions) || Object.keys(value.positions).length > 32) return false;
   for (const [id, position] of Object.entries(value.positions)) {

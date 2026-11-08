@@ -84,11 +84,13 @@ export async function signOutAccount(): Promise<void> {
     accountState.error = 'Sign-out failed. Please try again.';
   }
 }
-export async function accountRequest<T>(path: string, method: 'GET' | 'PUT' | 'POST' = 'GET', value?: unknown): Promise<T> {
+export async function accountRequest<T>(path: string, method: 'GET' | 'PUT' | 'POST' = 'GET', value?: unknown, expectedUserId?: string | null): Promise<T> {
   await initializeAccount();
   const userId = accountState.userId;
+  if (expectedUserId !== undefined && expectedUserId !== userId) throw new Error('The signed-in account changed. Try again.');
   const token = devUser || (await clerk?.session?.getToken());
   if (!token || !userId) throw new Error('Sign in to access account views.');
+  if (userId !== accountState.userId) throw new Error('The signed-in account changed. Try again.');
   const base = (import.meta.env.VITE_ACCOUNT_API_URL ?? '').replace(/\/$/, '');
   const response = await fetch(`${base}/api/account/${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}) },
@@ -112,6 +114,6 @@ export async function accountToken(): Promise<string> {
   return token;
 }
 export function loadAccountWorkspaces(): Promise<unknown | null> { return accountRequest('workspaces'); }
-export async function saveAccountWorkspaces(value: unknown): Promise<void> { await accountRequest('workspaces', 'PUT', value); }
+export async function saveAccountWorkspaces(value: unknown, userId = accountState.userId): Promise<void> { await accountRequest('workspaces', 'PUT', value, userId); }
 
 export function manageAccount(): void { clerk?.openUserProfile(); }

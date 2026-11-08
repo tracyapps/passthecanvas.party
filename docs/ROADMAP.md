@@ -59,6 +59,8 @@ The whole game loop, accessible, without the fancy room yet.
 
 ### The paint box (started Oct 2026)
 
+- [x] Saved-view manager in the account area and an in-session drawer, with geometry previews, tool visibility, display mode, frame editing and device previews (Nov 8).
+
 - [x] Configurable toolbox tray with flexible rows, palette discs, personal edits, and optional standalone web-app manifest (Nov 6). Installed-window and physical-device qualification remain open.
 - [x] Owner-requested pre-test update (Nov 6): toolbox grid, compact tool photos, burnishing pad, personal color palette library, and tool icon artwork. See [decisions](DECISIONS.md).
 - [x] [Device performance and companion canvas research](DEVICE-PERFORMANCE.md). The physical-device performance checks and companion design are still open.

@@ -54,6 +54,7 @@
   <div>
     <section class="card stack" aria-labelledby="display-title">
       <h2 id="display-title">Painting & display</h2>
+      <a class="btn quiet" href="/account/views" onclick={(event) => go('/account/views', event)}>Manage saved views</a>
       <label class="field">Auto-save practice pieces
         <select value={String(prefs.autosaveMinutes)} onchange={(e) => changePrefs({ autosaveMinutes: Number(e.currentTarget.value) }, 'Auto-save')}>
           {#each AUTOSAVE_CHOICES as minutes (minutes)}<option value={String(minutes)}>{minutes === 0 ? 'Off' : minutes === 1 ? 'Every minute' : `Every ${minutes} minutes`}</option>{/each}

@@ -87,3 +87,16 @@ it('accepts bounded toolbox tray rows and rejects inconsistent or oversized tray
   expect(validAccountWorkspaces({ ...value, toolboxes: [{ ...box, rows: [['round']] }] })).toBe(false);
   expect(validAccountWorkspaces({ ...value, toolboxes: [{ ...box, paletteIds: ['one', 'two', 'three', 'four'] }] })).toBe(false);
 });
+
+it('accepts complete saved view geometry while preserving old layouts', () => {
+  const current = {
+    positions: { round: { x: .2, y: .3 } }, order: ['round', 'pencil'], dock: 'surround',
+    frame: { x: .4, y: .2, width: .5, height: .6 }, rotation: 0,
+    toolView: 'grid', supplies: ['round'],
+    surface: { width: 1440, height: 1000, headerHeight: 100, toolbarHeight: 80 }
+  };
+  const workspace = { version: 1, current, views: [{ id: 'mine', name: 'My view', layout: current }], selected: 'mine' };
+  expect(validAccountWorkspaces(workspace)).toBe(true);
+  expect(validAccountWorkspaces({ ...workspace, current: { ...current, toolView: 'unknown' } })).toBe(false);
+  expect(validAccountWorkspaces({ ...workspace, current: { ...current, surface: { ...current.surface, width: -1 } } })).toBe(false);
+});

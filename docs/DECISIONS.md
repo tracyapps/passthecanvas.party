@@ -904,3 +904,31 @@ names.
 The first replacement is the panel grab strip. It repeats `grab-bar-bg.svg`
 at 35% opacity, using cream on dark panels and ink on paper panels. The full
 header remains the pointer and keyboard movement target.
+
+### 2026-11-08 — One saved-view manager, in-session drawer and account page
+
+The header uses one view selector with Manage saved views and Reset studio
+layout actions. A user-saved view named “default” remains an ordinary view.
+The former competing reset dropdown and toolbox dropdown are removed from the
+main header. Toolbox selection remains available inside toolbox windows.
+
+Saved views now optionally contain their own visible supply IDs, display mode
+(cutouts, grid or toolbox windows), order, canvas frame, rotation and design
+surface dimensions. Older stored views remain readable. Shared geometry and
+artwork drive both the miniature desk and real freeform desk. A saved design
+scales uniformly into the available desk below the header, preserving tool and
+canvas proportions. Narrow screens retain the compact flowing interface.
+
+The same manager runs at `/account/views` and in a drawer within parties and
+practice. Draft edits require Save or Save & use. Leaving a dirty draft offers
+discard or continued editing. Names must be unique ignoring case. Deletion is
+confirmed. Account-page updates merge changed view IDs into the latest workspace
+so ordinary view edits preserve the active desk and unrelated views.
+
+Desktop previews support tool and canvas dragging, canvas resizing and numeric
+position/size fields. Tools in columns can be reordered by dragging or buttons.
+Phone, tablet and wide previews are read-only and omit party controls and
+floating panels. Their compact flow illustrates the responsive arrangement;
+physical-device and media testing remains part of the existing gate.
+
+See [workspace pattern research](WORKSPACE-MANAGER-RESEARCH.md).

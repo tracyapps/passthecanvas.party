@@ -13,6 +13,7 @@
   import ProfileView from './ProfileView.svelte';
   import ProfileEdit from './ProfileEdit.svelte';
   import FriendsPage from './FriendsPage.svelte';
+  import ViewsPage from './ViewsPage.svelte';
   import SettingsPage from './SettingsPage.svelte';
   import PartyForm from './PartyForm.svelte';
   import CalendarPage from './CalendarPage.svelte';
@@ -33,6 +34,7 @@
     { href: '/account/practice', label: 'Practice table', match: (p: string) => p === '/account/practice' },
     { href: '/account/history', label: 'History & art', match: (p: string) => p === '/account/history' },
     { href: '/account/devices', label: 'Camera & mic check', match: (p: string) => p === '/account/devices' },
+    { href: '/account/views', label: 'Saved views', match: (p: string) => p === '/account/views' },
     { href: '/account/settings', label: 'Settings', match: (p: string) => p === '/account/settings' }
   ];
   /** Pages that work without signing in. */
@@ -132,6 +134,8 @@
           <HistoryPage />
         {:else if path === '/account/devices'}
           <DevicesPage />
+        {:else if path === '/account/views'}
+          {#key accountState.userId}<ViewsPage />{/key}
         {:else if path === '/account/settings'}
           <SettingsPage />
         {:else if location.hash.includes('profile=')}

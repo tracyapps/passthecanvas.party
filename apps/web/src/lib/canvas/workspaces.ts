@@ -1,8 +1,11 @@
 import { EVERYTHING, readToolboxes, type Toolbox } from './toolboxes';
-// Browser-only saved views. Account persistence can later store the same layout
-// behind an authenticated API; no canvas image or painting identity lives here.
+// Saved arrangements contain interface geometry, never painting pixels or party state.
 export type ToolDock = 'surround' | 'left' | 'right' | 'both';
+export interface WorkspaceSurface { width: number; height: number; headerHeight: number; toolbarHeight: number }
 export interface WorkspaceLayout {
+  toolView?: 'cutouts' | 'grid' | 'tray';
+  supplies?: string[];
+  surface?: WorkspaceSurface;
   positions: Record<string, { x: number; y: number }>;
   order: string[];
   dock: ToolDock;
@@ -46,6 +49,21 @@ function readLayout(value: unknown, ids: string[]): WorkspaceLayout {
     const place = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= -1 && value <= 2;
     layout.frame = { width: source.frame.width, height: source.frame.height, ...(place(x) && place(y) ? { x: x as number, y: y as number } : {}) };
   }
+  if (source.toolView !== undefined) {
+    if (!['cutouts', 'grid', 'tray'].includes(source.toolView)) throw new Error('Invalid tool view.');
+    layout.toolView = source.toolView;
+  }
+  if (source.supplies !== undefined) {
+    if (!Array.isArray(source.supplies) || source.supplies.length > 32) throw new Error('Invalid view supplies.');
+    layout.supplies = [...new Set(source.supplies.filter(id => typeof id === 'string' && ids.includes(id)))];
+  }
+  if (source.surface !== undefined) {
+    const surface = source.surface;
+    if (!surface || ![surface.width, surface.height].every(n => Number.isFinite(n) && n >= 1 && n <= 16384) ||
+      !Number.isFinite(surface.headerHeight) || surface.headerHeight < 0 || surface.headerHeight >= surface.height ||
+      !Number.isFinite(surface.toolbarHeight) || surface.toolbarHeight < 0 || surface.toolbarHeight > 600) throw new Error('Invalid view surface.');
+    layout.surface = { width: surface.width, height: surface.height, headerHeight: surface.headerHeight, toolbarHeight: surface.toolbarHeight };
+  }
   layout.dock = source.dock; layout.rotation = source.rotation;
   // Unknown toolboxes (one since deleted) fall back to everything when shown.
   layout.toolbox = typeof source.toolbox === 'string' && source.toolbox.length <= 80 ? source.toolbox : EVERYTHING;
@@ -62,4 +80,33 @@ export function decodeWorkspaces(raw: string, ids: string[]): WorkspaceState {
     return { id: view.id, name: view.name, layout: readLayout(view.layout, ids) };
   });
   return { version: 1, current: readLayout(value.current, ids), views, selected: typeof value.selected === 'string' && used.has(value.selected) ? value.selected : '', toolboxes: readToolboxes(value.toolboxes, ids) };
+}
+
+/** Apply only the edited views to a newer workspace, preserving its active desk. */
+export function mergeViewEdits(latest: WorkspaceState, before: SavedWorkspace[], after: SavedWorkspace[]): WorkspaceState {
+  const removed = new Set(before.filter(view => !after.some(next => next.id === view.id)).map(view => view.id));
+  const changed = after.filter(view => JSON.stringify(view) !== JSON.stringify(before.find(old => old.id === view.id)));
+  const views = latest.views.filter(view => !removed.has(view.id)).map(view => changed.find(next => next.id === view.id) ?? view);
+  views.push(...changed.filter(view => !views.some(existing => existing.id === view.id)));
+  if (views.length > 30) throw new Error('Up to 30 views can be saved.');
+  return { ...latest, views, selected: views.some(view => view.id === latest.selected) ? latest.selected : '' };
+}
+
+/** Stored JSON may reorder object properties. Compare values, preserving array order. */
+function sameValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => sameValue(value, right[index]));
+  }
+  const a = left as Record<string, unknown>, b = right as Record<string, unknown>;
+  return Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => sameValue(a[key], b[key]));
+}
+export function layoutMatches(saved: WorkspaceLayout, current: WorkspaceLayout): boolean {
+  return Object.entries(saved).every(([key, value]) => {
+    if (key === 'frame' && value && current.frame) {
+      return Object.entries(value).every(([field, number]) => number === current.frame![field as keyof NonNullable<WorkspaceLayout['frame']>]);
+    }
+    return sameValue(value, current[key as keyof WorkspaceLayout]);
+  });
 }
