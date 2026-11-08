@@ -18,6 +18,7 @@ two-computer gate are still unverified.
 | Use another device | Table menu, **Use another device** | **Paint on a tablet** or **Room and video on a phone or laptop** shows a QR code and a 6-character code (works once, 5 minutes). The other device scans it, or opens `/?link` and types it. It joins your seat, not the party as someone new. Move duties with **Paint on this device / Room and video on this device**; **Unlink** removes a device. [DevicesPanel](../apps/web/src/lib/party/DevicesPanel.svelte) · [LinkEntry](../apps/web/src/lib/party/LinkEntry.svelte) |
 | Two windows on one computer | Table menu, **Use another device**, **Open the canvas / the room in its own window** (mouse and wide screens) | Same link, opened in a pop-up window you can drag to another screen. |
 | Dropped connection | Automatic | "Reconnecting…" banner; the tab rejoins its seat with a private key (1 s, 2 s, 4 s… up to 15 s). A reload rejoins without the join form. Your canvas reloads from the server. [Connection](../apps/web/src/lib/party/connection.svelte.ts) |
+| Save data | Call dock, the signal-bars button | Stops downloading guests' video; their avatar or initials show and voices keep playing. A weak connection gets a "turn off guests' video?" offer. |
 | Check local devices | Account **Camera & mic check** | Preview, choose camera/microphone/speakers where supported, then **Save these for parties**. Local only; it does not prove remote call delivery. [DevicesPage](../apps/web/src/lib/account/studio/DevicesPage.svelte) |
 | Start and pass | **Start the game**, then **Pass the canvas**. Host also has **Pass everyone on** when applicable. | Each artist paints their assigned canvas in a simultaneous round. Pressing **Pass** on a device without the canvas asks the canvas device to finish its stroke and pass. [Protocol](../packages/shared/src/protocol.ts) |
 
@@ -46,6 +47,10 @@ two-computer gate are still unverified.
   the laptop passes on the iPad, room window via **Open the room in its own
   window**, phone-width panel (no sideways scroll), dropped socket shows the
   banner and recovers, away label after the grace period.
+- With a local LiveKit dev server and fake cameras: two-way video, your own
+  camera at your seat in the room, **Save data** dropping and restoring guest
+  video, and linking a room-and-video device (the laptop leaves the call, the
+  new device joins, the other guest still sees one video for that artist).
 - Hosted: `ptcserver-production.up.railway.app` answers `/health`, mints
   LiveKit tokens, accepts the party WebSocket from `https://passthecanvas.party`
   and refuses other origins; the live site points at that server. The hosted
@@ -56,8 +61,6 @@ two-computer gate are still unverified.
 - **Real hardware.** QR scanning, iPad Pencil painting while video runs on a
   laptop or phone, phone sleep/wake reconnects, and a real LiveKit call with
   two people. Use [PHASE-1-TEST.md](PHASE-1-TEST.md).
-- **Room self-view** was fixed in code (your seat now gets your own camera
-  track), but no live camera was available here to see it.
 - **Screen readers**: duty changes and reconnects are announced through the
   party live region; check with VoiceOver.
 - Strokes painted while a device is offline are lost (the server's history is

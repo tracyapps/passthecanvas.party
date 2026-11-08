@@ -988,3 +988,20 @@ that remain unimplemented or unverified.
 - **New dependency: `uqr`** (MIT, ~20 KB, no dependencies) to encode QR codes.
   We draw the SVG ourselves, so it carries a proper label.
 - Room self-view: the room's seat markers now get your own camera track too.
+
+### 2026-11-08 — Gallery pieces open from the room; Save data
+
+- **Click a piece in the 360° gallery** to open it up close (credits,
+  time-lapse). Hit-testing is pure math on the placed quads (`pieceAt` in
+  `leanLayout.ts`, unwrapped across the back seam, unit-tested). The pointer
+  becomes a zoom cursor over a piece. Keyboard and screen-reader users get the
+  same thing from **Look closer** in the "On display" list. Works in saved
+  galleries (`?archive=`) and the party's own gallery.
+- **Save data** (call dock): unsubscribes from other guests' cameras, so only
+  their voices download and their avatar or initials show. Our own camera is
+  untouched (that's Switch to avatar). Remembered per browser; starts on when
+  the browser's Data Saver is on. When LiveKit rates our connection Poor or
+  Lost, the dock offers it once in words.
+- Local video testing: LiveKit's own dev server (`livekit-server --dev`) plus
+  Chromium's fake camera confirmed calls, self-view at your seat, Save data,
+  and moving the call to a linked device. Not a substitute for real devices.

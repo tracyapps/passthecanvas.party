@@ -94,3 +94,24 @@ describe('planGallery', () => {
     expect(planGallery(art, [tall, { ...tall, seed: 'b' }, { ...tall, seed: 'c' }, { ...tall, seed: 'd' }], 'lean')).toHaveLength(2);
   });
 });
+
+import { pieceAt as hit } from './leanLayout';
+describe('pieceAt', () => {
+  const square = (yaw: number) => [
+    { yaw: yaw - 5, pitch: 10 },
+    { yaw: yaw + 5, pitch: 10 },
+    { yaw: yaw + 5, pitch: -10 },
+    { yaw: yaw - 5, pitch: -10 }
+  ];
+  const placements = [
+    { regionId: 'a', regionLabel: 'A', role: 'wall' as const, quad: square(30), pieceIndex: 0 },
+    { regionId: 'b', regionLabel: 'B', role: 'wall' as const, quad: square(178), pieceIndex: 1 }
+  ];
+  it('finds the piece under a point', () => {
+    expect(hit(placements, 31, 2)?.pieceIndex).toBe(0);
+    expect(hit(placements, 50, 2)).toBeNull();
+  });
+  it('works across the back seam', () => {
+    expect(hit(placements, -178, 0)?.pieceIndex).toBe(1);
+  });
+});

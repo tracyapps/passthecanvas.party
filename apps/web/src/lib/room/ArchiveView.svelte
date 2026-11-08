@@ -99,7 +99,8 @@
 </script>
 
 {#if view === 'room' && record}
-  <Gallery room={record.room} {artwork} onback={() => (view = 'pieces')} />
+  <Gallery room={record.room} {artwork} onback={() => (view = 'pieces')}
+    onpiece={(seed) => { const piece = record?.pieces.find((p) => p.id === seed); if (piece) { view = 'pieces'; void open(piece); } }} />
 {:else}
   <main class="archive">
     <p class="tape">Pass the Canvas</p>

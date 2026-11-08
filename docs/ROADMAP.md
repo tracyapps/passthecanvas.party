@@ -83,7 +83,7 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] One canvas per guest: passing ring (clockwise by seat, random circle, custom), N + 1 rounds with owners first and last, per-artist canvas shape, simultaneous rounds, per-canvas history, watchers, credits and per-piece time-lapse with artist chapters *(Nov 3, 2026)*
 - [x] Party archive on Railway: host saves the finished pieces (images + strokes, no AV) behind a share link; private delete link *(Nov 3; live after commit + push)*
 - [ ] Artists' own pieces in their profile (needs Clerk sign-in tied to party membership)
-- [~] Archive gallery: pieces page with credits, time-lapse and artist jump is done (`?archive=`); clicking a piece *inside* the 360° room still to do
+- [x] Archive gallery: pieces page with credits, time-lapse and artist jump (`?archive=`); click a piece *inside* the 360° room (or **Look closer** in the list) to open it, in saved galleries and in the party's own gallery *(Nov 8)*
 - [x] Radio plays for everyone on join (the join click allows audio); CSS tube radio panel on the table
 - [ ] Clicking the radio in the 360° room opens the radio panel (needs a `spot_radio` marker)
 - [x] Per-seat viewpoints: textures/props moved into Blender, script renders a panorama per seat plus each viewpoint's seat positions *(final 4096 renders; artwork in the middle view only — see studio/SEAT-VIEWS.md)*
@@ -109,7 +109,7 @@ See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, how linked de
 - [x] Companion devices: one artist and seat, canvas on iPad/tablet, room and video on laptop or phone. QR + typed code pairing, server-owned canvas/call duties, mirroring, pass handoff, unlink *(Nov 8; locally tested, not on real hardware)*
 - [x] Separate room/video and canvas windows for the same participant (**Open … in its own window**), same link mechanism *(Nov 8)*
 - [x] Reconnect: seats survive dropped connections and reloads (private per-device rejoin keys, grace period, away state) *(Nov 8)*
-- [x] Room self-view: your own seat shows your camera *(Nov 8; needs a live-camera check)*
+- [x] Room self-view: your own seat shows your camera *(Nov 8; checked with a local LiveKit server and fake cameras)*
 - [ ] Verify the complete camera/avatar, seat, painting, passing, linked-device and reconnect flow on real computers and mobile hardware.
 
 ### Parking lot (owner ideas, not scheduled yet)
@@ -117,7 +117,7 @@ See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, how linked de
 - [ ] Auto-edited video export (TikTok-style "magic" picks: interesting pause points) with artist controls to move/add pause + slow spots; music bed; social sharing
 
 - [ ] Accessibility pass: keyboard stamp-mode painting, screen-reader turn announcements, captions plan
-- [ ] Low bandwidth: audio + avatar fallback, smaller assets on phones
+- [~] Low bandwidth: **Save data** in the call dock stops downloading guests' video (avatars show, voices play); starts on with the browser's Data Saver; a weak-connection hint offers it *(Nov 8)*. Open: smaller room/supply assets on phones.
 - [ ] Deploy: web on a static host/CDN, party server on a small VPS or Fly/Render, domain `passthecanvas.party`
 
 ---

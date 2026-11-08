@@ -58,6 +58,22 @@
     </button>
   {/if}
 
+  {#if !elsewhere && call.status === 'in-call'}
+    {#if call.weakConnection && !call.saveData}
+      <button type="button" class="where" onclick={() => call.setSaveData(true)}>Weak connection: turn off guests' video?</button>
+    {/if}
+    <!-- Save data: guests' video stops downloading (avatars show instead); voices keep playing. -->
+    <button
+      type="button"
+      aria-pressed={call.saveData}
+      aria-label="Save data (hide guests' video, keep voices)"
+      title="Save data"
+      onclick={() => call.setSaveData(!call.saveData)}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h2M9 18v-4M14 18v-8M19 18V6"/>{#if call.saveData}<path d="M3 3l18 18"/>{/if}</svg>
+    </button>
+  {/if}
+
   <button
     type="button"
     aria-pressed={inRoom}

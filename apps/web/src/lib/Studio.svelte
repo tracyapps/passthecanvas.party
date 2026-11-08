@@ -332,6 +332,7 @@
       <p class="loading">Hanging the artwork…</p>
     {:then { default: Gallery }}
       <Gallery {room} {artwork} onback={() => { view = 'paint'; revealOpen = true; }}
+        onpiece={(seed) => { const piece = party.piece(seed); if (piece) { view = 'paint'; revealOpen = true; openDetail(piece); } }}
         partyMode={game.galleryMode} onpartymode={isHost ? (mode) => party.send({ type: 'setGalleryMode', mode }) : undefined} />
     {/await}
   {:else if view === 'room'}
