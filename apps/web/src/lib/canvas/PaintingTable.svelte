@@ -13,6 +13,7 @@
   import { accountState, loadAccountWorkspaces, saveAccountWorkspaces } from '../account/account.svelte';
   import PhotoSupply from './PhotoSupply.svelte';
   import ToolboxTray from './ToolboxTray.svelte';
+  import ToolboxPopout from './ToolboxPopout.svelte';
   import StudioPanel from './StudioPanel.svelte';
   import PartyCanvas from './PartyCanvas.svelte';
   import { addPart, decodeMixes, expand, mixColor, recipeText, rememberMix, removeColor, removePart, totalParts, MAX_PARTS, SAVED_MIXES_KEY, type Recipe, type SavedMix } from './recipes';
@@ -92,6 +93,9 @@
   let statusStrip: HTMLElement;
   let headerHeight = $state(88);
   let dock = $state<ToolDock>('surround');
+  let toolboxWindows = $state<{ id: string; popup: Window; boxId: string }[]>([]);
+  let trayOnTable = $state(false);
+  let popupNotice = $state('');
   let trayView = $derived(prefs.toolView === 'tray');
   let gridView = $derived(prefs.toolView === 'grid');
   // Layout placement is shared by cutouts and freeform grid tiles.
@@ -119,7 +123,6 @@
   let toolbox = $state(EVERYTHING);
   let order = $state(supplies.map(supply => supply.id));
   let activeBox = $derived(findToolbox(toolbox, customToolboxes));
-  let activeRows = $derived(activeBox.rows ?? trayRows(shownSupplies(order, activeBox)));
   let traySupplies = $derived(supplies.map(supply => ({ id: supply.id, name: supply.name, image: supplyImage(supply.id, true) })));
   let toolboxesOpen = $state(false);
   let viewsOpen = $state(false);
@@ -213,7 +216,7 @@
     const gridWidth = 28 + Math.ceil(shown.length / rows) * (GRID_TILE.width + GRID_TILE.gap);
     const freeGrid = gridView && toolDock === 'surround';
     // Leave room for the acrylic rack (the widest supply on the left) beside the canvas.
-    const left = trayView ? Math.min(420, board.width * .34) : freeGrid ? gridWidth : toolDock === 'right' ? 24 : toolDock === 'left' || toolDock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
+    const left = trayView ? (trayOnTable ? Math.min(420, board.width * .34) : 24) : freeGrid ? gridWidth : toolDock === 'right' ? 24 : toolDock === 'left' || toolDock === 'both' ? Math.min(360, board.width * .3) : Math.max(board.width * 0.18, 352 * scale);
     const rightRail = trayView || freeGrid ? 24 : toolDock === 'right' || toolDock === 'both' ? Math.min(360, board.width * .3) : toolDock === 'left' ? 24 : Math.max(board.width * 0.12, 260 * scale + 40);
     const available = Math.max(300, board.width - left - rightRail);
     const bottomSpace = trayView || freeGrid || toolDock !== 'surround' ? 56 : 250 * scale + 20;
@@ -392,18 +395,48 @@
     const chosen = supplies.map(item => item.id).filter(item => now.has(item));
     editToolbox({ supplies: chosen, rows: trayRows(chosen) });
   }
-  function changeTray(rows: string[][], paletteIds: string[]) {
-    if (isBuiltIn(activeBox.id)) {
-      if (customToolboxes.length >= MAX_TOOLBOXES) { announcement = `Up to ${MAX_TOOLBOXES} toolboxes.`; return; }
-      newToolbox();
+  function changeTray(rows: string[][], paletteIds: string[], boxId = toolbox): string | null {
+    let box = findToolbox(boxId, customToolboxes);
+    if (isBuiltIn(box.id)) {
+      if (customToolboxes.length >= MAX_TOOLBOXES) { announcement = `Up to ${MAX_TOOLBOXES} toolboxes.`; return null; }
+      box = makeToolbox(freshName(`${box.name} copy`, customToolboxes), box, supplies.map(supply => supply.id));
+      customToolboxes = [...customToolboxes, box];
+      if (toolbox === boxId) toolbox = box.id;
     }
-    editToolbox({ rows, paletteIds, supplies: rows.flat() });
+    customToolboxes = customToolboxes.map(item => item.id === box.id ? { ...item, rows, paletteIds, supplies: rows.flat() } : item);
+    return box.id;
   }
-  function emptyTray() {
-    if (customToolboxes.length >= MAX_TOOLBOXES) { announcement = `Up to ${MAX_TOOLBOXES} toolboxes.`; return; }
-    newToolbox();
-    editToolbox({ rows: [[]], paletteIds: [], supplies: [] });
+  function emptyTray(boxId = toolbox): string | null {
+    if (customToolboxes.length >= MAX_TOOLBOXES) { announcement = `Up to ${MAX_TOOLBOXES} toolboxes.`; return null; }
+    const from = findToolbox(boxId, customToolboxes);
+    const copy = makeToolbox(freshName('My toolbox', customToolboxes), from, supplies.map(supply => supply.id));
+    const box = { ...copy, rows: [[]], paletteIds: [], supplies: [] };
+    customToolboxes = [...customToolboxes, box];
+    if (toolbox === boxId) toolbox = box.id;
+    return box.id;
   }
+  function openToolboxWindow() {
+    document.getElementById('table-actions')?.hidePopover();
+    const existing = toolboxWindows.find(item => item.boxId === toolbox && !item.popup.closed);
+    if (existing) { existing.popup.focus(); return; }
+    // Open directly from the click so the browser can authorize a separate window.
+    const popup = window.open('', '_blank', 'popup,width=420,height=740,resizable=yes,scrollbars=yes');
+    if (!popup) {
+      popupNotice = 'Your browser blocked the toolbox window. Allow popups for this site, then try again.';
+      trayOnTable = true;
+    } else {
+      toolboxWindows = [...toolboxWindows, { id: crypto.randomUUID(), popup, boxId: toolbox }];
+      trayOnTable = false;
+      popupNotice = '';
+    }
+    void setToolView('tray');
+  }
+  let toolboxWindowUser = accountState.userId;
+  $effect(() => {
+    if (toolboxWindowUser === accountState.userId) return;
+    toolboxWindowUser = accountState.userId;
+    toolboxWindows = [];
+  });
   async function openTrayPalette(id: string) {
     const medium = (Object.keys(MEDIUM_NAMES) as PaintingMedium[]).find(medium => !unavailability(selection.tool, medium));
     if (medium) paletteMedium = medium;
@@ -719,6 +752,21 @@
   }
 </script>
 
+{#snippet trayContents(boxId: string, onboxchange: (id: string) => void)}
+  {@const box = findToolbox(boxId, customToolboxes)}
+  <label class="toolbox-pick"><span>Toolbox</span><select value={box.id} onchange={(event) => onboxchange(event.currentTarget.value)}>{#each allToolboxes(customToolboxes) as option (option.id)}<option value={option.id}>{option.name}</option>{/each}</select></label>
+  <ToolboxTray rows={box.rows ?? trayRows(shownSupplies(order, box))} paletteIds={box.paletteIds ?? []} supplies={traySupplies} palettes={paletteLibrary} selected={active}
+    chooseTool={(id) => { const supply = supplies.find(supply => supply.id === id); if (supply) void openSupply(supply); }}
+    choosePalette={openTrayPalette}
+    onchange={(rows, ids) => { const id = changeTray(rows, ids, box.id); if (id) onboxchange(id); }}
+    onnew={() => { const id = emptyTray(box.id); if (id) onboxchange(id); }} />
+{/snippet}
+{#each toolboxWindows as item (item.id)}
+  <ToolboxPopout popup={item.popup} title={findToolbox(item.boxId, customToolboxes).name} onclose={() => toolboxWindows = toolboxWindows.filter(window => window.id !== item.id)}>
+    {@render trayContents(item.boxId, (id) => item.boxId = id)}
+  </ToolboxPopout>
+{/each}
+
 <svelte:head><title>Painting table — Pass the Canvas</title></svelte:head>
 <svelte:window bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} onkeydown={globalKey} onclick={emptySpace} />
 <svg class="filter-defs" aria-hidden="true" width="0" height="0"><defs>
@@ -797,11 +845,16 @@
         </div>
       </StudioPanel>
     {/if}
-    {#if trayView}
+    {#if trayView && (trayOnTable || !toolboxWindows.length)}
       <StudioPanel title={activeBox.name} label="toolbox tray" dock="toolbox" flow={compact} onclose={() => setToolView('grid')}>
-        <ToolboxTray rows={activeRows} paletteIds={activeBox.paletteIds ?? []} supplies={traySupplies} palettes={paletteLibrary} selected={active}
-          chooseTool={(id) => { const supply = supplies.find(supply => supply.id === id); if (supply) void openSupply(supply); }}
-          choosePalette={openTrayPalette} onchange={changeTray} onnew={emptyTray} />
+        <div class="tray-window-actions">
+          <button type="button" onclick={openToolboxWindow}>{trayOnTable ? 'Pop out' : 'Open toolbox window'}</button>
+          {#if !trayOnTable}<button type="button" onclick={() => trayOnTable = true}>Show on table</button>{/if}
+        </div>
+        {#if popupNotice}<p role="status">{popupNotice}</p>{/if}
+        {#if trayOnTable}{@render trayContents(toolbox, (id) => toolbox = id)}{:else}
+          <p class="arrange-hint">Open a separate toolbox window to move it onto another screen. Choose another toolbox and open it to keep several windows available.</p>
+        {/if}
       </StudioPanel>
     {/if}
     {#if toolboxesOpen}
@@ -948,7 +1001,7 @@
   {#if menu}<div class="menu-group">{@render menu()}</div>{/if}
   <div class="menu-group">
     <h2>Table</h2>
-    <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); void setToolView('tray'); }}>Open toolbox tray</button>
+    <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); openToolboxWindow(); }}>Open toolbox window</button>
     <button type="button" onclick={() => openPanel('toolboxes')}>Toolboxes…</button>
     <button type="button" onclick={() => openPanel('views')}>Saved views…</button>
     <button type="button" onclick={() => { document.getElementById('table-actions')?.hidePopover(); mode = 'arrange'; paletteOpen = false; }}>Arrange table…</button>
@@ -1090,6 +1143,7 @@
   .nudge-pad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-areas: '. up .' 'left down right'; gap: 4px; justify-content: center; }
   .nudge-pad button { padding: 0; font-size: 20px; line-height: 1; }
   .nudge-pad .up { grid-area: up; } .nudge-pad .left { grid-area: left; } .nudge-pad .down { grid-area: down; } .nudge-pad .right { grid-area: right; }
+  .tray-window-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
   .toolbox-pick { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #e8ddcc; }
   .toolbox-pick select { min-height: 36px; padding: 4px 8px; font-size: 13px; max-width: 11rem; }
   .stack-panel { display: grid; gap: 10px; }

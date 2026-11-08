@@ -44,6 +44,20 @@
     } finally { saving = false; }
   }
 
+  async function toggleVisibility(palette: ColorPalette, visible: boolean) {
+    const others = prefs.colorPalettes.filter(item => item.id !== palette.id);
+    if (others.length >= MAX_COLOR_PALETTES) { note = `You can save up to ${MAX_COLOR_PALETTES} custom palettes and preset edits.`; return; }
+    saving = true;
+    const next = { ...palette, hidden: !visible };
+    if (draft?.id === palette.id) draft.hidden = next.hidden;
+    try {
+      await savePreferences({ colorPalettes: [...others, next] });
+      note = `${palette.name} ${visible ? 'shown in' : 'hidden from'} the palette picker.`;
+    } catch {
+      note = 'Visibility changed on this device. Account sync failed.';
+    } finally { saving = false; }
+  }
+
   async function readFile(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -99,6 +113,10 @@
     {#each library as palette (palette.id)}
       <li class="stack">
         <h3>{palette.name}</h3>
+        <label class="check">
+          <input type="checkbox" role="switch" aria-label={`Show ${palette.name} in palette picker`} checked={!palette.hidden} disabled={saving} onchange={(event) => toggleVisibility(palette, event.currentTarget.checked)} />
+          Show in palette picker
+        </label>
         <p class="hint">{palette.hidden ? 'Hidden from picker' : 'In picker'}{palette.favorite ? ' · Favorite' : ''}</p>
         <ul class="swatches" aria-label={`${palette.name} colors`}>
           {#each palette.colors as color}

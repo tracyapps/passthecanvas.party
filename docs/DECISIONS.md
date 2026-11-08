@@ -874,3 +874,33 @@ stable IDs and display names. Each contains the 21 filled rectangle colors in
 visual reading order, left to right and top to bottom. CSS variables and preview
 outlines are excluded. Swatches use the palette name and a number because the
 source files do not name individual colors. Existing defaults remain available.
+
+### 2026-11-07 — Toolbox popouts and direct palette visibility controls
+
+The toolbox menu opens a separate browser window from a deliberate click.
+Multiple toolboxes can stay open, and reopening the same toolbox focuses its
+window. Each window has its own toolbox selector. The party owns selection,
+tray edits and palette state, with the same Svelte UI rendered into the popup.
+Toolbox windows do not create another party connection, room renderer or call.
+They close when the owning party page leaves or the signed-in artist changes.
+
+A saved tray preference shows a launcher after reload because popup creation
+requires user activation. Show on table remains an explicit option. If popups
+are blocked, the tray is shown on the table with a retry action. Browser chrome,
+window placement and tab-versus-window behavior remain browser-controlled.
+
+Palette cards in Settings now have a direct Show in palette picker switch.
+The switch uses the existing personal hidden flag and account preference save.
+Pinned tray shortcuts remain usable when their palette is hidden from pickers.
+
+### 2026-11-07 — Shared interface icon artwork
+
+Owner-supplied SVGs from `_design/icons` now live in
+`apps/web/src/lib/ui/icons`, with named URL exports in `icons.ts`.
+Components import the icons they use. `Icon.svelte` masks the artwork with
+the surrounding text color and keeps decorative graphics out of accessible
+names.
+
+The first replacement is the panel grab strip. It repeats `grab-bar-bg.svg`
+at 35% opacity, using cream on dark panels and ink on paper panels. The full
+header remains the pointer and keyboard movement target.

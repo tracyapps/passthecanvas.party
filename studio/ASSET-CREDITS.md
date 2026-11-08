@@ -156,3 +156,11 @@ The eleven built-in palettes Autumn, Balance, Bold, Fire, Greyed, Muted,
 Pastels, Seashore, Skintones, The Blues and Zen use rectangle fill values from
 Tapps's owner-created SVGs in `_design/color-palettes`, supplied for this app.
 The app stores color values only. CSS variables and preview outlines are excluded.
+
+## Interface SVGs — November 7, 2026
+
+`apps/web/src/lib/ui/icons/*.svg` are copies of Tapps's supplied exports in
+`_design/icons`, requested for use as interface artwork. Original geometry and
+fills are retained. Export filenames are normalized for imports. The first
+active asset is `grab-bar-bg.svg`. Author and license metadata were not included
+in these exports.

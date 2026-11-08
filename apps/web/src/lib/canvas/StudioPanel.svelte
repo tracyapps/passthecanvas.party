@@ -4,6 +4,8 @@
 </script>
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Icon from '../ui/Icon.svelte';
+  import { grabBarBgIcon } from '../ui/icons';
   import type { Snippet } from 'svelte';
   let { title, label, dock = 'bottom', flow = false, onclose, children }: { title: string; label: string; dock?: 'bottom' | 'palette' | 'toolbox' | 'guests' | 'notes' | 'radio' | 'arrange'; flow?: boolean; onclose: () => void; children: Snippet } = $props();
   let panel: HTMLElement;
@@ -45,7 +47,7 @@
   style={position ? `position:fixed;left:${position.x}px;top:${position.y}px;right:auto;bottom:auto;z-index:30;width:min(calc(400px * var(--ui-scale, 1)), calc(100vw - 16px));max-height:calc(100svh - 16px);` : ''}>
   <header>
     <button type="button" class="handle" aria-label={`Move ${label}. Drag or use arrow keys.`}
-      onpointerdown={down} onpointermove={move} onpointerup={() => start = null} onpointercancel={() => start = null} onkeydown={keyboard}>{title}</button>
+      onpointerdown={down} onpointermove={move} onpointerup={() => start = null} onpointercancel={() => start = null} onkeydown={keyboard}><Icon src={grabBarBgIcon} pattern />{title}</button>
     <button type="button" class="close" aria-label={`Close ${label}`} onclick={onclose}>Close</button>
   </header>
   <div class="panel-content">{@render children()}</div>
@@ -63,7 +65,6 @@
   header { display: flex; align-items: center; gap: 4px; }
   button { min-height: 44px; border: 0; background: transparent; color: #fff5e6; font: inherit; padding: 8px; }
   .handle { flex: 1; text-align: left; font-weight: 800; font-size: 19px; cursor: grab; touch-action: none; padding-left: 0; display: flex; flex-direction: column; align-items: stretch; gap: 7px; }
-  .handle::before { content: ''; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 4px); opacity: .45; }
   .handle:active { cursor: grabbing; }
   .handle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   .close { font-size: 12px; }
