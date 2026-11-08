@@ -7,7 +7,7 @@
 // of them; when everyone has passed, every canvas moves one seat clockwise.
 // N artists → N + 1 rounds, so each owner paints the first and last layer.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,12 @@ import type { WebSocket } from 'ws';
 import {
   CANVAS_ID,
   CANVAS_SHAPES,
+  cleanDeviceLabel,
+  LINK_ROLES,
+  MAX_DEVICES,
+  normalizeLinkCode,
+  type DeviceDuty,
+  type MyDevice,
   canvasOwnerFor,
   clampTurnSeconds,
   cleanTiming,
@@ -47,6 +53,37 @@ import {
 } from '@ptc/shared';
 
 import { archiveConfigured, buildArchive, saveArchive } from './archive.ts';
+import { allowAttempt, cancelLink, createLink, takeLink } from './links.ts';
+
+// Connections drop: phones sleep, wifi blinks, someone reloads. An artist's
+// seat (and canvas) waits for them instead of vanishing.
+/** How long a device can be gone before its duties move and its artist counts as away. */
+const DEVICE_GRACE_MS = Number(process.env.DEVICE_GRACE_SECONDS ?? 45) * 1000;
+/** How long an away artist keeps their place before they leave the party. */
+const LOBBY_AWAY_MS = Number(process.env.LOBBY_AWAY_SECONDS ?? 120) * 1000;
+const GAME_AWAY_MS = Number(process.env.GAME_AWAY_SECONDS ?? 15 * 60) * 1000;
+
+/** One of an artist's devices (or windows). Only a hash of its rejoin key is kept. */
+interface Device {
+  id: string;
+  label: string;
+  keyHash: Buffer;
+  ws: WebSocket | null;
+  /** When it went offline (null while connected). */
+  offlineAt: number | null;
+}
+
+/** An artist's devices, and which one holds the canvas and which the call. */
+interface Session {
+  devices: Map<string, Device>;
+  canvas: string | null;
+  call: string | null;
+  graceTimer: ReturnType<typeof setTimeout> | null;
+  awayTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const hashKey = (key: string) => createHash('sha256').update(key).digest();
+const sameKey = (key: unknown, hash: Buffer) => typeof key === 'string' && key.length <= 100 && timingSafeEqual(hashKey(key), hash);
 
 /** A look from a browser: a known initials color and, maybe, a small image data URL. */
 function cleanLook(look: unknown): Look {
@@ -85,14 +122,15 @@ interface CanvasHistory {
 }
 
 class Party {
-  private sockets = new Map<string, WebSocket>(); // memberId → socket
+  /** memberId → their devices. */
+  private sessions = new Map<string, Session>();
   private ticker: ReturnType<typeof setInterval> | null = null;
   private passTimer: ReturnType<typeof setTimeout> | null = null;
   private state: PartyState;
   /** Painting data per canvas. Never video or audio; dropped when the party ends. */
   private histories = new Map<string, CanvasHistory>();
-  /** Who is following which canvas live (besides its painter). */
-  private watchers = new Map<string, string>();
+  /** Which device is following which canvas live (besides its painter): deviceId → canvas. */
+  private watchers = new Map<string, { memberId: string; canvasId: string }>();
   /** Avatar pictures by member id (kept out of the state; see Look). */
   private looks = new Map<string, string>();
   /** Seat angles from the room's spots.json, for the clockwise ring. */
@@ -136,9 +174,19 @@ class Party {
     }
   }
 
-  /** A browser connected. It becomes a member once it sends `join`. */
-  connect(ws: WebSocket) {
+  /**
+   * A browser connected. It becomes a member with `join`, comes back with
+   * `rejoin`, or joins as one of an artist's devices with `redeemLink`.
+   */
+  connect(ws: WebSocket, address = '') {
     let memberId: string | null = null;
+    let deviceId: string | null = null;
+    let refused = 0;
+    const refuse = (reason: 'rejoin' | 'link' | 'full', message: string) => {
+      this.send(ws, { type: 'rejected', reason, message });
+      refused += 1;
+      if (refused >= 3) ws.close();
+    };
 
     ws.on('message', (raw) => {
       let msg: ClientMessage;
@@ -148,50 +196,229 @@ class Party {
         return this.send(ws, { type: 'error', message: 'Bad message' });
       }
 
-      if (msg.type === 'join') {
-        if (memberId) return; // already joined
-        memberId = this.addMember(ws, msg.name, msg.presence, msg.look);
+      if (!memberId) {
+        if (msg.type === 'join') {
+          ({ memberId, deviceId } = this.addMember(ws, msg.name, msg.presence, msg.look, msg.device));
+        } else if (msg.type === 'rejoin') {
+          const back = this.rejoin(ws, msg);
+          if (back) ({ memberId, deviceId } = back);
+          else refuse('rejoin', 'That seat has closed. Join the party again.');
+        } else if (msg.type === 'redeemLink') {
+          if (!allowAttempt(`link:${address}`)) return refuse('link', 'Too many tries. Wait a few minutes, then make a new code.');
+          const linked = this.redeemLink(ws, normalizeLinkCode(msg.code), msg.device);
+          if (typeof linked === 'string') refuse(linked === 'full' ? 'full' : 'link', linked === 'full' ? `An artist can use up to ${MAX_DEVICES} devices. Unlink one first.` : 'That code didn\'t work. Codes work once, for 5 minutes. Make a new one on your other device.');
+          else ({ memberId, deviceId } = linked);
+        } else {
+          this.send(ws, { type: 'error', message: 'Join first' });
+        }
         return;
       }
-      if (!memberId) return this.send(ws, { type: 'error', message: 'Join first' });
-      this.handle(memberId, msg);
+      if (msg.type === 'join' || msg.type === 'rejoin' || msg.type === 'redeemLink') return; // already in
+      this.handle(memberId, deviceId!, msg);
     });
 
     ws.on('close', () => {
-      if (memberId) this.removeMember(memberId);
+      if (memberId && deviceId) this.disconnect(memberId, deviceId, ws);
     });
   }
 
   // ---------- members ----------
 
-  private addMember(ws: WebSocket, rawName: string, presence: Member['presence'], look?: Look): string {
+  private addMember(ws: WebSocket, rawName: string, presence: Member['presence'], look?: Look, label?: string) {
     const id = randomUUID();
     const name = String(rawName ?? '').trim().slice(0, 40) || 'Guest';
-    const isHost = this.state.members.length === 0; // first one in hosts
+    const isHost = !this.state.members.some((m) => m.isHost); // first one in hosts
     // Arriving after the start means watching this party: the ring is fixed.
     const watching = this.state.phase !== 'lobby';
     const clean = cleanLook(look);
-    this.state.members.push({ id, name, presence: presence === 'avatar' ? 'avatar' : 'camera', isHost, spotId: null, canvasShape: DEFAULT_CANVAS_SHAPE, watching, initialsColor: clean.initialsColor, hasLook: !!clean.image });
+    this.state.members.push({ id, name, presence: presence === 'avatar' ? 'avatar' : 'camera', isHost, spotId: null, canvasShape: DEFAULT_CANVAS_SHAPE, watching, initialsColor: clean.initialsColor, hasLook: !!clean.image, away: false });
     if (clean.image) this.looks.set(id, clean.image);
-    this.sockets.set(id, ws);
+    const session: Session = { devices: new Map(), canvas: null, call: null, graceTimer: null, awayTimer: null };
+    this.sessions.set(id, session);
+    const { device, key } = this.newDevice(session, ws, label);
+    session.canvas = device.id;
+    session.call = device.id;
     this.refreshLobbyOrder();
 
-    this.send(ws, { type: 'welcome', youId: id, state: this.state });
-    this.send(ws, { type: 'looks', looks: Object.fromEntries(this.looks) });
+    this.welcome(id, device, key);
     if (clean.image) this.broadcast({ type: 'look', memberId: id, image: clean.image }, id);
     this.broadcastState();
-    return id;
+    return { memberId: id, deviceId: device.id };
+  }
+
+  private newDevice(session: Session, ws: WebSocket, label?: string) {
+    const key = randomBytes(24).toString('base64url');
+    const device: Device = { id: randomUUID(), label: cleanDeviceLabel(label), keyHash: hashKey(key), ws, offlineAt: null };
+    session.devices.set(device.id, device);
+    return { device, key };
+  }
+
+  /** Everything a device needs on arriving: who it is, the party, the pictures, its devices, its canvas. */
+  private welcome(memberId: string, device: Device, key: string) {
+    const ws = device.ws!;
+    this.send(ws, { type: 'welcome', youId: memberId, state: this.state, session: { deviceId: device.id, key } });
+    this.send(ws, { type: 'looks', looks: Object.fromEntries(this.looks) });
+    this.sendDevices(memberId);
+    const canvasId = this.state.assignments[memberId];
+    const history = canvasId && this.historyMessage(canvasId);
+    if (history) this.send(ws, history);
+  }
+
+  /** Back after a dropped connection or a reload, with the device's private key. */
+  private rejoin(ws: WebSocket, msg: Extract<ClientMessage, { type: 'rejoin' }>) {
+    const session = typeof msg.memberId === 'string' ? this.sessions.get(msg.memberId) : undefined;
+    const device = session && typeof msg.deviceId === 'string' ? session.devices.get(msg.deviceId) : undefined;
+    const member = this.member(msg.memberId);
+    if (!session || !device || !member || !sameKey(msg.key, device.keyHash)) return null;
+    // The same device in a second tab (a duplicated tab copies its storage):
+    // the newest wins, and the older one is told why.
+    if (device.ws && device.ws !== ws) {
+      const old = device.ws;
+      device.ws = null;
+      this.send(old, { type: 'rejected', reason: 'rejoin', message: 'Your seat opened in another tab or window.' });
+      old.close();
+    }
+    device.ws = ws;
+    device.offlineAt = null;
+    if (!session.canvas) session.canvas = device.id;
+    if (!session.call) session.call = device.id;
+    this.comeBack(msg.memberId, session);
+    this.welcome(msg.memberId, device, msg.key);
+    // Whatever this device was watching, again from the top.
+    const watched = this.watchers.get(device.id);
+    const history = watched && this.historyMessage(watched.canvasId);
+    if (history) this.send(ws, history);
+    this.broadcastState();
+    return { memberId: msg.memberId, deviceId: device.id };
+  }
+
+  /** A second device or window joins an artist's seat with a one-time code. */
+  private redeemLink(ws: WebSocket, code: string, label?: string): { memberId: string; deviceId: string } | 'bad' | 'full' {
+    const ticket = takeLink(code, this.state.partyId);
+    const session = ticket && this.sessions.get(ticket.memberId);
+    if (!ticket || !session || !this.member(ticket.memberId)) return 'bad';
+    // Forget long-gone devices before counting.
+    for (const device of [...session.devices.values()]) {
+      if (!device.ws && device.id !== session.canvas && device.id !== session.call) session.devices.delete(device.id);
+    }
+    if (session.devices.size >= MAX_DEVICES) return 'full';
+    const { device, key } = this.newDevice(session, ws, label);
+    if (ticket.role === 'canvas') session.canvas = device.id;
+    else session.call = device.id;
+    this.comeBack(ticket.memberId, session);
+    this.sendToMember(ticket.memberId, { type: 'linkCode', link: null });
+    this.welcome(ticket.memberId, device, key);
+    this.broadcastState();
+    return { memberId: ticket.memberId, deviceId: device.id };
+  }
+
+  /** Someone was away and one of their devices is back. */
+  private comeBack(memberId: string, session: Session) {
+    if (session.awayTimer) clearTimeout(session.awayTimer);
+    if (session.graceTimer) clearTimeout(session.graceTimer);
+    session.awayTimer = null;
+    session.graceTimer = null;
+    const member = this.member(memberId);
+    if (member) member.away = false;
+  }
+
+  /** A device's connection closed. Its artist stays; their seat waits. */
+  private disconnect(memberId: string, deviceId: string, ws: WebSocket) {
+    const session = this.sessions.get(memberId);
+    const device = session?.devices.get(deviceId);
+    if (!session || !device || device.ws !== ws) return; // replaced, unlinked or gone already
+    device.ws = null;
+    device.offlineAt = Date.now();
+    this.sendDevices(memberId);
+    if (session.graceTimer) clearTimeout(session.graceTimer);
+    session.graceTimer = setTimeout(() => this.settle(memberId), DEVICE_GRACE_MS);
+  }
+
+  /**
+   * After the grace period: duties held by a device that hasn't come back
+   * move to one that's online. With nothing online, the artist is away.
+   */
+  private settle(memberId: string) {
+    const session = this.sessions.get(memberId);
+    const member = this.member(memberId);
+    if (!session || !member) return;
+    session.graceTimer = null;
+    const online = [...session.devices.values()].filter((d) => d.ws);
+    if (online.length === 0) {
+      this.markAway(memberId, session);
+      return;
+    }
+    for (const duty of ['canvas', 'call'] as const) {
+      const holder = session[duty] ? session.devices.get(session[duty]!) : undefined;
+      if (!holder?.ws) session[duty] = online[0]!.id;
+    }
+    this.sendDevices(memberId);
+  }
+
+  private markAway(memberId: string, session: Session) {
+    const member = this.member(memberId);
+    if (!member || member.away) return;
+    member.away = true;
+    // The host role moves on to someone who is here.
+    if (member.isHost) {
+      const next = this.state.members.find((m) => !m.away);
+      if (next) {
+        member.isHost = false;
+        next.isHost = true;
+      }
+    }
+    session.awayTimer = setTimeout(() => this.removeMember(memberId), this.state.phase === 'lobby' ? LOBBY_AWAY_MS : GAME_AWAY_MS);
+    if (this.state.phase === 'lobby') this.refreshLobbyOrder();
+    if (this.state.phase === 'painting' && this.everyonePassed()) {
+      this.endRound(); // their canvas waits this round out
+      return;
+    }
+    this.broadcastState();
+  }
+
+  /** Leaving on purpose, from one device: with others still here, only that device goes. */
+  private leaveFrom(memberId: string, deviceId: string) {
+    const session = this.sessions.get(memberId);
+    if (!session) return;
+    const device = session.devices.get(deviceId);
+    session.devices.delete(deviceId);
+    this.dropWatcher(deviceId);
+    device?.ws?.close();
+    const online = [...session.devices.values()].filter((d) => d.ws);
+    if (online.length === 0) {
+      this.removeMember(memberId);
+      return;
+    }
+    if (session.canvas === deviceId) session.canvas = online[0]!.id;
+    if (session.call === deviceId) session.call = online[0]!.id;
+    this.sendDevices(memberId);
+  }
+
+  private dropWatcher(deviceId: string) {
+    this.watchers.delete(deviceId);
   }
 
   private removeMember(id: string) {
-    this.sockets.delete(id);
-    this.watchers.delete(id);
+    const session = this.sessions.get(id);
+    if (session) {
+      if (session.awayTimer) clearTimeout(session.awayTimer);
+      if (session.graceTimer) clearTimeout(session.graceTimer);
+      for (const device of session.devices.values()) {
+        this.dropWatcher(device.id);
+        device.ws?.close();
+      }
+    }
+    this.sessions.delete(id);
+    cancelLink(this.state.partyId, id);
     this.looks.delete(id);
+    const wasHost = this.member(id)?.isHost ?? false;
     this.state.members = this.state.members.filter((m) => m.id !== id);
 
-    // Hand the host role on if the host left.
-    const first = this.state.members[0];
-    if (first && !this.state.members.some((m) => m.isHost)) first.isHost = true;
+    // Hand the host role on if the host left (to someone who is here, if anyone).
+    if (wasHost || !this.state.members.some((m) => m.isHost)) {
+      const next = this.state.members.find((m) => !m.away) ?? this.state.members[0];
+      if (next) next.isHost = true;
+    }
 
     if (this.state.members.length === 0) {
       this.stopTimer();
@@ -213,14 +440,16 @@ class Party {
     return this.state.members.find((m) => m.id === id);
   }
 
+  /** Here (or only just dropped and likely back): gets a canvas, counts for passing. */
   private present(id: string) {
-    return this.sockets.has(id);
+    const member = this.member(id);
+    return !!member && !member.away && this.sessions.has(id);
   }
 
   /** Lobby only: keep the ring matching the people (and seats) in the room. */
   private refreshLobbyOrder() {
     if (this.state.phase !== 'lobby') return;
-    const artists = this.state.members.filter((m) => !m.watching).map((m) => m.id);
+    const artists = this.state.members.filter((m) => !m.watching && !m.away).map((m) => m.id);
     if (this.state.orderMode === 'seats') {
       this.state.order = seatRing(artists, (id) => this.member(id)?.spotId ?? null, this.yawOf);
     } else {
@@ -257,12 +486,55 @@ class Party {
 
   // ---------- messages ----------
 
-  private handle(fromId: string, msg: ClientMessage) {
+  private handle(fromId: string, fromDevice: string, msg: ClientMessage) {
     const from = this.member(fromId);
-    if (!from) return;
+    const session = this.sessions.get(fromId);
+    if (!from || !session) return;
+    /** Only one device per artist paints: the one holding the canvas. */
+    const onCanvas = session.canvas === fromDevice;
     const lobbyHost = from.isHost && this.state.phase === 'lobby';
 
     switch (msg.type) {
+      case 'makeLink': {
+        if (!LINK_ROLES.includes(msg.role)) return;
+        const link = createLink(this.state.partyId, fromId, msg.role);
+        this.sendToMember(fromId, { type: 'linkCode', link: { code: link.code, role: link.role, expiresAt: link.expiresAt } });
+        return;
+      }
+
+      case 'cancelLink': {
+        cancelLink(this.state.partyId, fromId);
+        this.sendToMember(fromId, { type: 'linkCode', link: null });
+        return;
+      }
+
+      case 'takeDuty': {
+        if (msg.duty !== 'canvas' && msg.duty !== 'call') return;
+        session[msg.duty as DeviceDuty] = fromDevice;
+        this.sendDevices(fromId);
+        return;
+      }
+
+      case 'unlinkDevice': {
+        const other = typeof msg.deviceId === 'string' && msg.deviceId !== fromDevice ? session.devices.get(msg.deviceId) : undefined;
+        if (!other) return;
+        session.devices.delete(other.id);
+        this.dropWatcher(other.id);
+        if (other.ws) {
+          this.send(other.ws, { type: 'rejected', reason: 'link', message: 'This device was unlinked from your seat.' });
+          other.ws.close();
+        }
+        if (session.canvas === other.id) session.canvas = fromDevice;
+        if (session.call === other.id) session.call = fromDevice;
+        this.sendDevices(fromId);
+        return;
+      }
+
+      case 'leave': {
+        this.leaveFrom(fromId, fromDevice);
+        return;
+      }
+
       case 'start': {
         if (!lobbyHost || this.state.order.length === 0) return;
         this.startGame();
@@ -342,21 +614,35 @@ class Party {
         // is the next round.
         const open = this.state.phase === 'painting' || this.state.phase === 'passing';
         const canvasId = this.state.assignments[fromId];
-        if (!open || !canvasId || msg.stroke?.canvasId !== canvasId) return;
+        if (!open || !onCanvas || !canvasId || msg.stroke?.canvasId !== canvasId) return;
         const piece = this.piece(canvasId);
         const clean = piece && sanitizeStroke(msg.stroke, piece);
         if (!clean) return;
         // The server, not the browser, says whose turn (and so whose layer) it is.
         const stroke: PaintedStroke = { ...clean, painterId: fromId, round: this.state.round };
         this.remember(stroke);
-        for (const [watcherId, watched] of this.watchers) {
-          if (watched === canvasId && watcherId !== fromId) this.sendTo(watcherId, { type: 'stroke', stroke });
+        const data = JSON.stringify({ type: 'stroke', stroke } satisfies ServerMessage);
+        // Your other devices mirror your canvas.
+        for (const device of session.devices.values()) {
+          if (device.id !== fromDevice && device.ws?.readyState === device.ws?.OPEN) device.ws?.send(data);
+        }
+        for (const [watcherDevice, watched] of this.watchers) {
+          if (watched.canvasId !== canvasId || watched.memberId === fromId) continue;
+          const ws = this.sessions.get(watched.memberId)?.devices.get(watcherDevice)?.ws;
+          if (ws?.readyState === ws?.OPEN) ws?.send(data);
         }
         return;
       }
 
       case 'passNow': {
         if (this.state.phase !== 'painting' || !this.state.assignments[fromId] || this.state.passed.includes(fromId)) return;
+        // Asked from another of your devices: the canvas device finishes its
+        // stroke first, then passes. If it's offline, pass now.
+        const canvasWs = session.canvas ? session.devices.get(session.canvas)?.ws : null;
+        if (!onCanvas && canvasWs) {
+          this.send(canvasWs, { type: 'passRequest' });
+          return;
+        }
         this.state.passed = [...this.state.passed, fromId];
         if (this.everyonePassed()) this.endRound();
         else this.broadcastState();
@@ -372,18 +658,22 @@ class Party {
       case 'snapshot': {
         // Only the painter of that canvas, for this round, when asked.
         if (msg.round !== this.state.round || this.state.assignments[fromId] !== msg.canvasId) return;
+        const canvasOnline = !!(session.canvas && session.devices.get(session.canvas)?.ws);
+        if (!onCanvas && canvasOnline) return; // the canvas device answers
         void this.saveSnapshot(msg.round, msg.canvasId, msg.pngDataUrl);
         return;
       }
 
       case 'watch': {
         if (msg.canvasId === null) {
-          this.watchers.delete(fromId);
+          this.watchers.delete(fromDevice);
           return;
         }
         if (typeof msg.canvasId !== 'string' || !this.piece(msg.canvasId)) return;
-        this.watchers.set(fromId, msg.canvasId);
-        this.sendHistory(fromId, msg.canvasId);
+        this.watchers.set(fromDevice, { memberId: fromId, canvasId: msg.canvasId });
+        const history = this.historyMessage(msg.canvasId);
+        const ws = session.devices.get(fromDevice)?.ws;
+        if (history && ws) this.send(ws, history);
         return;
       }
 
@@ -475,8 +765,9 @@ class Party {
     this.broadcastState();
     // Each painter gets the canvas now in front of them, with every earlier layer.
     for (const [painterId, canvasId] of Object.entries(this.state.assignments)) {
-      this.watchers.delete(painterId);
-      this.sendHistory(painterId, canvasId);
+      for (const deviceId of this.sessions.get(painterId)?.devices.keys() ?? []) this.watchers.delete(deviceId);
+      const history = this.historyMessage(canvasId);
+      if (history) this.sendToMember(painterId, history);
     }
     if (Object.keys(this.state.assignments).length === 0) this.endRound();
     else this.startTimer();
@@ -513,7 +804,7 @@ class Party {
     this.state.phase = 'passing';
     this.state.overtime = false;
     for (const [painterId, canvasId] of Object.entries(this.state.assignments)) {
-      this.sendTo(painterId, { type: 'requestSnapshot', round: this.state.round, canvasId });
+      this.sendToDuty(painterId, 'canvas', { type: 'requestSnapshot', round: this.state.round, canvasId });
     }
     this.broadcastState();
     // Give everyone a moment to see the "pass the canvas" card.
@@ -549,12 +840,13 @@ class Party {
     history.strokes.push(stroke);
   }
 
-  private sendHistory(memberId: string, canvasId: string) {
+  /** Everything painted on a canvas so far, as one message. */
+  private historyMessage(canvasId: string): ServerMessage | null {
     const history = this.histories.get(canvasId);
     const piece = this.piece(canvasId);
-    if (!history || !piece) return;
+    if (!history || !piece) return null;
     const baseUrl = [...piece.turns].reverse().find((turn) => turn.url)?.url ?? null;
-    this.sendTo(memberId, { type: 'canvasHistory', canvasId, strokes: history.complete ? history.strokes : [], complete: history.complete, baseUrl });
+    return { type: 'canvasHistory', canvasId, strokes: history.complete ? history.strokes : [], complete: history.complete, baseUrl };
   }
 
   private async saveSnapshot(round: number, canvasId: string, dataUrl: string) {
@@ -610,7 +902,7 @@ class Party {
       );
       const { id, deleteKey } = await saveArchive(this.state.partyId, this.state.room, built);
       this.state.archive = { ...this.state.archive, saving: false, id };
-      this.sendTo(hostId, { type: 'archiveSaved', id, deleteKey });
+      this.sendToMember(hostId, { type: 'archiveSaved', id, deleteKey });
     } catch (error) {
       console.error('[archive]', error);
       this.state.archive = { ...this.state.archive, saving: false, error: (error as Error).message.startsWith('This party') ? (error as Error).message : "Couldn't save the gallery. Try again in a moment." };
@@ -624,15 +916,40 @@ class Party {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
   }
 
-  private sendTo(memberId: string, msg: ServerMessage) {
-    const ws = this.sockets.get(memberId);
+  /** To every connected device of one artist. */
+  private sendToMember(memberId: string, msg: ServerMessage) {
+    const data = JSON.stringify(msg);
+    for (const device of this.sessions.get(memberId)?.devices.values() ?? []) {
+      if (device.ws?.readyState === device.ws?.OPEN) device.ws?.send(data);
+    }
+  }
+
+  /** To the device holding a duty; if it's offline, to any device of theirs that's here. */
+  private sendToDuty(memberId: string, duty: DeviceDuty, msg: ServerMessage) {
+    const session = this.sessions.get(memberId);
+    if (!session) return;
+    const holder = session[duty] ? session.devices.get(session[duty]!) : undefined;
+    const ws = holder?.ws ?? [...session.devices.values()].find((d) => d.ws)?.ws;
     if (ws) this.send(ws, msg);
+  }
+
+  /** Each of an artist's devices learns the list, and which duties it holds. */
+  private sendDevices(memberId: string) {
+    const session = this.sessions.get(memberId);
+    if (!session) return;
+    const devices: MyDevice[] = [...session.devices.values()].map((d) => ({ id: d.id, label: d.label, canvas: session.canvas === d.id, call: session.call === d.id, online: !!d.ws }));
+    for (const device of session.devices.values()) {
+      if (device.ws) this.send(device.ws, { type: 'devices', youDeviceId: device.id, devices });
+    }
   }
 
   private broadcast(msg: ServerMessage, exceptId?: string) {
     const data = JSON.stringify(msg);
-    for (const [id, ws] of this.sockets) {
-      if (id !== exceptId && ws.readyState === ws.OPEN) ws.send(data);
+    for (const [id, session] of this.sessions) {
+      if (id === exceptId) continue;
+      for (const device of session.devices.values()) {
+        if (device.ws?.readyState === device.ws?.OPEN) device.ws?.send(data);
+      }
     }
   }
 

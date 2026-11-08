@@ -11,14 +11,21 @@
     inRoom: boolean; // currently looking at the 360° room?
     onToggleRoom: () => void;
     onLeave: () => void;
+    /** The call is on another of your devices (its name), so this one stays out of it. */
+    elsewhere?: string | null;
+    /** Open "Use another device". */
+    onDevices?: () => void;
   }
-  let { call, inRoom, onToggleRoom, onLeave }: Props = $props();
+  let { call, inRoom, onToggleRoom, onLeave, elsewhere = null, onDevices }: Props = $props();
 
   let videoReady = $derived(call.status === 'in-call');
 </script>
 
 <nav class="dock" aria-label="Call controls">
-  {#if call.status === 'unavailable' || call.status === 'error'}
+  {#if elsewhere}
+    <!-- One call per artist: video and mic live on the device that holds the call. -->
+    <button type="button" class="where" onclick={onDevices}>Video is on your {elsewhere}</button>
+  {:else if call.status === 'unavailable' || call.status === 'error'}
     <!-- Keep the honest reason visible; the party works without video. -->
     <p class="note" role="status">{call.note || 'Video is unavailable.'}</p>
   {:else if call.status === 'connecting'}
@@ -115,6 +122,12 @@
     button[aria-pressed='false'] {
       color: $cream-muted;
       background: rgb(243 234 217 / 0.06);
+    }
+
+    .where {
+      padding: 0 0.875rem;
+      font-size: 0.875rem;
+      white-space: nowrap;
     }
 
     .leave {

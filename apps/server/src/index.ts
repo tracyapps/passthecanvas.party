@@ -2,6 +2,7 @@
 // - GET  /health                      → "ok"
 // - GET  /api/token?party=…&name=…    → LiveKit access token for the video call
 // - GET  /snapshots/:party/:file      → saved round images
+// - GET  /api/link/:code              → which party a device-link code belongs to
 // - WS   /party/:partyId              → the game (see packages/shared/src/protocol.ts)
 
 import { createServer } from 'node:http';
@@ -11,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { sanitizeArt, sanitizeGeometry, sanitizeSpots, spotsForView } from '@ptc/shared';
 import { getParty, SNAPSHOT_DIR } from './party.ts';
+import { allowAttempt, peekLink } from './links.ts';
+import { normalizeLinkCode } from '@ptc/shared';
 import { archiveHandler } from './archive.ts';
 import { makeLiveKitToken } from './livekit.ts';
 import { configuredAccountHandler } from './accounts.ts';
@@ -58,6 +61,33 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname.startsWith('/api/archive/')) {
     await archiveHandler(req, res, url.pathname, PARTY_ORIGINS);
+    return;
+  }
+
+  // A typed link code → its party, so the new device can open it. The code
+  // itself is only used up when the device joins over the party socket.
+  if (url.pathname.startsWith('/api/link/')) {
+    const origin = req.headers.origin;
+    if (!originAllowed(origin)) {
+      res.writeHead(403).end();
+      return;
+    }
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
+    res.setHeader('cache-control', 'no-store');
+    if (!allowAttempt(`lookup:${clientAddress(req)}`)) {
+      res.writeHead(429).end('too many tries');
+      return;
+    }
+    const ticket = peekLink(normalizeLinkCode(decodeURIComponent(url.pathname.slice('/api/link/'.length))));
+    if (!ticket) {
+      res.writeHead(404).end('no such code');
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ party: ticket.partyId }));
     return;
   }
 
@@ -225,13 +255,19 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
   wss.handleUpgrade(req, socket, head, (ws) => {
-    getParty(partyId).connect(ws);
+    getParty(partyId).connect(ws, clientAddress(req));
   });
 });
 
 server.listen(PORT, () => {
   console.log(`Party server on http://localhost:${PORT}`);
 });
+
+/** The caller's address, for slowing down code guessing. Railway sets x-forwarded-for. */
+function clientAddress(req: import('node:http').IncomingMessage): string {
+  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim();
+  return forwarded || req.socket.remoteAddress || '';
+}
 
 /** Read a request body as text, up to `limit` bytes. */
 function readBody(req: import('node:http').IncomingMessage, limit: number): Promise<string> {

@@ -12,7 +12,7 @@
   import CutoutPreview from '../account/studio/CutoutPreview.svelte';
   import { cutoutLook, photoLook } from './looks';
 
-  let { partyId, onjoin }: { partyId: string; onjoin: (name: string, presence: Presence, look: Look) => void } = $props();
+  let { partyId, onjoin, notice = null }: { partyId: string; onjoin: (name: string, presence: Presence, look: Look) => void; notice?: string | null } = $props();
 
   let name = $state('');
   let presence = $state<Presence>('camera');
@@ -57,6 +57,7 @@
 <form onsubmit={submit}>
   <p class="tape">Pass the Canvas</p>
   <h1>Pull up a chair</h1>
+  {#if notice}<p class="notice" role="alert">{notice}</p>{/if}
   <label>
     <span>Your name</span>
     <input bind:value={name} autocomplete="nickname" required maxlength="40" />
@@ -94,6 +95,7 @@
 
   <button type="submit" disabled={busy}>{busy ? 'Getting your seat ready…' : 'Join the party'}</button>
   <p class="hint">Party: <code>{partyId}</code>. Share this page's link to invite friends. You can switch camera and avatar any time.</p>
+  <p class="hint">Already at the party on another device? Don't join twice: <a href="/?link">use a link code</a> to add this one to your seat.</p>
 </form>
 
 <style lang="scss">
@@ -138,5 +140,6 @@
   button { min-height: 3rem; border: 0; border-radius: $radius-pill; background: $walnut-900; color: $cream; font-weight: 700; }
   button:disabled { opacity: 0.7; }
   .hint { margin: 0; font-size: 0.875rem; color: #4a3828; }
+  .notice { margin: 0; padding: 0.625rem 0.75rem; border-left: 4px solid $walnut-900; background: #fff4cf; font-weight: 700; }
   a { color: inherit; }
 </style>

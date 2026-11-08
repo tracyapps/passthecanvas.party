@@ -17,8 +17,10 @@
     look?: string | null;
     /** The color behind their initials. */
     color?: string;
+    /** Their connection dropped; their seat is waiting for them. */
+    away?: boolean;
   }
-  let { name, track = null, speaking = false, painting = false, you = false, host = false, look = null, color }: Props = $props();
+  let { name, track = null, speaking = false, painting = false, you = false, host = false, look = null, color, away = false }: Props = $props();
 
   let videoEl = $state<HTMLVideoElement>();
 
@@ -38,11 +40,11 @@
   );
   // Spoken summary for screen readers, since the visuals are just pixels.
   const description = $derived(
-    `${name}${you ? ' (you)' : ''}${host ? ', host' : ''}${painting ? ', painting now' : ''}${track ? ', camera on' : ', avatar'}`
+    `${name}${you ? ' (you)' : ''}${host ? ', host' : ''}${painting ? ', painting now' : ''}${away ? ', away (reconnecting)' : track ? ', camera on' : ', avatar'}`
   );
 </script>
 
-<figure class="tile" class:speaking class:painting aria-label={description}>
+<figure class="tile" class:speaking class:painting class:away aria-label={description}>
   <div class="frame">
     {#if track}
       <!-- muted: LiveKit plays everyone's audio separately, this element is picture only -->
@@ -52,12 +54,16 @@
     {/if}
   </div>
   <figcaption>
-    {name}{you ? ' (you)' : ''}{host ? ' (host)' : ''}
+    {name}{you ? ' (you)' : ''}{host ? ' (host)' : ''}{away ? ' (away)' : ''}
   </figcaption>
 </figure>
 
 <style lang="scss">
   @use '../../styles/tokens' as *;
+  // Away: dimmed, and the caption says so (never the dimming alone).
+  .tile.away .frame {
+    opacity: 0.45;
+  }
 
   .tile {
     margin: 0;

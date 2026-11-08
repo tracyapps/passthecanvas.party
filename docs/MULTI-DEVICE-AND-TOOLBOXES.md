@@ -47,6 +47,8 @@ Today the painting table keeps its state inside `PaintingTable.svelte`: the tool
 
 ## Phase C: linked devices
 
+**Nov 8, 2026: in parties, done.** Linking, duties (canvas / call), mirroring, separate windows and reconnecting shipped as party readiness; see `PARTY-READINESS.md` and DECISIONS 2026-11-08. Still open: the mirror/extend modes with a mini tool rail, and "tools there" (a phone as palette).
+
 - **Linking:**
   - Same account on both devices: the second device offers "Link with your other device".
   - Without signing in: QR code plus a short code (phase decisions above).

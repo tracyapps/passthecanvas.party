@@ -23,6 +23,7 @@
   import PartyRadio from './radio/PartyRadio.svelte';
   import type { GalleryPiece } from './room/leanLayout';
   import TimingControls from './party/TimingControls.svelte';
+  import DevicesPanel from './party/DevicesPanel.svelte';
   import { accountRequest, accountState } from './account/account.svelte';
   import { studio } from './account/studio/studio.svelte';
   import { partyUrl } from './party/origin';
@@ -37,6 +38,7 @@
   let timingOpen = $state(false);
   let notesOpen = $state(false);
   let radioOpen = $state(false);
+  let devicesOpen = $state(false);
   /** Late joiners (and the reveal) pick a canvas to look at. */
   let watchedId = $state<string | null>(null);
   /** The piece opened in the reveal's detail view. */
@@ -104,10 +106,32 @@
     void current.loadHistory(piece.id, piece.width, piece.height, history.strokes, history.complete, history.baseUrl);
   });
 
+  // Your devices: one holds the canvas (only its strokes count), one holds
+  // the call. A device without the canvas mirrors it; one without the call
+  // stays out of the video (the call is joined once per artist).
+  let holdsCanvas = $derived(party.holds('canvas'));
+  let holdsCall = $derived(party.holds('call'));
+  let canvasDevice = $derived(party.devices.find((d) => d.canvas)?.label ?? 'other device');
+  let callDevice = $derived(party.devices.find((d) => d.call)?.label ?? 'other device');
+  // A newly linked device opens on what it's for: the room for a room-and-
+  // video device, the canvas for a painting device. Later changes (handing a
+  // duty over) are announced but never move you; the room and canvas toggle does.
+  let lastJob = '';
+  $effect(() => {
+    if (!party.youDeviceId) return;
+    const job = `${holdsCanvas}/${holdsCall}`;
+    if (job === lastJob) return;
+    const first = lastJob === '';
+    lastJob = job;
+    if (first && holdsCall && !holdsCanvas) view = 'room';
+    if (!first) party.announcement = holdsCanvas && holdsCall ? 'This device has the canvas and the video again.' : holdsCanvas ? `You paint here. The room and video are on your ${callDevice}.` : holdsCall ? `The room and video are here. You paint on your ${canvasDevice}.` : 'This device is following along.';
+  });
+
   $effect(() => {
     const current = table;
     if (!current) return;
     party.onStroke = (stroke) => current.applyRemote(stroke);
+    party.onPassRequest = () => pass();
     party.onSnapshotRequest = (round, canvasId) => {
       if (canvasId === viewId) party.send({ type: 'snapshot', round, canvasId, pngDataUrl: current.snapshot() });
     };
@@ -115,15 +139,24 @@
 
   // Join the video call once the party tells us who we are. The member id
   // becomes the LiveKit identity, so tiles line up with guests.
-  let callJoined = false;
+  // Only the device holding the call joins it; handing the call to another
+  // device leaves it here.
   $effect(() => {
     const partyId = game?.partyId;
-    if (!me || !partyId || callJoined) return;
-    callJoined = true;
-    void call.join(partyId, me.name, me.id, me.presence);
+    if (!me || !partyId) return;
+    if (holdsCall && call.status === 'off') void call.join(partyId, me.name, me.id, me.presence);
+    else if (!holdsCall && call.status !== 'off') call.leave();
   });
 
   onDestroy(() => call.leave());
+
+  // The room shows everyone's camera at their seat, yours included. The call
+  // only lists remote guests, so add your own camera when it is on.
+  let roomVideos = $derived(
+    me && call.status === 'in-call' && call.camOn && call.localVideo
+      ? [...call.videos, { identity: me.id, name: me.name, track: call.localVideo, speaking: false }]
+      : call.videos
+  );
 
   function leave() {
     call.leave();
@@ -201,10 +234,21 @@
     party.announcement = `${nameOf(id)} is now number ${order.indexOf(id) + 1} of ${order.length}.`;
   }
 
-  /** Pass: finish any stroke first so its last stamps arrive before the pass. */
+  /** The devices panel shares the palette dock: it takes the place of setup, invite and timing. */
+  function openDevices(open: boolean) {
+    devicesOpen = open;
+    if (open) setupOpen = inviteOpen = timingOpen = false;
+  }
+
+  /**
+   * Pass: finish any stroke first so its last stamps arrive before the pass.
+   * From a device without the canvas, the server asks the canvas device to
+   * finish and pass.
+   */
   function pass() {
-    table?.finishStroke();
+    if (holdsCanvas) table?.finishStroke();
     party.send({ type: 'passNow' });
+    if (!holdsCanvas) party.announcement = `Passing from your ${canvasDevice}.`;
   }
 
   /** Move focus into a dialog when it opens, so keyboard and screen-reader users land in it. */
@@ -308,7 +352,7 @@
           spotsUrl={`${roomBase}/spots.json`}
           members={game?.members ?? []}
           youId={party.youId}
-          videos={call.videos}
+          videos={roomVideos}
           looks={party.looks}
           onTakeSpot={(spotId) => party.send({ type: 'takeSpot', spotId })}
         />
@@ -322,7 +366,7 @@
     <div class="table" hidden={view !== 'paint'}>
       <PaintingTable
         bind:this={table}
-        canDraw={party.isPainting}
+        canDraw={party.isPainting && holdsCanvas}
         painterId={party.youId}
         round={game.round}
         {canvasKey}
@@ -383,6 +427,7 @@
         {#snippet menu()}
           <button type="button" aria-pressed={guestsOpen} onclick={() => { guestsOpen = !guestsOpen; closeMenu(); }}>{guestsOpen ? 'Hide guests' : 'Show guests'}</button>
           <button type="button" aria-pressed={inviteOpen} onclick={() => { inviteOpen = !inviteOpen; closeMenu(); }}>Invite people</button>
+          <button type="button" aria-pressed={devicesOpen} onclick={() => { openDevices(!devicesOpen); closeMenu(); }}>Use another device</button>
           <button type="button" onclick={() => { view = 'room'; closeMenu(); }}>{game.phase === 'lobby' ? 'Pick a seat in the room' : 'Go to the room'}</button>
           {#if artwork.length}<button type="button" onclick={() => { view = 'gallery'; closeMenu(); }}>Open the gallery</button>{/if}
           <button type="button" onclick={leave}>Leave the party</button>
@@ -417,6 +462,11 @@
         </StudioPanel>
       {/if}
 
+      {#if devicesOpen}
+        <StudioPanel title="Use another device" label="your devices" dock="palette" flow={innerWidth <= 1100} onclose={() => (devicesOpen = false)}>
+          <DevicesPanel {party} partyId={game.partyId} />
+        </StudioPanel>
+      {/if}
       {#if isHost && timingOpen && (game.phase === 'painting' || game.phase === 'passing')}
         <StudioPanel title="Timing" label="party timing" dock="palette" flow={innerWidth <= 1100} onclose={() => (timingOpen = false)}>
           <TimingControls {party} {game} />
@@ -480,6 +530,7 @@
                 <li>
                   <VideoTile
                     name={member.name}
+                    away={member.away}
                     you={member.id === party.youId}
                     host={member.isHost}
                     painting={game.phase === 'painting' && !!game.assignments[member.id] && !game.passed.includes(member.id)}
@@ -504,7 +555,7 @@
   {/if}
 
   {#if view !== 'gallery'}
-    <CallDock {call} inRoom={view === 'room'} onToggleRoom={() => (view = view === 'paint' ? 'room' : 'paint')} onLeave={leave} />
+    <CallDock {call} inRoom={view === 'room'} elsewhere={holdsCall ? null : callDevice} onToggleRoom={() => (view = view === 'paint' ? 'room' : 'paint')} onDevices={() => { view = 'paint'; openDevices(true); }} onLeave={leave} />
   {/if}
 
   {#if game?.phase === 'passing'}
@@ -589,6 +640,9 @@
     </div>
   {/if}
 
+  {#if party.reconnecting}
+    <p class="reconnecting" role="status">Connection lost. Reconnecting… your seat and canvas are saved.</p>
+  {/if}
   <div class="sr-only" aria-live="polite">{party.announcement}</div>
 </div>
 
@@ -632,6 +686,20 @@
 
   .table[hidden] {
     display: none;
+  }
+  .reconnecting {
+    position: fixed;
+    top: 0.75rem;
+    left: 50%;
+    translate: -50% 0;
+    z-index: 40;
+    margin: 0;
+    padding: 0.625rem 1rem;
+    border-radius: $radius-pill;
+    background: $cream;
+    color: $walnut-900;
+    font-weight: 700;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
   }
 
   .loading {

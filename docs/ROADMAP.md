@@ -104,11 +104,13 @@ The owner's priority: the painting should feel like real art supplies, and the m
 
 ### Launch-required party readiness
 
-See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, implementation gaps and evidence limits. The Phase 1 gate remains open.
+See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, how linked devices work and what is verified. The Phase 1 gate remains open.
 
-- [ ] Companion devices: one artist and seat, canvas on iPad/tablet, room and video on laptop or phone. Pairing, input ownership, reconnect and handoff remain unimplemented. A normal second-device join currently creates another guest.
-- [ ] Separate room/video and canvas windows for the same party participant, with desktop split-screen support and reliable state recovery. Current room/canvas controls switch the single party window.
-- [ ] Verify the complete camera/avatar, seat, painting, passing and reconnect flow on real computers and mobile hardware.
+- [x] Companion devices: one artist and seat, canvas on iPad/tablet, room and video on laptop or phone. QR + typed code pairing, server-owned canvas/call duties, mirroring, pass handoff, unlink *(Nov 8; locally tested, not on real hardware)*
+- [x] Separate room/video and canvas windows for the same participant (**Open … in its own window**), same link mechanism *(Nov 8)*
+- [x] Reconnect: seats survive dropped connections and reloads (private per-device rejoin keys, grace period, away state) *(Nov 8)*
+- [x] Room self-view: your own seat shows your camera *(Nov 8; needs a live-camera check)*
+- [ ] Verify the complete camera/avatar, seat, painting, passing, linked-device and reconnect flow on real computers and mobile hardware.
 
 ### Parking lot (owner ideas, not scheduled yet)
 - [ ] Full playback: every mark recorded per piece (Railway-hosted store), scrubbable play bar, contributor name/avatar shown while their part plays

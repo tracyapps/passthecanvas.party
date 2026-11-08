@@ -76,6 +76,18 @@ PUBLIC-DEPLOYMENT.md predates this helper.
   markers and the call while the room is visible. Return to the canvas.
 - Leave one guest's party. Confirm their camera/mic stop and their tile clears
   on the other computer. Rejoin and check the call again.
+- Linked devices: on a laptop, **Menu → Use another device → Paint on a
+  tablet**. Scan the QR code with an iPad (and once by typing the code at
+  `/?link`). Confirm the iPad paints, the laptop mirrors the strokes and keeps
+  the video, the other guest sees one artist (not two), and **Pass the canvas**
+  on the laptop passes from the iPad. Try **Room and video on a phone**, then
+  **Paint on this device** / **Room and video on this device** and **Unlink**.
+- Two windows: **Open the canvas in its own window** on a desktop; drag it to a
+  second screen. Paint in it while the room window shows the video.
+- Reconnect: lock the iPad or turn wifi off for ~20 s mid-round. Confirm the
+  "Reconnecting…" banner, then the same seat and canvas. Over a minute: the
+  other computer shows "(away)"; coming back still works within 15 minutes.
+  Reload a tab: it returns without the join form.
 - Repeat controls with keyboard only, inspect names/states using VoiceOver,
   and check 360px and 1440px widths plus reduced motion. Test physical touch
   on a real device; record any untested combination explicitly.
