@@ -6,6 +6,11 @@ export function compactSurface(surface: WorkspaceSurface): boolean {
   return surface.width <= 1100 || surface.height <= 720 || surface.width / surface.height < 1.35;
 }
 
+/** Keep the canvas below the same controls in the desk and its editor. */
+export function canvasTop(surface: WorkspaceSurface): number {
+  return surface.headerHeight + surface.toolbarHeight + 8;
+}
+
 export function viewTransform(source: WorkspaceSurface, target: WorkspaceSurface) {
   const scale = Math.min(
     target.width / source.width,
@@ -53,7 +58,6 @@ export function workspaceGeometry(
   const { width, height, headerHeight, toolbarHeight } = surface;
   const ids = layout.order.filter((id) => layout.supplies?.includes(id) ?? true);
   const grid = layout.toolView === 'grid';
-  const tray = layout.toolView === 'tray';
   const scale = Math.min(width / 1440, height / 1024);
   const rows = Math.max(
     1,
@@ -61,24 +65,21 @@ export function workspaceGeometry(
   );
   const gridWidth = 28 + Math.ceil(ids.length / rows) * (GRID_TILE.width + GRID_TILE.gap);
   const freeGrid = grid && layout.dock === 'surround';
-  const left = tray
-    ? 24
-    : freeGrid
-      ? gridWidth
-      : layout.dock === 'right'
-        ? 24
-        : layout.dock === 'left' || layout.dock === 'both'
-          ? Math.min(360, width * 0.3)
-          : Math.max(width * 0.18, 352 * scale);
-  const right = tray
-    ? 24
-    : layout.dock === 'right' || layout.dock === 'both'
+  const left = freeGrid
+    ? gridWidth
+    : layout.dock === 'right'
+      ? 24
+      : layout.dock === 'left' || layout.dock === 'both'
+        ? Math.min(360, width * 0.3)
+        : Math.max(width * 0.18, 352 * scale);
+  const right =
+    layout.dock === 'right' || layout.dock === 'both'
       ? Math.min(360, width * 0.3)
       : layout.dock === 'left' || freeGrid
         ? 24
         : Math.max(width * 0.12, 260 * scale + 40);
   const available = Math.max(300, width - left - right);
-  const bottom = tray || freeGrid || layout.dock !== 'surround' ? 56 : 250 * scale + 20;
+  const bottom = freeGrid || layout.dock !== 'surround' ? 56 : 250 * scale + 20;
   const frameWidth = Math.min(
     available,
     Math.max(260, (height - headerHeight - toolbarHeight - 16 - bottom) * aspect)
@@ -106,7 +107,7 @@ export function workspaceGeometry(
     };
   }
   const boxes: Record<string, SupplyRect> = {};
-  for (const id of tray ? [] : ids) {
+  for (const id of ids) {
     const supply = SUPPLIES.find((supply) => supply.id === id);
     if (!supply) continue;
     const index = ids.indexOf(id);

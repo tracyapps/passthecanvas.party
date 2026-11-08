@@ -932,3 +932,31 @@ floating panels. Their compact flow illustrates the responsive arrangement;
 physical-device and media testing remains part of the existing gate.
 
 See [workspace pattern research](WORKSPACE-MANAGER-RESEARCH.md).
+
+### 2026-11-08 — Separate view gallery and editor, one account save
+
+The saved-view manager now opens as a wrapping preview grid. Editing replaces
+that grid, with Back to saved views returning to it. Add view starts with no
+supplies; Save current as new view remains a separate shortcut. Gallery cards
+support inline rename, selection, bulk duplication and confirmed bulk deletion.
+The editor's tool list contains switches only. Reordering remains available by
+dragging the layout itself rather than arrows beside visibility controls.
+
+Save view persists directly to the signed-in account before reporting success.
+There is no second account-save, reload or browser-import action. Failed saves
+keep the draft dirty and retryable. Guest views remain on the current device,
+with explicit wording. The painting header exposes Save view changes when a
+named view has been rearranged outside the editor. Canvas movement in the live
+desk and editor uses the same minimum top boundary.
+
+Toolbox tray/window entry points and their display option are paused and removed
+from the current UI at the owner's request. Existing data is retained. Older
+tray views reopen as cutouts with their supply selection and geometry intact.
+The two available display styles are full cutouts and square buttons.
+
+Local Chromium checks covered blank creation, tool switches, rename, single and
+bulk duplication, confirmed bulk deletion, direct arrangement updates, account
+save/reload against a PostgreSQL test fixture, failed account saves and retry,
+and 360px/1440px layouts. Test authentication was used; this does not qualify
+live Clerk or physical devices. See PARTY-READINESS.md for launch requirements
+that remain unimplemented or unverified.

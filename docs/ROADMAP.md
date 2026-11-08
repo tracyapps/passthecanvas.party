@@ -17,7 +17,7 @@ Test the three risky pieces before investing in polish.
 - [x] Repo structure, agent instructions, docs
 - [x] `git init`, `git lfs install`, first commit
 - [x] `npm install` and `npm run dev` work on Tapps's Mac
-- [ ] LiveKit Cloud project created; keys in `apps/server/.env` *(only step left: create the project at cloud.livekit.io, copy keys into `apps/server/.env`)*
+- [ ] Confirm LiveKit project configuration and credential check, then complete the real two-computer call. Current credential state is not established by this roadmap.
 
 ### 360° room spike
 - [x] Download the Poly Haven `art_studio` HDRI (tonemapped JPG/WebP, 4k) into `apps/web/public/studio/placeholder/`
@@ -61,7 +61,7 @@ The whole game loop, accessible, without the fancy room yet.
 
 - [x] Saved-view manager in the account area and an in-session drawer, with geometry previews, tool visibility, display mode, frame editing and device previews (Nov 8).
 
-- [x] Configurable toolbox tray with flexible rows, palette discs, personal edits, and optional standalone web-app manifest (Nov 6). Installed-window and physical-device qualification remain open.
+- [ ] Toolbox tray and standalone toolbox windows are paused and removed from the current painting UI (Nov 8). Earlier implementation is historical; saved layouts and cutout/grid views remain the current workspace scope.
 - [x] Owner-requested pre-test update (Nov 6): toolbox grid, compact tool photos, burnishing pad, personal color palette library, and tool icon artwork. See [decisions](DECISIONS.md).
 - [x] [Device performance and companion canvas research](DEVICE-PERFORMANCE.md). The physical-device performance checks and companion design are still open.
 
@@ -96,15 +96,21 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [ ] Background blur / replace for cameras (LiveKit track processors, on-device)
 - [ ] **Redesign "Mix a color"** — owner brief received. *Done: recipe tray with parts, even vs streaked loads weighted by parts, saved mixes. Open: streak blend amount, finite paint/reload, named trays, pigment-model mixing.*
 - [x] Gentle timer handoff: zero cues finishing rather than forcing a pass; explicit server-authorized handoff, final-stroke flush *(optional chime not added)*
-- [ ] Configurable photo-tool widgets, named layouts and local popouts; paired devices and private account albums need separate identity/protocol/persistence design (brief above; not implemented)
+- [ ] Standalone toolbox/popout UI is paused. Private account albums remain pending identity and persistence work. Saved-view management is tracked above.
 - [ ] Wet-on-wet diffusion (watercolor bleeding into wet areas)
 - [ ] Watercolor edge darkening (pigment pooling at wash edges) *(per-dab rim tried and rejected; needs a stroke-level pass — see DECISIONS 2026-11-03)*
 - [x] Per-tool pressure curves; airbrush spraying while held still *(mouse feel unchanged)*
 - [ ] Impasto feel for thick acrylic (light/shadow on ridges)
 
-### Parking lot (owner ideas, not scheduled yet)
+### Launch-required party readiness
 
-- [ ] Companion canvas devices: use a tablet + stylus or a phone as a second screen for the canvas, while the computer shows the room — one account, two devices
+See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, implementation gaps and evidence limits. The Phase 1 gate remains open.
+
+- [ ] Companion devices: one artist and seat, canvas on iPad/tablet, room and video on laptop or phone. Pairing, input ownership, reconnect and handoff remain unimplemented. A normal second-device join currently creates another guest.
+- [ ] Separate room/video and canvas windows for the same party participant, with desktop split-screen support and reliable state recovery. Current room/canvas controls switch the single party window.
+- [ ] Verify the complete camera/avatar, seat, painting, passing and reconnect flow on real computers and mobile hardware.
+
+### Parking lot (owner ideas, not scheduled yet)
 - [ ] Full playback: every mark recorded per piece (Railway-hosted store), scrubbable play bar, contributor name/avatar shown while their part plays
 - [ ] Auto-edited video export (TikTok-style "magic" picks: interesting pause points) with artist controls to move/add pause + slow spots; music bed; social sharing
 

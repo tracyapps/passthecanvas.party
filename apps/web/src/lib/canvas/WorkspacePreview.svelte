@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { workspaceGeometry, designPoint } from './workspace-geometry';
+  import { workspaceGeometry, designPoint, canvasTop } from './workspace-geometry';
   import { SUPPLIES, supplyAsset, supplyImage } from './supplies';
   import type { WorkspaceLayout, WorkspaceSurface } from './workspaces';
   let {
@@ -47,10 +47,7 @@
         ...layout,
         frame: {
           x: Math.max(0, point.x / source.width),
-          y: Math.max(
-            (source.headerHeight + source.toolbarHeight + 16) / source.height,
-            point.y / source.height
-          ),
+          y: Math.max(canvasTop(source) / source.height, point.y / source.height),
           width: layout.frame?.width ?? rect.width / source.width,
           height: layout.frame?.height ?? rect.height / source.height,
         },
@@ -216,23 +213,10 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m2 14 12-12M8 14l6-6" /></svg>
       </button>
     {/if}
-    {#if layout.toolView === 'tray'}<span class="window-note"
-        >Toolbox opens in a separate window</span
-      >{/if}
   </div>
 </div>
 
 <style>
-  .window-note {
-    position: absolute;
-    bottom: 8px;
-    left: 8px;
-    right: 8px;
-    padding: 5px;
-    font-size: 12px;
-    color: #fff3df;
-    background: #211a13e8;
-  }
   .viewport {
     width: 100%;
     overflow: auto;

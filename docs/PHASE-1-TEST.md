@@ -46,10 +46,14 @@ separately; do not expose the development editors. Start the local server with
 `SPOTS_EDITOR=0` before sharing access. If a tunnel is used, configure only its
 exact trusted hostname in Vite rather than disabling host checking globally.
 
-The public Vercel site is not this test origin yet. `VITE_ACCOUNT_API_URL`
-connects account storage only; it does not route party WebSockets, video tokens
-or snapshots to Railway. LiveKit credentials alone do not enable hosted parties.
-See [PUBLIC-DEPLOYMENT.md](PUBLIC-DEPLOYMENT.md#4-multiplayer-is-a-separate-connection-step).
+The current [party origin helper](../apps/web/src/lib/party/origin.ts) uses
+`VITE_PARTY_URL`, falling back to `VITE_ACCOUNT_API_URL`, for party WebSockets,
+video tokens and snapshots. With neither variable it uses the frontend origin.
+For a hosted test, verify the built frontend points to the intended reachable
+HTTPS party server, that WebSocket upgrades and allowed origins work, and that
+LiveKit is configured there. Current deployed routing and credentials have not
+been verified by this checklist. The older multiplayer section of
+PUBLIC-DEPLOYMENT.md predates this helper.
 
 ## 3. Run the browser checks
 
@@ -62,10 +66,12 @@ See [PUBLIC-DEPLOYMENT.md](PUBLIC-DEPLOYMENT.md#4-multiplayer-is-a-separate-conn
   and then live video, including in a selected room seat.
 - Join once with avatar presence. Confirm no camera/microphone prompt occurs,
   the initials card is usable, and the guest can still watch and paint.
-- Start the game as host. Draw a recognizable mark; confirm the other computer
-  sees it. Attempt to draw as the waiting guest; confirm no mark is accepted.
-- Use **Pass now** and confirm only the next painter can add marks. Confirm
-  earlier marks remain. Rejoin after a round snapshot and check existing art.
+- Use **Start the game** as host. Each participating artist paints the canvas
+  assigned to them in the simultaneous round. Draw a recognizable mark, pass it,
+  and confirm it arrives on the next computer. A watcher must not add marks.
+- Use **Pass the canvas** and confirm the next round assigns the expected canvas
+  to each artist. Confirm earlier marks remain. Rejoin after a round snapshot
+  and check existing art; a new join after the start currently becomes a watcher.
 - Switch to **Room view**, choose seats and pan the room. Verify camera/avatar
   markers and the call while the room is visible. Return to the canvas.
 - Leave one guest's party. Confirm their camera/mic stop and their tile clears
@@ -75,13 +81,16 @@ See [PUBLIC-DEPLOYMENT.md](PUBLIC-DEPLOYMENT.md#4-multiplayer-is-a-separate-conn
   on a real device; record any untested combination explicitly.
 
 Do not record video/audio. Record only pass/fail notes, browser/device names,
-date, and any art screenshots the testers agree to keep. Current timer behavior
-still forces a pass; the gentle finish/pass cue belongs to a later approved task.
+date, and any art screenshots the testers agree to keep. The timer reaching zero
+is a finish cue. Artists use **Pass the canvas**, and the host can use
+**Pass everyone on**. Confirm this handoff and final-stroke preservation.
 
 ## Evidence and roadmap updates
 
-Current preparation: local environment file absent; no LiveKit project or real
-two-computer call has been verified in this work. The setup command is ready.
+This checklist provides setup and test steps. It makes no assertion about the
+current environment file or credentials. No fresh live-provider or real
+two-computer result is recorded by the November 8 source review. The Phase 1
+gate remains open. See [PARTY-READINESS.md](PARTY-READINESS.md).
 
 After actual setup, tick the LiveKit setup task in ROADMAP.md. Tick the call task
 and mark the Phase 1 gate passed only after the browser test succeeds. Note

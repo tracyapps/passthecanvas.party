@@ -14,10 +14,13 @@ const layout = {
 };
 
 describe('workspace geometry and storage', () => {
-  it('leaves desk tools out of previews when they belong to a toolbox window', () => {
-    const tray = workspaceGeometry({ ...layout, toolView: 'tray' }, target);
-    expect(tray.boxes).toEqual({});
-    expect(tray.frame.width).toBeGreaterThan(0);
+  it('reopens retired toolbox-window views as cutouts with the saved tools intact', () => {
+    const retired = { ...layout, toolView: 'tray' };
+    const saved = { version: 1, current: retired, views: [{ id: 'old', name: 'Old', layout: retired }] };
+    const decoded = decodeWorkspaces(JSON.stringify(saved), ['round', 'pencil']);
+    expect(decoded.views[0].layout.toolView).toBe('cutouts');
+    expect(decoded.views[0].layout.supplies).toEqual(['round']);
+    expect(workspaceGeometry(decoded.views[0].layout, target).boxes.round).toBeDefined();
   });
 
   it('scales tool and canvas distances uniformly below the live header', () => {

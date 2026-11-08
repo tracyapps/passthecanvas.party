@@ -68,10 +68,9 @@
       </label>
       <p class="hint">Makes buttons, panels and text bigger or smaller everywhere. On the painting table it sizes the controls (the canvas keeps its own zoom).</p>
       <label class="field">Tool view
-        <select value={prefs.toolView} onchange={(e) => changePrefs({ toolView: e.currentTarget.value === 'tray' ? 'tray' : e.currentTarget.value === 'grid' ? 'grid' : 'cutouts' }, 'Tool view')}>
+        <select value={prefs.toolView === 'grid' ? 'grid' : 'cutouts'} onchange={(e) => changePrefs({ toolView: e.currentTarget.value === 'grid' ? 'grid' : 'cutouts' }, 'Tool view')}>
           <option value="cutouts">Default cutouts</option>
           <option value="grid">Freeform grid</option>
-          <option value="tray">Toolbox tray</option>
         </select>
       </label>
       <p class="hint" role="status">{prefsNote}</p>

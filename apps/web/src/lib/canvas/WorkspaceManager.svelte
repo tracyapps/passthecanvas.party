@@ -1,10 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { SavedWorkspace, WorkspaceLayout, WorkspaceSurface } from './workspaces';
+  import {
+    defaultLayout,
+    type SavedWorkspace,
+    type WorkspaceLayout,
+    type WorkspaceSurface,
+  } from './workspaces';
   import type { Toolbox } from './toolboxes';
   import { shownSupplies, findToolbox } from './toolboxes';
   import { SUPPLIES } from './supplies';
-  import { workspaceGeometry } from './workspace-geometry';
+  import { workspaceGeometry, canvasTop } from './workspace-geometry';
   import WorkspacePreview from './WorkspacePreview.svelte';
 
   let {
@@ -15,14 +20,16 @@
     onupdate,
     onapply,
     onclose,
+    signedIn = false,
   }: {
     views: SavedWorkspace[];
     toolboxes: Toolbox[];
     current: WorkspaceLayout;
     selected?: string;
-    onupdate: (views: SavedWorkspace[]) => void;
+    onupdate: (views: SavedWorkspace[]) => Promise<void>;
     onapply: (view: SavedWorkspace) => void;
     onclose?: () => void;
+    signedIn?: boolean;
   } = $props();
   const desktop: WorkspaceSurface = {
     width: 1440,
@@ -35,7 +42,11 @@
   let target = $state('canvas');
   let device = $state('saved');
   let pending = $state<(() => void) | null>(null);
-  let deleting = $state<string | null>(null);
+  let deleting = $state<string[]>([]);
+  let checked = $state<string[]>([]);
+  let renaming = $state('');
+  let rename = $state('');
+  let saving = $state(false);
   let note = $state('');
   let nameInput = $state<HTMLInputElement>();
   let dirty = $derived(!!draft && JSON.stringify(draft) !== baseline);
@@ -58,7 +69,7 @@
 
   function resolved(layout: WorkspaceLayout): WorkspaceLayout {
     const copy = structuredClone($state.snapshot(layout));
-    copy.toolView ??= 'cutouts';
+    copy.toolView = copy.toolView === 'grid' ? 'grid' : 'cutouts';
     copy.supplies ??= shownSupplies(
       copy.order,
       findToolbox(copy.toolbox ?? 'everything', toolboxes)
@@ -83,6 +94,7 @@
     return copy;
   }
   function guard(action: () => void) {
+    if (saving) return;
     if (dirty) pending = action;
     else action();
   }
@@ -97,33 +109,72 @@
         duplicate || !views.some((item) => item.id === draft?.id) ? '' : JSON.stringify(draft);
       target = 'canvas';
       device = 'saved';
-      deleting = null;
+      deleting = [];
       note = '';
       queueMicrotask(() => nameInput?.focus());
     });
   }
-  function newView() {
+  function uniqueName(name: string, entries = views) {
+    const base = name.slice(0, 70);
+    let result = base;
+    let suffix = 2;
+    while (entries.some((view) => view.name.toLowerCase() === result.toLowerCase())) {
+      result = `${base} ${suffix++}`;
+    }
+    return result;
+  }
+  function newView(fromCurrent = false) {
     if (views.length >= 30) {
       note = 'Up to 30 saved views.';
       return;
     }
-    edit({ id: crypto.randomUUID(), name: 'New view', layout: current });
-    // New views use the current arrangement. The name can be changed before saving.
+    const layout = fromCurrent
+      ? current
+      : {
+          ...defaultLayout(SUPPLIES.map((supply) => supply.id)),
+          toolView: 'cutouts' as const,
+          supplies: [],
+          surface: current.surface ?? desktop,
+        };
+    edit({ id: crypto.randomUUID(), name: uniqueName('New view'), layout });
   }
-  function save(apply = false) {
-    if (!draft) return;
-    const name = draft.name.trim();
+  async function persist(next: SavedWorkspace[]) {
+    saving = true;
+    note = signedIn ? 'Saving to your account…' : 'Saving…';
+    try {
+      await onupdate(next);
+      note = signedIn
+        ? 'Saved to your account.'
+        : 'Saved on this device. Sign in to keep views in your account.';
+      return true;
+    } catch (error) {
+      note =
+        error instanceof Error
+          ? error.message
+          : 'Save failed. Your edits are still here. Try again.';
+      return false;
+    } finally {
+      saving = false;
+    }
+  }
+  function validName(name: string, id: string) {
     if (!name) {
       note = 'Give this view a name.';
-      nameInput?.focus();
-      return;
+      return false;
     }
     if (
-      views.some(
-        (view) => view.id !== draft?.id && view.name.trim().toLowerCase() === name.toLowerCase()
-      )
+      views.some((view) => view.id !== id && view.name.trim().toLowerCase() === name.toLowerCase())
     ) {
       note = 'A view with that name already exists. Choose another name.';
+      return false;
+    }
+    return true;
+  }
+  async function save() {
+    if (!draft || saving) return;
+    const name = draft.name.trim();
+    if (!validName(name, draft.id)) {
+      nameInput?.focus();
       return;
     }
     if (!views.some((view) => view.id === draft?.id) && views.length >= 30) {
@@ -131,25 +182,53 @@
       return;
     }
     const saved = structuredClone($state.snapshot({ ...draft, name }));
-    onupdate(
-      views.some((view) => view.id === saved.id)
-        ? views.map((view) => (view.id === saved.id ? saved : view))
-        : [...views, saved]
-    );
-    draft = saved;
-    baseline = JSON.stringify(saved);
-    note = `${name} saved.`;
-    if (apply) onapply(saved);
+    const next = views.some((view) => view.id === saved.id)
+      ? views.map((view) => (view.id === saved.id ? saved : view))
+      : [...views, saved];
+    if (await persist(next)) {
+      draft = saved;
+      baseline = JSON.stringify(saved);
+    }
   }
-  function remove(view: SavedWorkspace) {
-    guard(() => {
-      onupdate(views.filter((item) => item.id !== view.id));
-      if (draft?.id === view.id) {
+  async function remove() {
+    if (saving) return;
+    const ids = [...deleting];
+    if (await persist(views.filter((view) => !ids.includes(view.id)))) {
+      if (draft && ids.includes(draft.id)) {
         draft = null;
         baseline = '';
       }
-      deleting = null;
-      note = `${view.name} deleted. Your current painting stays open.`;
+      deleting = [];
+      checked = [];
+    }
+  }
+  async function duplicate(ids: string[]) {
+    if (views.length + ids.length > 30) {
+      note = 'Up to 30 saved views.';
+      return;
+    }
+    const next = [...views];
+    for (const view of views.filter((view) => ids.includes(view.id))) {
+      next.push({
+        ...structuredClone($state.snapshot(view)),
+        id: crypto.randomUUID(),
+        name: uniqueName(`${view.name} copy`, next),
+      });
+    }
+    if (await persist(next)) checked = [];
+  }
+  async function saveRename(view: SavedWorkspace) {
+    const name = rename.trim();
+    if (!validName(name, view.id)) return;
+    if (await persist(views.map((item) => (item.id === view.id ? { ...item, name } : item))))
+      renaming = '';
+  }
+  function gallery() {
+    guard(() => {
+      draft = null;
+      baseline = '';
+      deleting = [];
+      note = '';
     });
   }
   function toggle(id: string, enabled: boolean) {
@@ -158,15 +237,6 @@
     if (enabled) ids.add(id);
     else ids.delete(id);
     draft.layout = { ...draft.layout, supplies: draft.layout.order.filter((id) => ids.has(id)) };
-  }
-  function reorder(id: string, offset: number) {
-    if (!draft) return;
-    const order = [...draft.layout.order],
-      index = order.indexOf(id);
-    if (index < 0 || index + offset < 0 || index + offset >= order.length) return;
-    order.splice(index, 1);
-    order.splice(index + offset, 0, id);
-    draft.layout = { ...draft.layout, order };
   }
   function place(field: 'x' | 'y' | 'width' | 'height', value: number) {
     if (!draft || !Number.isFinite(value)) return;
@@ -179,7 +249,7 @@
           : field === 'height'
             ? Math.min(1, 200 / surface.height)
             : field === 'y'
-              ? (surface.headerHeight + surface.toolbarHeight + 16) / surface.height
+              ? canvasTop(surface) / surface.height
               : 0,
         Math.min(1, value / (field === 'x' || field === 'width' ? surface.width : surface.height))
       );
@@ -203,7 +273,7 @@
   function keydown(event: KeyboardEvent) {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
-      save();
+      if (draft) void save();
       return;
     }
     if (event.key === 'Escape' && onclose) {
@@ -224,18 +294,26 @@
   });
 </script>
 
-<div class="manager" role="group" aria-label="Saved view manager">
+<div class="manager" role="group" aria-label="Saved view manager" aria-busy={saving}>
   <header class="manager-head">
     <div>
-      <h2>Saved views</h2>
-      <p>Save your tools, display style, order and canvas frame as one arrangement.</p>
+      <h2>{draft ? 'Edit view' : 'Saved views'}</h2>
+      <p>
+        {draft
+          ? 'Arrange the desk, then save your view.'
+          : 'Choose a view or build a new arrangement.'}
+      </p>
     </div>
-    {#if onclose}<button type="button" onclick={() => guard(onclose!)}>Close views</button>{/if}
+    <div class="actions">
+      {#if draft}<button type="button" disabled={saving} onclick={gallery}
+          >Back to saved views</button
+        >{/if}
+      {#if onclose}<button type="button" disabled={saving} onclick={() => guard(onclose!)}
+          >Close views</button
+        >{/if}
+    </div>
   </header>
-  <div class="manager-actions">
-    <button type="button" onclick={newView}>Save current as new view</button>
-    <p role="status">{note}</p>
-  </div>
+  <p class="status" role="status">{note}</p>
   {#if pending}<div class="confirm" role="alert">
       <p>Discard the unsaved edits?</p>
       <button
@@ -246,132 +324,194 @@
           baseline = JSON.stringify(draft);
           action?.();
         }}>Discard edits</button
-      ><button type="button" onclick={() => (pending = null)}>Keep editing</button>
+      >
+      <button type="button" onclick={() => (pending = null)}>Keep editing</button>
     </div>{/if}
-  {#if deleting}
-    {@const deletingView = views.find((view) => view.id === deleting) ?? draft}
-    {#if deletingView}<div class="confirm" role="alert">
-        <p>Delete “{deletingView.name}”?</p>
-        <button type="button" onclick={() => remove(deletingView)}>Delete view</button><button
-          type="button"
-          onclick={() => (deleting = null)}>Keep view</button
+  {#if deleting.length}<div class="confirm" role="alert">
+      <p>
+        Delete {deleting.length === 1
+          ? `“${views.find((view) => view.id === deleting[0])?.name ?? draft?.name}”`
+          : `${deleting.length} selected views`}? Your painting stays open.
+      </p>
+      <button type="button" disabled={saving} onclick={() => void remove()}>Confirm delete</button>
+      <button type="button" disabled={saving} onclick={() => (deleting = [])}>Keep views</button>
+    </div>{/if}
+  {#if !draft}
+    <div class="gallery-actions actions">
+      <button type="button" disabled={saving} onclick={() => newView()}>Add view</button>
+      <button type="button" disabled={saving} onclick={() => newView(true)}
+        >Save current as new view</button
+      >
+      {#if views.length}<label class="select-all"
+          ><input
+            type="checkbox"
+            checked={checked.length === views.length}
+            onchange={(event) =>
+              (checked = event.currentTarget.checked ? views.map((view) => view.id) : [])}
+          />Select all</label
+        >{/if}
+      {#if checked.length}<span>{checked.length} selected</span>
+        <button type="button" disabled={saving} onclick={() => void duplicate(checked)}
+          >Duplicate selected</button
         >
-      </div>{/if}
-  {/if}
-  <div class="manager-layout" class:editing={!!draft}>
+        <button type="button" disabled={saving} onclick={() => (deleting = [...checked])}
+          >Delete selected</button
+        >
+      {/if}
+    </div>
     <section class="view-cards" aria-label="Saved view previews">
       {#each views as view (view.id)}
         <article class:active={selected === view.id}>
-          <WorkspacePreview
-            layout={resolved(view.layout)}
-            viewport={view.layout.surface ?? desktop}
-          />
-          <h3>{view.name}</h3>
-          <p>
-            {view.layout.toolView === 'grid'
-              ? 'Grid'
-              : view.layout.toolView === 'tray'
-                ? 'Toolbox tray'
-                : 'Cutout tools'}
-          </p>
-          <div class="card-actions">
+          <div class="card-top">
+            <label
+              ><input
+                type="checkbox"
+                aria-label={`Select ${view.name}`}
+                checked={checked.includes(view.id)}
+                onchange={(event) =>
+                  (checked = event.currentTarget.checked
+                    ? [...checked, view.id]
+                    : checked.filter((id) => id !== view.id))}
+              />Select</label
+            >{#if selected === view.id}<span>Current view</span>{/if}
+          </div>
+          <div class="preview-link">
+            <WorkspacePreview
+              layout={resolved(view.layout)}
+              viewport={view.layout.surface ?? desktop}
+            />
             <button
               type="button"
+              class="preview-edit"
+              aria-label={`Edit ${view.name}`}
+              onclick={() => edit(view)}
+            ></button>
+          </div>
+          {#if renaming === view.id}<form
+              class="rename actions"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void saveRename(view);
+              }}
+            >
+              <label
+                >View name<input
+                  aria-label={`Rename ${view.name}`}
+                  maxlength="80"
+                  bind:value={rename}
+                /></label
+              ><button disabled={saving} type="submit">Save name</button><button
+                type="button"
+                onclick={() => (renaming = '')}>Cancel</button
+              >
+            </form>
+          {:else}<h3>{view.name}</h3>{/if}
+          <p>{view.layout.toolView === 'grid' ? 'Square buttons' : 'Full cutout images'}</p>
+          <div class="actions">
+            <button
+              type="button"
+              disabled={saving}
               aria-label={`Apply ${view.name}`}
-              onclick={() => guard(() => onapply(view))}>Use view</button
-            >
-            <button type="button" aria-label={`Edit ${view.name}`} onclick={() => edit(view)}
-              >Edit</button
-            >
-            <button type="button" aria-label={`Rename ${view.name}`} onclick={() => edit(view)}
-              >Rename</button
+              onclick={() => onapply(view)}>Use view</button
             >
             <button
               type="button"
+              disabled={saving}
+              aria-label={`Rename ${view.name}`}
+              onclick={() => {
+                renaming = view.id;
+                rename = view.name;
+              }}>Rename</button
+            >
+            <button
+              type="button"
+              disabled={saving}
               aria-label={`Duplicate ${view.name}`}
-              onclick={() => edit(view, true)}>Duplicate</button
+              onclick={() => void duplicate([view.id])}>Duplicate</button
             >
             <button
               type="button"
+              disabled={saving}
               aria-label={`Delete ${view.name}`}
-              onclick={() => (deleting = view.id)}>Delete</button
+              onclick={() => (deleting = [view.id])}>Delete</button
             >
           </div>
         </article>
-      {:else}<p>No saved views yet. Start with your current arrangement.</p>{/each}
+      {:else}<p>No saved views yet. Add a view to start with an empty desk.</p>{/each}
     </section>
-    {#if draft}
-      <section class="editor" aria-label="Edit saved view">
-        <header>
-          <label
-            >View name<input bind:this={nameInput} maxlength="80" bind:value={draft.name} /></label
-          ><span>{dirty ? 'Unsaved edits' : 'Saved'}</span>
-        </header>
-        <div class="edit-actions">
-          <button type="button" onclick={() => save()}>Save changes</button><button
-            type="button"
-            onclick={() => save(true)}>Save & use</button
+  {:else}
+    <section class="editor" aria-label="Edit saved view">
+      <header class="edit-head">
+        <label
+          >View name<input
+            bind:this={nameInput}
+            maxlength="80"
+            bind:value={draft.name}
+            disabled={saving}
+          /></label
+        >
+        <span>{dirty ? 'Unsaved edits' : 'Saved'}</span>
+        <div class="actions">
+          <button type="button" disabled={saving} onclick={() => void save()}
+            >{saving ? 'Saving…' : 'Save view'}</button
+          >
+          <button type="button" disabled={saving || dirty} onclick={() => draft && onapply(draft)}
+            >Use view</button
           >
           <button
             type="button"
+            disabled={saving}
             onclick={() => {
               if (draft) {
                 draft = {
                   ...structuredClone($state.snapshot(draft)),
                   id: crypto.randomUUID(),
-                  name: `${draft.name.slice(0, 70)} copy`,
+                  name: uniqueName(`${draft.name} copy`),
                 };
                 baseline = '';
               }
             }}>Duplicate</button
-          ><button type="button" onclick={() => (deleting = draft!.id)}>Delete</button>
-          <button
-            type="button"
-            onclick={() =>
-              guard(() => {
-                draft = null;
-                baseline = '';
-              })}>Cancel editing</button
           >
+          {#if views.some((view) => view.id === draft?.id)}<button
+              type="button"
+              disabled={saving}
+              onclick={() => guard(() => (deleting = [draft!.id]))}>Delete</button
+            >{/if}
         </div>
-
-        <div class="editor-layout">
-          <div>
+      </header>
+      <div class="editor-layout">
+        <div class="desk-preview">
+          <label
+            >Device preview<select bind:value={device}
+              ><option value="saved">Saved design size</option><option value="wide"
+                >Wide desktop · 1920 × 1080</option
+              ><option value="tablet">Tablet · 1024 × 768</option><option value="phone"
+                >Phone · 360 × 800</option
+              ></select
+            ></label
+          >
+          <WorkspacePreview
+            layout={draft.layout}
+            {viewport}
+            editable={device === 'saved' && !saving}
+            selected={target}
+            onselect={(id) => (target = id)}
+            onchange={(layout) => draft && (draft.layout = layout)}
+          />
+          <p class="hint">
+            Drag tools and the canvas to arrange them. Use arrow keys or position fields for precise
+            adjustments. Device previews show responsive placement without changing the saved
+            design.
+          </p>
+        </div>
+        <aside class="controls" aria-label="View display settings">
+          <fieldset disabled={saving} class="display-fields">
+            <legend>Display</legend>
             <label
-              >Device preview<select bind:value={device}
-                ><option value="saved">Saved design size</option><option value="wide"
-                  >Wide desktop · 1920 × 1080</option
-                ><option value="tablet">Tablet · 1024 × 768</option><option value="phone"
-                  >Phone · 360 × 800</option
-                ></select
-              ></label
-            >
-            <WorkspacePreview
-              layout={draft.layout}
-              {viewport}
-              editable={device === 'saved'}
-              selected={target}
-              onselect={(id) => (target = id)}
-              onchange={(layout) => draft && (draft.layout = layout)}
-            />
-            <p class="hint">
-              Drag a tool or the canvas in the desktop preview. Freeform dragging positions tools;
-              dragging in columns reorders them. Arrow keys move the selected freeform item. Device
-              previews show responsive tool placement. Party controls and floating panels are
-              omitted.
-            </p>
-          </div>
-          <aside class="controls" aria-label="View display settings">
-            <label
-              >Tool display<select
-                value={draft.layout.toolView}
-                onchange={(event) =>
-                  draft &&
-                  (draft.layout.toolView = event.currentTarget
-                    .value as WorkspaceLayout['toolView'])}
+              >Tool display<select bind:value={draft.layout.toolView}
                 ><option value="cutouts">Full cutout images</option><option value="grid"
-                  >Grid buttons</option
-                ><option value="tray">Toolbox windows</option></select
+                  >Square buttons</option
+                ></select
               ></label
             >
             <label
@@ -413,33 +553,22 @@
                       /></label
                     >{/if}{/each}
               </div>{/if}
-            <fieldset>
-              <legend>Tools and display order</legend
-              >{#each draft.layout.order as id}{@const supply = SUPPLIES.find(
-                  (supply) => supply.id === id
-                )}{#if supply}<div class="tool-choice">
-                    <label
-                      ><input
-                        type="checkbox"
-                        checked={draft.layout.supplies?.includes(id)}
-                        onchange={(event) => toggle(id, event.currentTarget.checked)}
-                      />{supply.name}</label
-                    ><button
-                      type="button"
-                      aria-label={`Move ${supply.name} earlier`}
-                      onclick={() => reorder(id, -1)}>↑</button
-                    ><button
-                      type="button"
-                      aria-label={`Move ${supply.name} later`}
-                      onclick={() => reorder(id, 1)}>↓</button
-                    >
-                  </div>{/if}{/each}
-            </fieldset>
-          </aside>
-        </div>
-      </section>
-    {/if}
-  </div>
+          </fieldset>
+          <fieldset disabled={saving}>
+            <legend>Tools on the desk</legend>
+            {#each SUPPLIES as supply}<label class="tool-switch"
+                ><span>{supply.name}</span><input
+                  type="checkbox"
+                  role="switch"
+                  checked={draft.layout.supplies?.includes(supply.id)}
+                  onchange={(event) => toggle(supply.id, event.currentTarget.checked)}
+                /><span class="switch-track" aria-hidden="true"></span></label
+              >{/each}
+          </fieldset>
+        </aside>
+      </div>
+    </section>
+  {/if}
 </div>
 
 <style>
@@ -450,15 +579,20 @@
     border-radius: 6px;
   }
   .manager-head,
-  .manager-actions,
-  .editor > header,
-  .card-actions,
-  .edit-actions {
+  .actions,
+  .edit-head,
+  .card-top {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
+  }
+  .manager-head,
+  .card-top {
+    justify-content: space-between;
+  }
+  .manager-head {
+    margin-bottom: 12px;
   }
   h2,
   h3,
@@ -469,13 +603,16 @@
     font-size: 24px;
   }
   h3 {
-    font-size: 17px;
-    margin-top: 8px;
+    font-size: 18px;
+    margin-top: 10px;
   }
   p,
   .hint {
     font-size: 13px;
     line-height: 1.5;
+  }
+  .status:empty {
+    display: none;
   }
   button,
   input,
@@ -488,6 +625,9 @@
     background: #30261b;
     font: inherit;
     font-size: 13px;
+  }
+  button:disabled {
+    opacity: 0.6;
   }
   button:focus-visible,
   input:focus-visible,
@@ -505,14 +645,17 @@
     width: 100%;
     min-width: 0;
   }
+  .gallery-actions {
+    margin-bottom: 16px;
+  }
   .view-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: 16px;
     align-content: start;
   }
   article {
-    padding: 10px;
+    padding: 12px;
     border: 1px solid #857458;
     border-radius: 5px;
     background: #30261b;
@@ -521,40 +664,67 @@
   article.active {
     border-color: #f5e64e;
   }
-  .card-actions,
-  .edit-actions {
-    justify-content: flex-start;
+  .preview-link {
+    position: relative;
+    display: block;
+    padding: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
   }
-  .manager-layout.editing {
-    display: grid;
-    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-    gap: 16px;
+  .preview-edit {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
   }
-  .editing .view-cards {
-    grid-template-columns: 1fr;
-    max-height: 70svh;
-    overflow: auto;
+  .select-all,
+  .card-top label {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    gap: 8px;
   }
-  .editor {
-    min-width: 0;
+  input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+    min-height: 20px;
+    accent-color: #ffee48;
   }
-  .editor > header {
-    align-items: end;
-    margin-bottom: 8px;
+  .card-top {
+    font-size: 12px;
+  }
+  .edit-head {
+    margin-bottom: 12px;
+  }
+  .edit-head > label {
+    width: min(100%, 300px);
   }
   .editor-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 230px;
-    gap: 12px;
-    margin-top: 12px;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 16px;
+    align-items: start;
   }
-  .editor-layout > div,
-  .controls {
+  .desk-preview {
+    position: sticky;
+    top: 12px;
     min-width: 0;
+  }
+  .desk-preview > label {
+    margin-bottom: 8px;
   }
   .controls {
     display: grid;
-    align-content: start;
+    gap: 12px;
+    min-width: 0;
+    max-height: calc(100svh - 210px);
+    overflow: auto;
+    padding: 2px 4px;
+  }
+  .display-fields {
+    display: grid;
     gap: 10px;
   }
   .numbers {
@@ -565,25 +735,54 @@
   fieldset {
     min-width: 0;
     border: 1px solid #857458;
-    padding: 6px;
+    padding: 10px;
   }
-  .tool-choice {
-    display: flex;
-    gap: 3px;
-    align-items: center;
-    margin-bottom: 4px;
-  }
-  .tool-choice label {
+  .tool-switch {
+    position: relative;
     display: flex;
     align-items: center;
-    flex: 1;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 44px;
+    cursor: pointer;
   }
-  .tool-choice input {
-    width: 18px;
-    min-height: 18px;
+  .tool-switch input {
+    position: absolute;
+    right: 0;
+    opacity: 0;
+    width: 44px;
+    height: 44px;
+    margin: 0;
   }
-  .tool-choice button {
-    min-width: 44px;
+  .switch-track {
+    flex: none;
+    width: 38px;
+    height: 22px;
+    border-radius: 14px;
+    background: #5e5344;
+    border: 1px solid #d8cbb3;
+    pointer-events: none;
+  }
+  .switch-track::after {
+    content: '';
+    display: block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin: 2px;
+    background: #fff3de;
+  }
+  .tool-switch input:checked + .switch-track {
+    background: #e7cd69;
+    border-color: #e7cd69;
+  }
+  .tool-switch input:checked + .switch-track::after {
+    transform: translateX(16px);
+    background: #241b0f;
+  }
+  .tool-switch input:focus-visible + .switch-track {
+    outline: 3px solid #ffee48;
+    outline-offset: 3px;
   }
   .confirm {
     border: 1px solid #e7b56e;
@@ -591,19 +790,22 @@
     margin: 8px 0;
     background: #49321e;
   }
-  @media (max-width: 1000px) {
-    .manager-layout.editing {
-      grid-template-columns: 1fr;
-    }
-    .editing .view-cards {
-      max-height: 240px;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    }
+  .rename {
+    margin: 8px 0;
   }
-  @media (max-width: 650px) {
+  @media (max-width: 800px) {
     .editor-layout {
       grid-template-columns: 1fr;
     }
+    .desk-preview {
+      position: static;
+    }
+    .controls {
+      max-height: none;
+      overflow: visible;
+    }
+  }
+  @media (max-width: 650px) {
     .manager {
       padding: 10px;
     }

@@ -29,7 +29,7 @@
   let blocked = $state(false);
   let accountReady = false;
   let queue = Promise.resolve();
-  let user: string | null = null;
+  let user = $state<string | null>(null);
   function key() {
     return user ? `${WORKSPACE_KEY}:${user}` : WORKSPACE_KEY;
   }
@@ -59,7 +59,11 @@
             const browser = localStorage.getItem(key());
             // Keep the active browser desk while bringing the account's view library into sync.
             workspace = browser
-              ? { ...decodeWorkspaces(browser, ids), views: saved.views, toolboxes: saved.toolboxes }
+              ? {
+                  ...decodeWorkspaces(browser, ids),
+                  views: saved.views,
+                  toolboxes: saved.toolboxes,
+                }
               : saved;
             localStorage.setItem(key(), JSON.stringify($state.snapshot(workspace)));
           }
@@ -69,7 +73,8 @@
       } catch {
         if (active) {
           ready = true;
-          note = 'Account views could not load. Edits can be kept on this browser.';
+          note =
+            'Account views could not load. Reopen this page after reconnecting to save changes.';
         }
       }
     })();
@@ -77,34 +82,33 @@
       active = false;
     };
   });
-  function update(views: SavedWorkspace[]) {
+  async function update(views: SavedWorkspace[]) {
     const before = $state.snapshot(workspace.views);
     const after = structuredClone($state.snapshot(views));
     const owner = user;
-    try {
-      workspace = mergeViewEdits(localState(), before, after);
-      localStorage.setItem(key(), JSON.stringify($state.snapshot(workspace)));
-      note = 'Views saved on this browser.';
-    } catch (error) {
-      note = error instanceof Error ? error.message : 'Browser save failed.';
-      return;
+    let next = mergeViewEdits(localState(), before, after);
+    if (owner) {
+      if (!accountReady)
+        throw new Error(
+          'Account views are unavailable. Your edits are still here. Reconnect and try again.'
+        );
+      const save = queue
+        .catch(() => {})
+        .then(async () => {
+          if (accountState.userId !== owner) throw new Error('Your signed-in account changed.');
+          const remote = await loadAccountWorkspaces();
+          const latest =
+            remote === null ? localState() : decodeWorkspaces(JSON.stringify(remote), ids);
+          const merged = mergeViewEdits(latest, before, after);
+          if (accountState.userId !== owner) throw new Error('Your signed-in account changed.');
+          await saveAccountWorkspaces(merged, owner);
+          next = { ...localState(), views: merged.views };
+        });
+      queue = save.catch(() => {});
+      await save;
     }
-    if (!accountReady || !owner) return;
-    queue = queue
-      .catch(() => {})
-      .then(async () => {
-        if (accountState.userId !== owner) return;
-        const remote = await loadAccountWorkspaces();
-        const latest =
-          remote === null ? localState() : decodeWorkspaces(JSON.stringify(remote), ids);
-        const merged = mergeViewEdits(latest, before, after);
-        if (accountState.userId !== owner) return;
-        await saveAccountWorkspaces(merged, owner);
-        if (accountState.userId === owner) note = 'Views saved to your account.';
-      })
-      .catch(() => {
-        note = 'Views saved on this browser. Account sync failed.';
-      });
+    localStorage.setItem(key(), JSON.stringify(next));
+    workspace = next;
   }
   function apply(view: SavedWorkspace) {
     try {
@@ -153,6 +157,7 @@
     toolboxes={workspace.toolboxes ?? []}
     current={workspace.current}
     selected={workspace.selected}
+    signedIn={!!user}
     onupdate={update}
     onapply={apply}
   />

@@ -51,7 +51,8 @@ function readLayout(value: unknown, ids: string[]): WorkspaceLayout {
   }
   if (source.toolView !== undefined) {
     if (!['cutouts', 'grid', 'tray'].includes(source.toolView)) throw new Error('Invalid tool view.');
-    layout.toolView = source.toolView;
+    // Retired toolbox-window views reopen as cutouts without discarding their layout.
+    layout.toolView = source.toolView === 'tray' ? 'cutouts' : source.toolView;
   }
   if (source.supplies !== undefined) {
     if (!Array.isArray(source.supplies) || source.supplies.length > 32) throw new Error('Invalid view supplies.');
