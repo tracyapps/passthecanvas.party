@@ -98,7 +98,7 @@ const turnStep = (seconds: number) => Math.min(MAX_TURN_SECONDS, Math.max(MIN_TU
  *   intro, the wrap-up and the passing cards.
  */
 export function planTiming(timing: PartyTiming, artists: number): TimingPlan {
-  const rounds = Math.max(1, artists) + 1;
+  const rounds = Math.max(1, artists) * Math.max(1, timing.laps ?? 1) + 1;
   const passes = (rounds - 1) * PASS_SECONDS;
   const extras = (timing.introMinutes + timing.wrapMinutes) * 60;
   let turnSeconds = timing.turnSeconds;

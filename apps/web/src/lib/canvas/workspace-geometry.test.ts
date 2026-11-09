@@ -113,3 +113,34 @@ it('does not mark an applied view modified because its visibility list follows t
   expect(layoutMatches(saved, { ...saved, supplies: ['pencil'] })).toBe(false);
   expect(layoutMatches(saved, { ...saved, order: ['round', 'pencil'] })).toBe(false);
 });
+
+import { keepFrameOnSurface } from './workspace-geometry';
+describe('keepFrameOnSurface', () => {
+  const surface = { width: 1024, height: 768, headerHeight: 80, toolbarHeight: 60 };
+  it('brings a frame dragged past the edges back on screen', () => {
+    const frame = keepFrameOnSurface({ x: 900, y: 700, width: 600, height: 400 }, surface);
+    expect(frame.x + frame.width).toBeLessThanOrEqual(1024);
+    expect(frame.y + frame.height).toBeLessThanOrEqual(768);
+    expect(frame.width).toBe(600);
+  });
+  it('shrinks a frame bigger than the screen, and keeps a usable minimum', () => {
+    const big = keepFrameOnSurface({ x: -50, y: 0, width: 3000, height: 2000 }, surface);
+    expect(big).toMatchObject({ x: 0, width: 1024 });
+    expect(big.y).toBe(80 + 60 + 8);
+    expect(big.y + big.height).toBe(768 - 8);
+    const tiny = keepFrameOnSurface({ x: 10, y: 200, width: 20, height: 20 }, surface);
+    expect(tiny).toMatchObject({ width: 260, height: 200 });
+  });
+  it('saved views can no longer put the frame off screen', () => {
+    const wide = { width: 1440, height: 900, headerHeight: 80, toolbarHeight: 60 };
+    const layout = { ...defaultLayout(['round', 'pencil']), surface: wide, frame: { x: 0.8, y: 0.8, width: 0.9, height: 0.9 } };
+    const { frame } = workspaceGeometry(layout, wide);
+    expect(frame.x + frame.width).toBeLessThanOrEqual(1440 + 0.01);
+    expect(frame.y + frame.height).toBeLessThanOrEqual(900 + 0.01);
+    // A tablet design (compact) keeps its frame inside the screen too.
+    const tablet = { ...defaultLayout(['round', 'pencil']), surface, frame: { x: 0, y: 0, width: 2, height: 2 } };
+    const fitted = workspaceGeometry(tablet, surface).frame;
+    expect(fitted.x + fitted.width).toBeLessThanOrEqual(1024);
+    expect(fitted.y + fitted.height).toBeLessThanOrEqual(768);
+  });
+});

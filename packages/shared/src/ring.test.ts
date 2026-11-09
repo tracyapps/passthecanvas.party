@@ -44,3 +44,13 @@ describe('the passing ring', () => {
     expect(creditLine('Maya', ['Maya'])).toBe('Maya');
   });
 });
+
+describe('laps', () => {
+  it('going around more than once still ends at home', async () => {
+    const { roundsFor: r, painterOf } = await import('./ring');
+    expect(r(3, 2)).toBe(7);
+    expect(r(1, 3)).toBe(3);
+    const ring = ['a', 'b', 'c'];
+    expect(painterOf(ring, 'b', r(3, 2))).toBe('b');
+  });
+});

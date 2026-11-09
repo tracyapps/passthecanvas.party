@@ -127,11 +127,12 @@
           <label class="field">Each turn<select bind:value={settings.timing.turnSeconds}>{#each [...TURN_LENGTHS, 240, 420, 600].sort((a, b) => a - b) as s (s)}<option value={s}>{turnLengthText(s)}</option>{/each}</select></label>
         {/if}
         <label class="field">Hellos & instructions<select bind:value={settings.timing.introMinutes}>{#each [0, 5, 10, 15, 20] as m (m)}<option value={m}>{m ? `${m} min` : 'None'}</option>{/each}</select></label>
+        <label class="field">Times around the circle<select value={settings.timing.laps ?? 1} onchange={(e) => (settings.timing.laps = Number(e.currentTarget.value))}>{#each [1, 2, 3, 4, 5] as n (n)}<option value={n}>{n === 1 ? 'Once (everyone paints every canvas once)' : `${n} times`}</option>{/each}</select></label>
         <label class="field">Wrap-up & reveal<select bind:value={settings.timing.wrapMinutes}>{#each [0, 5, 10, 15, 20, 30] as m (m)}<option value={m}>{m ? `${m} min` : 'None'}</option>{/each}</select></label>
       </div>
       <div class="preview" aria-live="polite">
         <label class="field">Preview with <output>{artists}</output> artists<input type="range" min="2" max={settings.maxGuests} bind:value={artists} /></label>
-        <p><strong>{plan.rounds} rounds</strong> (everyone paints every canvas, and each canvas goes back to its owner for the last layer) of <strong>{turnLengthText(plan.turnSeconds)}</strong>.</p>
+        <p><strong>{plan.rounds} rounds</strong> (everyone paints every canvas{(settings.timing.laps ?? 1) > 1 ? ` ${settings.timing.laps} times` : ''}, and each canvas goes back to its owner for the last layer) of <strong>{turnLengthText(plan.turnSeconds)}</strong>.</p>
         <p>About {durationText(plan.paintingSeconds)} of painting, {durationText(plan.totalSeconds)} in all.</p>
         {#if plan.tooShort}<p class="warn" role="alert">That's too short for {artists} artists: turns would be under 20 seconds. Make the party longer or plan for fewer artists.</p>{/if}
         <p class="hint">You can change this during the party; everyone's timer follows.</p>

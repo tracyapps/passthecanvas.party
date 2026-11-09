@@ -9,7 +9,7 @@
   import type { Toolbox } from './toolboxes';
   import { shownSupplies, findToolbox } from './toolboxes';
   import { SUPPLIES } from './supplies';
-  import { workspaceGeometry, canvasTop, compactSurface, layoutForSurface } from './workspace-geometry';
+  import { workspaceGeometry, canvasTop, compactSurface, keepFrameOnSurface, layoutForSurface } from './workspace-geometry';
   import WorkspacePreview from './WorkspacePreview.svelte';
 
   let {
@@ -263,7 +263,9 @@
               : 0,
         Math.min(1, value / (field === 'x' || field === 'width' ? surface.width : surface.height))
       );
-      draft.layout = { ...draft.layout, frame };
+      // Typed numbers can't push the frame past the screen's edges either.
+      const kept = keepFrameOnSurface({ x: (frame.x ?? 0) * surface.width, y: (frame.y ?? 0) * surface.height, width: frame.width * surface.width, height: frame.height * surface.height }, surface);
+      draft.layout = { ...draft.layout, frame: { x: kept.x / surface.width, y: kept.y / surface.height, width: kept.width / surface.width, height: kept.height / surface.height } };
     } else if (field === 'x' || field === 'y') {
       draft.layout = {
         ...draft.layout,

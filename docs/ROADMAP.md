@@ -103,6 +103,15 @@ The owner's priority: the painting should feel like real art supplies, and the m
 - [x] Per-tool pressure curves; airbrush spraying while held still *(mouse feel unchanged)*
 - [ ] Impasto feel for thick acrylic (light/shadow on ridges)
 
+### Party flow (owner requests, Nov 8 evening)
+
+- [x] Party opens in the room; host starts the game from the room bar
+- [x] Timer starts paused; host pauses and resumes it any time
+- [x] Times around the circle (laps), host-set, changeable mid-party
+- [x] Canvas window: move and resize on the live table; frames can't leave the screen (live table and view editor)
+- [x] iPad: dragging handles no longer moves the page
+- [ ] Bring account views to a linked device that isn't signed in (for now: sign in on that device)
+
 ### Launch-required party readiness
 
 See [PARTY-READINESS.md](PARTY-READINESS.md) for current controls, how linked devices work and what is verified. The Phase 1 gate remains open.
