@@ -141,6 +141,12 @@ export interface PartyState {
   turnSeconds: number;
   /** The host's timing: a set party length, or a set turn length. Changeable mid-party. */
   timing: PartyTiming;
+  /**
+   * The host has the timer paused. A game starts paused, so the host can
+   * answer questions and start the clock when everyone's ready. Painting
+   * still works while it's paused.
+   */
+  paused: boolean;
   /** When the first round started, and when the painting is planned to finish (ms since epoch). */
   startedAt: number | null;
   plannedEndAt: number | null;
@@ -195,6 +201,7 @@ export type ClientMessage =
   | { type: 'setRadio'; stationName: string; streamUrl: string; playing: boolean } // host only
   | { type: 'saveArchive' } // host only, at the reveal
   | { type: 'setTiming'; timing: PartyTiming } // host only; any time before the reveal
+  | { type: 'setPaused'; paused: boolean } // host only: stop or start the timer
   | { type: 'setPresence'; presence: Presence } // swap camera ↔ avatar, any time
   | { type: 'setLook'; look: Look };
 

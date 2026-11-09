@@ -51,7 +51,7 @@ describe('lobby settings', () => {
 });
 
 describe('party timing', () => {
-  const base = { partyMinutes: 60, turnSeconds: 180, introMinutes: 5, wrapMinutes: 10 };
+  const base = { partyMinutes: 60, turnSeconds: 180, introMinutes: 5, wrapMinutes: 10, laps: 1 };
   it('a set turn length makes the party as long as it takes', () => {
     const plan = planTiming({ ...base, mode: 'turn' }, 4);
     expect(plan.rounds).toBe(5); // 4 artists + the owners' last round

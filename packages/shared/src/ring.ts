@@ -37,9 +37,14 @@ export function shuffledRing(memberIds: string[], random: () => number = Math.ra
   return ring;
 }
 
-/** N artists → N + 1 rounds (the owner bookends their own canvas). Alone: one round. */
-export function roundsFor(artists: number): number {
-  return artists <= 1 ? Math.max(0, artists) : artists + 1;
+/**
+ * N artists → N + 1 rounds (the owner bookends their own canvas). Going
+ * around the circle more than once (`laps`): laps × N + 1, still ending with
+ * the owner. Alone: one round per lap.
+ */
+export function roundsFor(artists: number, laps = 1): number {
+  const times = Math.max(1, Math.floor(laps));
+  return artists <= 1 ? Math.max(0, artists) * times : artists * times + 1;
 }
 
 /** Whose canvas does this artist paint in this round? (round is 1-based) */

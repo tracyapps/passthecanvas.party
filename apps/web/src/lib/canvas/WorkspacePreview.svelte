@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { workspaceGeometry, designPoint, canvasTop, viewTransform } from './workspace-geometry';
+  import { workspaceGeometry, designPoint, keepFrameOnSurface, viewTransform } from './workspace-geometry';
   import { SUPPLIES, supplyAsset, supplyImage } from './supplies';
   import type { WorkspaceLayout, WorkspaceSurface } from './workspaces';
   let {
@@ -43,15 +43,12 @@
       ? { x: rect.x + dx, y: rect.y + dy }
       : designPoint(rect.x + dx, rect.y + dy, source, viewport);
     if (id === 'canvas') {
-      onchange?.({
-        ...layout,
-        frame: {
-          x: Math.max(0, point.x / source.width),
-          y: Math.max(canvasTop(source) / source.height, point.y / source.height),
-          width: layout.frame?.width ?? rect.width / source.width,
-          height: layout.frame?.height ?? rect.height / source.height,
-        },
-      });
+      onchange?.({ ...layout, frame: frameFraction({
+        x: point.x,
+        y: point.y,
+        width: (layout.frame?.width ?? rect.width / source.width) * source.width,
+        height: (layout.frame?.height ?? rect.height / source.height) * source.height,
+      }) });
     } else {
       onchange?.({
         ...layout,
@@ -67,6 +64,11 @@
         },
       });
     }
+  }
+  /** A frame in design pixels → the saved fractions, kept on the design's screen. */
+  function frameFraction(rect: { x: number; y: number; width: number; height: number }) {
+    const kept = keepFrameOnSurface(rect, source);
+    return { x: kept.x / source.width, y: kept.y / source.height, width: kept.width / source.width, height: kept.height / source.height };
   }
   function down(event: PointerEvent, id: string) {
     if (
@@ -97,16 +99,11 @@
       drag.id === 'canvas' || drag.id === 'resize' ? geometry.frame : geometry.boxes[drag.id];
     if (drag.id === 'resize') {
       const fitScale = viewTransform(source, viewport).scale;
-      const width = Math.max(260, drag.rect.width + (event.clientX - drag.x) * factor);
-      const height = Math.max(200, drag.rect.height + (event.clientY - drag.y) * factor);
-      onchange?.({
-        ...layout,
-        frame: {
-          ...layout.frame!,
-          width: Math.min(1, width / fitScale / source.width),
-          height: Math.min(1, height / fitScale / source.height),
-        },
-      });
+      const width = drag.rect.width + (event.clientX - drag.x) * factor;
+      const height = drag.rect.height + (event.clientY - drag.y) * factor;
+      const origin = designPoint(drag.rect.x, drag.rect.y, source, viewport);
+      // The frame can grow only up to the screen's edges, so its handle stays reachable.
+      onchange?.({ ...layout, frame: frameFraction({ x: origin.x, y: origin.y, width: width / fitScale, height: height / fitScale }) });
     } else
       move(
         drag.id,

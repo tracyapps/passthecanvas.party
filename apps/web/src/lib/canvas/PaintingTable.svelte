@@ -10,13 +10,13 @@
   import { onMount, tick, untrack, type Snippet } from 'svelte';
   import type { PaintedStroke, Stroke } from '@ptc/shared';
   import AccountControls from '../account/AccountControls.svelte';
-  import { accountState, loadAccountWorkspaces, saveAccountWorkspaces } from '../account/account.svelte';
+  import { accountState, loadAccountWorkspaces, openAccountSignIn, saveAccountWorkspaces } from '../account/account.svelte';
   import { SUPPLIES as supplies, supplyAsset as asset, supplyImage as imageForSupply } from './supplies';
   import PhotoSupply from './PhotoSupply.svelte';
   import StudioPanel from './StudioPanel.svelte';
   import WorkspaceManager from './WorkspaceManager.svelte';
   import WorkspaceDrawer from './WorkspaceDrawer.svelte';
-  import { workspaceGeometry } from './workspace-geometry';
+  import { workspaceGeometry, designPoint, viewTransform, keepFrameOnSurface, compactSurface } from './workspace-geometry';
   import PartyCanvas from './PartyCanvas.svelte';
   import { addPart, decodeMixes, expand, mixColor, recipeText, rememberMix, removeColor, removePart, totalParts, MAX_PARTS, SAVED_MIXES_KEY, type Recipe, type SavedMix } from './recipes';
   import { prefs, savePreferences } from '../prefs.svelte';
@@ -30,6 +30,8 @@
     TOOL_NAMES, MEDIUM_NAMES, type PaintingTool, type PaintingMedium, type PaintLoad } from './painting-selection';
   interface Props {
     canDraw: boolean;
+    /** Showing on screen (a party hides the table while you're in the room). */
+    active?: boolean;
     /** Your party member id; with `round` it names your turn's layer. */
     painterId: string;
     round: number;
@@ -56,7 +58,7 @@
     /** Cmd/Ctrl+S. */
     onsave?: () => void;
   }
-  let { canDraw, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '', saveStatus = '', saveState = 'clean', onsave }: Props = $props();
+  let { canDraw, active: onScreen = true, painterId, round, canvasKey, canvasSize, label, waitingNote, onstroke, partyBar, menu, utility, notice = '', saveStatus = '', saveState = 'clean', onsave }: Props = $props();
   let canvas = $state<PartyCanvas>();
   export function applyRemote(stroke: PaintedStroke) { canvas?.applyRemote(stroke); }
   export async function loadHistory(key: string, width: number, height: number, strokes: PaintedStroke[], complete: boolean, baseUrl: string | null, ownBase = false) { await canvas?.loadHistory(key, width, height, strokes, complete, baseUrl, ownBase); }
@@ -173,6 +175,70 @@
   let geometry = $derived(workspaceGeometry({ ...currentLayout(), surface: layoutSurface }, liveSurface, documentSize.width / documentSize.height));
   let canvasBox = $derived(geometry.frame);
   let frameRect = $derived(geometry.frame);
+
+  // ---------- moving and resizing the canvas window ----------
+  // Drag an edge or the corner to resize it, or the grip to move it (arrow
+  // keys work on each). It never goes past the screen's edges. On phones and
+  // narrow tablets the canvas flows with the page, so only its size changes.
+  type Edge = 'top' | 'right' | 'bottom' | 'left' | 'corner' | 'move';
+  const EDGES: Edge[] = ['top', 'right', 'bottom', 'left'];
+  let edgeDrag: { edge: Edge; x: number; y: number; rect: { x: number; y: number; width: number; height: number }; pointer: number } | null = $state(null);
+  function moveEdge(edge: Edge, rect: { x: number; y: number; width: number; height: number }, dx: number, dy: number) {
+    const next = { ...rect };
+    if (edge === 'move') { next.x += dx; next.y += dy; }
+    if (edge === 'left') { next.x += dx; next.width -= dx; }
+    if (edge === 'right' || edge === 'corner') next.width += dx;
+    if (edge === 'top') { next.y += dy; next.height -= dy; }
+    if (edge === 'bottom' || edge === 'corner') next.height += dy;
+    if (compact) {
+      // The flowing layout: this screen's own size becomes the design, so the
+      // new width and height apply here (see workspaceGeometry's compact branch).
+      if (!layoutSurface || !compactSurface(layoutSurface)) layoutSurface = { ...liveSurface };
+      const surface = layoutSurface;
+      frameOverride = { x: 0, y: 0, width: Math.max(120, Math.min(surface.width - 24, next.width)), height: Math.max(120, next.height) };
+      return;
+    }
+    // Keep the far edge still while dragging the near one, then keep it on screen.
+    // A little space from the screen's edges keeps the handles (44 px on touch) fully reachable.
+    const kept = keepFrameOnSurface(next, liveSurface, undefined, 16);
+    if (edge === 'left' && kept.width !== next.width) kept.x = rect.x + rect.width - kept.width;
+    if (edge === 'top' && kept.height !== next.height) kept.y = rect.y + rect.height - kept.height;
+    if (layoutSurface && dock === 'surround') {
+      const point = designPoint(kept.x, kept.y, layoutSurface, liveSurface);
+      const fit = viewTransform(layoutSurface, liveSurface);
+      frameOverride = { ...point, width: kept.width / fit.scale, height: kept.height / fit.scale };
+    } else if (layoutSurface) {
+      frameOverride = {
+        x: kept.x / liveSurface.width * layoutSurface.width,
+        y: kept.y / liveSurface.height * layoutSurface.height,
+        width: kept.width / liveSurface.width * layoutSurface.width,
+        height: kept.height / liveSurface.height * layoutSurface.height
+      };
+    } else frameOverride = kept;
+  }
+  // On a wide screen the table fills the window exactly: the page itself
+  // never scrolls. Phones and narrow tablets scroll down to the supplies.
+  $effect(() => { document.documentElement.classList.toggle('painting-fixed', onScreen && !compact); });
+  function startEdge(event: PointerEvent, edge: Edge) {
+    if (event.button !== 0) return;
+    event.preventDefault(); // no page scroll or text selection on touch
+    edgeDrag = { edge, x: event.clientX, y: event.clientY, rect: { ...frameRect }, pointer: event.pointerId };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  }
+  function dragEdge(event: PointerEvent) {
+    if (edgeDrag && event.pointerId === edgeDrag.pointer) moveEdge(edgeDrag.edge, edgeDrag.rect, event.clientX - edgeDrag.x, event.clientY - edgeDrag.y);
+  }
+  function endEdge() {
+    if (edgeDrag) announcement = edgeDrag.edge === 'move' ? 'Canvas window moved.' : `Canvas window ${Math.round(frameRect.width)} by ${Math.round(frameRect.height)} pixels.`;
+    edgeDrag = null;
+  }
+  function edgeKey(event: KeyboardEvent, edge: Edge) {
+    const steps: Record<string, [number, number]> = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
+    const step = steps[event.key];
+    if (!step) return;
+    event.preventDefault();
+    moveEdge(edge, frameRect, step[0], step[1]);
+  }
   onMount(() => {
     const measureBoard = () => {
       // Switching to the room hides this desk. Keep its last real dimensions.
@@ -291,8 +357,8 @@
   $effect(() => {
     const value = workspaceState();
     if (!cloudEnabled || !accountState.userId || accountSyncing || !storageReady || JSON.stringify(value) === untrack(() => layoutSavedJson)) return;
-    // Wait for a pause before saving the table to your account.
-    const timer = setTimeout(() => void saveCloud(value), 2000);
+    // Wait for a pause (and never mid-drag) before saving the table to your account.
+    const timer = setTimeout(() => { if (!edgeDrag) void saveCloud(value); }, 2000);
     return () => clearTimeout(timer);
   });
   function resetView() {
@@ -348,13 +414,19 @@
     if (meta) meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
     const onCanvas = (target: EventTarget | null) => target instanceof Element && !!target.closest('.viewport');
     const gesture = (event: Event) => event.preventDefault(); // Safari's page pinch
-    const touch = (event: TouchEvent) => { if (event.touches.length > 1 && !onCanvas(event.target)) event.preventDefault(); };
+    // A one-finger drag on a handle (canvas edges, grip, panel bars, supplies)
+    // moves that thing, never the page underneath.
+    const onHandle = (target: EventTarget | null) => target instanceof Element && !!target.closest('.edge, .corner, .grip, .handle, [data-drag]');
+    const touch = (event: TouchEvent) => { if ((event.touches.length > 1 && !onCanvas(event.target)) || (event.touches.length === 1 && onHandle(event.target))) event.preventDefault(); };
+    // No rubber-band bounce or pull-to-refresh while painting.
+    document.documentElement.classList.add('painting-table');
     const wheel = (event: WheelEvent) => { if (event.ctrlKey && !onCanvas(event.target)) event.preventDefault(); }; // trackpad pinch
     document.addEventListener('gesturestart', gesture);
     document.addEventListener('gesturechange', gesture);
     document.addEventListener('touchmove', touch, { passive: false });
     window.addEventListener('wheel', wheel, { passive: false });
     return () => {
+      document.documentElement.classList.remove('painting-table', 'painting-fixed');
       if (meta && before !== undefined) meta.content = before;
       document.removeEventListener('gesturestart', gesture);
       document.removeEventListener('gesturechange', gesture);
@@ -538,6 +610,11 @@
       <button type="button" popovertarget="view-options">View · {savedViews.find(view => view.id === selectedView)?.name ?? 'Current arrangement'}{selectedView && !activeViewValue ? ' · modified' : ''}</button>
       <div id="view-options" popover aria-label="Saved views">
         {#each savedViews as view (view.id)}<button type="button" aria-current={activeViewValue === view.id ? 'true' : undefined} onclick={() => { loadView(view.id); document.getElementById('view-options')?.hidePopover(); }}>{view.name}</button>{/each}
+        {#if !accountState.userId}
+          <!-- A linked device (an iPad holding your canvas) isn't signed in: linking never shares your account. -->
+          <p class="views-note">Views here are on this device only. Sign in on this device to use the views saved to your account.</p>
+          {#if accountState.configured}<button type="button" disabled={!accountState.ready} onclick={() => { document.getElementById('view-options')?.hidePopover(); void openAccountSignIn(); }}>Sign in for your saved views</button>{/if}
+        {/if}
         <button type="button" onclick={openViews}>Manage saved views…</button>
         <button type="button" onclick={() => { resetView(); document.getElementById('view-options')?.hidePopover(); }}>Reset studio layout</button>
       </div>
@@ -559,6 +636,17 @@
   <section class="canvas-frame" id="shared-canvas" aria-label="Shared canvas"
     style:--toolbar-space={`${toolbarHeight + 28}px`} style:--surface={`url('${asset('surface', 'webp')}')`} style:--frame-x={`${frameRect.x}px`} style:--frame-y={`${frameRect.y}px`} style:--frame-width={`${frameRect.width}px`} style:--frame-height={`${frameRect.height}px`} style:--canvas-ratio={`${documentSize.width} / ${documentSize.height}`} style:--canvas-aspect={documentSize.width / documentSize.height}>
     <PartyCanvas bind:this={canvas} {selection} {size} intensity={intensity / 100} {canDraw} {painterId} {round} {canvasKey} {label} {wheelZoom} documentWidth={documentSize.width} documentHeight={documentSize.height} baseWidth={canvasBox.width} bind:rotation fitVersion={viewReset} ontoolbarheight={(height) => { if (height > 0) toolbarHeight = height; }} {onstroke} />
+      <!-- Resize from any edge or the corner; move with the grip. Arrow keys work on each. -->
+    {#if !compact}
+      {#each EDGES as edge (edge)}
+        <button type="button" class={`edge edge-${edge}`} aria-label={`Resize the canvas window from its ${edge} edge. Drag or use arrow keys.`}
+          onpointerdown={(event) => startEdge(event, edge)} onpointermove={dragEdge} onpointerup={endEdge} onpointercancel={endEdge} onkeydown={(event) => edgeKey(event, edge)}></button>
+      {/each}
+      <button type="button" class="grip" aria-label="Move the canvas window. Drag or use arrow keys."
+        onpointerdown={(event) => startEdge(event, 'move')} onpointermove={dragEdge} onpointerup={endEdge} onpointercancel={endEdge} onkeydown={(event) => edgeKey(event, 'move')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" /></svg></button>
+    {/if}
+    <button type="button" class="corner" aria-label="Resize the canvas window. Drag or use arrow keys."
+      onpointerdown={(event) => startEdge(event, 'corner')} onpointermove={dragEdge} onpointerup={endEdge} onpointercancel={endEdge} onkeydown={(event) => edgeKey(event, 'corner')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m6 20 14-14M12 20l8-8M18 20l2-2" /></svg></button>
   </section>
 
   <div class="panels">
@@ -673,6 +761,25 @@
   .primary { border-color: #e6df54; font-weight: 700; }
   button:disabled { opacity: 0.5; }
   .canvas-frame { position: absolute; left: var(--frame-x); top: var(--frame-y); width: var(--frame-width); height: var(--frame-height); background: transparent; z-index: 5; }
+  /* Canvas window handles: thin edges, a resize corner and a move grip. Bigger on touch screens. */
+  .edge { position: absolute; z-index: 3; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; touch-action: none; }
+  .edge-top, .edge-bottom { left: 24px; right: 24px; height: 16px; cursor: ns-resize; }
+  .edge-left, .edge-right { top: 24px; bottom: 24px; width: 16px; cursor: ew-resize; }
+  .edge-top { top: -8px; } .edge-bottom { bottom: -8px; } .edge-left { left: -8px; } .edge-right { right: -8px; }
+  .edge::after { content: ''; position: absolute; inset: 6px; border-radius: 2px; background: #f1ec35; opacity: 0; transition: opacity .15s; }
+  .edge:hover::after, .edge:focus-visible::after { opacity: .9; }
+  .edge:focus-visible { outline: none; }
+  .corner, .grip { position: absolute; bottom: -8px; z-index: 4; display: grid; place-items: center; width: 32px; height: 32px; min-height: 32px; padding: 0; border: 1px solid #9d8c67; border-radius: 4px; color: #f3ead9; background: #1c150fe8; touch-action: none; }
+  .corner { right: -8px; cursor: nwse-resize; }
+  .grip { left: -8px; cursor: move; }
+  .corner:focus-visible, .grip:focus-visible { outline: 3px solid #f1ec35; outline-offset: 2px; }
+  @media (pointer: coarse) {
+    .edge-top, .edge-bottom { height: 28px; } .edge-left, .edge-right { width: 28px; }
+    .edge-top { top: -14px; } .edge-bottom { bottom: -14px; } .edge-left { left: -14px; } .edge-right { right: -14px; }
+    .edge::after { inset: 12px; opacity: .45; }
+    .corner, .grip { width: 44px; height: 44px; min-height: 44px; bottom: -14px; }
+    .corner { right: -14px; } .grip { left: -14px; }
+  }
   .supply { position: absolute; pointer-events: none; z-index: 2; }
   .workbench.pointing { cursor: pointer; }
   .supply.chosen { z-index: 4; }
@@ -759,6 +866,7 @@
   .view-control { position: relative; font-size: 13px; }
   .view-control > button { padding: 10px; min-height: 44px; border: 1px solid #9d8c67; border-radius: 4px; cursor: pointer; }
   .view-control > div { position: fixed; inset: calc(var(--header-height) + 4px) auto auto 12px; margin: 0; width: min(320px, calc(100vw - 24px)); max-height: min(60svh, calc(100svh - var(--header-height) - 16px)); overflow: auto; padding: 6px; color: #fff5e4; background: #21180f; border: 1px solid #9d8c67; }
+  .views-note { margin: 6px 4px; font-size: 13px; line-height: 1.4; color: #e7d9bd; }
   .view-control > div:popover-open { display: grid; gap: 4px; }
   .view-control button { text-align: left; }
   .wheel-option input { width: 18px; height: 18px; accent-color: #eee935; }

@@ -181,7 +181,7 @@ describe('linked devices', () => {
     expect(laptop.last('devices')!.devices.filter(d => d.call)).toHaveLength(1);
     laptop.say({ type: 'setDeviceScreen', deviceId: secondId, screen: 'room' });
     expect(second.last('devices')!.devices.find(d => d.id === secondId)).toMatchObject({ call: true, canvas: true, screen: 'room' });
-    expect(laptop.last('devices')!.devices.find(d => d.id !== secondId)?.screen).toBe('canvas');
+    expect(laptop.last('devices')!.devices.find(d => d.id !== secondId)?.screen).toBe('room') // a party opens in the room;
   });
 
   it('flushes the previous canvas before moving painting, and rejects stale acknowledgements', () => {
@@ -226,10 +226,10 @@ describe('linked devices', () => {
     const before = laptop.last('devices')!.devices;
     for (const deviceId of [otherArtist, 'missing', 42, null]) {
       laptop.say({ type: 'takeDuty', duty: 'call', deviceId });
-      laptop.say({ type: 'setDeviceScreen', screen: 'room', deviceId });
+      laptop.say({ type: 'setDeviceScreen', screen: 'canvas', deviceId });
     }
     expect(laptop.last('devices')!.devices).toEqual(before);
-    expect(bob.last('devices')!.devices[0]).toMatchObject({ canvas: true, call: true, screen: 'canvas' });
+    expect(bob.last('devices')!.devices[0]).toMatchObject({ canvas: true, call: true, screen: 'room' });
     const secondId = second.last('devices')!.youDeviceId;
     second.close();
     laptop.say({ type: 'takeDuty', duty: 'call', deviceId: secondId });
@@ -265,5 +265,71 @@ describe('linked devices', () => {
     const again = connect(party);
     again.say({ type: 'rejoin', memberId: welcome.youId, deviceId: ipadId, key: welcome.session.key });
     expect(again.last('rejected')).toBeDefined();
+  });
+});
+
+describe('host timer and laps', () => {
+  it('a game starts with the timer paused; the host starts and pauses it', () => {
+    const party = newParty();
+    const ann = joinAs(party, 'Ann');
+    const bob = joinAs(party, 'Bob');
+    ann.say({ type: 'start' });
+    let state = bob.last('state')!.state;
+    expect(state.phase).toBe('painting');
+    expect(state.paused).toBe(true);
+    const left = state.secondsLeft;
+    vi.advanceTimersByTime(5000);
+    expect(bob.last('state')!.state.secondsLeft).toBe(left);
+    bob.say({ type: 'setPaused', paused: false }); // not the host
+    expect(bob.last('state')!.state.paused).toBe(true);
+    ann.say({ type: 'setPaused', paused: false });
+    vi.advanceTimersByTime(3000);
+    expect(bob.last('timer')!.secondsLeft).toBe(left - 3);
+    ann.say({ type: 'setPaused', paused: true });
+    vi.advanceTimersByTime(3000);
+    expect(bob.last('timer')!.secondsLeft).toBe(left - 3);
+    state = bob.last('state')!.state;
+    expect(state.paused).toBe(true);
+  });
+
+  it('a pause moves the planned end on', () => {
+    const party = newParty();
+    const ann = joinAs(party, 'Ann');
+    joinAs(party, 'Bob');
+    ann.say({ type: 'start' });
+    ann.say({ type: 'setPaused', paused: false });
+    const end = ann.last('state')!.state.plannedEndAt!;
+    ann.say({ type: 'setPaused', paused: true });
+    vi.advanceTimersByTime(60_000);
+    ann.say({ type: 'setPaused', paused: false });
+    expect(ann.last('state')!.state.plannedEndAt).toBe(end + 60_000);
+  });
+
+  it('laps: two artists going around twice paint 5 rounds; changeable mid-party', () => {
+    const party = newParty();
+    const ann = joinAs(party, 'Ann');
+    joinAs(party, 'Bob');
+    const timing = ann.last('state')!.state.timing;
+    ann.say({ type: 'setTiming', timing: { ...timing, laps: 2 } });
+    ann.say({ type: 'start' });
+    let state = ann.last('state')!.state;
+    expect(state.totalRounds).toBe(5);
+    expect(state.pieces[0]!.turns.map((t) => t.painterId)).toEqual([state.order[0], state.order[1], state.order[0], state.order[1], state.order[0]]);
+    ann.say({ type: 'setTiming', timing: { ...state.timing, laps: 3 } });
+    state = ann.last('state')!.state;
+    expect(state.totalRounds).toBe(7);
+    expect(state.pieces[1]!.turns.at(-1)!.painterId).toBe(state.pieces[1]!.ownerId); // still ends at home
+    ann.say({ type: 'setTiming', timing: { ...state.timing, laps: 1 } });
+    expect(ann.last('state')!.state.totalRounds).toBe(3);
+  });
+
+  it('older plans without laps go around once', () => {
+    const party = newParty();
+    const ann = joinAs(party, 'Ann');
+    joinAs(party, 'Bob');
+    const { laps: _laps, ...old } = ann.last('state')!.state.timing;
+    ann.say({ type: 'setTiming', timing: old });
+    ann.say({ type: 'start' });
+    expect(ann.last('state')!.state.totalRounds).toBe(3);
   });
 });

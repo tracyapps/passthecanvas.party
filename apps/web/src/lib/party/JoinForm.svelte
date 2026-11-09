@@ -15,7 +15,17 @@
   let { partyId, onjoin, notice = null }: { partyId: string; onjoin: (name: string, presence: Presence, look: Look) => void; notice?: string | null } = $props();
 
   let name = $state('');
-  let presence = $state<Presence>('camera');
+  // Camera or avatar: remembered in this browser, so choosing your avatar once
+  // sticks. (Picking a look below doesn't change it; that's what shows when the camera is off.)
+  const PRESENCE_KEY = 'ptc-presence';
+  function rememberedPresence(): Presence {
+    try {
+      return localStorage.getItem(PRESENCE_KEY) === 'avatar' ? 'avatar' : 'camera';
+    } catch {
+      return 'camera';
+    }
+  }
+  let presence = $state<Presence>(rememberedPresence());
   let color = $state<InitialsColor>('teal');
   let choice = $state<string>('initials'); // an avatar id, 'photo' or 'initials'
   let busy = $state(false);
@@ -50,6 +60,11 @@
     } catch {
       image = null; // the initials stand in
     }
+    try {
+      localStorage.setItem(PRESENCE_KEY, presence);
+    } catch {
+      // No storage: it just isn't remembered.
+    }
     onjoin(name.trim(), presence, { initialsColor: color, image });
   }
 </script>
@@ -64,12 +79,13 @@
   </label>
   <fieldset class="row">
     <legend>How should you show up?</legend>
-    <label><input type="radio" bind:group={presence} value="camera" /> Camera</label>
-    <label><input type="radio" bind:group={presence} value="avatar" /> Avatar</label>
+    <label><input type="radio" bind:group={presence} value="camera" aria-describedby="presence-hint" /> Camera</label>
+    <label><input type="radio" bind:group={presence} value="avatar" aria-describedby="presence-hint" /> Avatar</label>
+    <p class="hint" id="presence-hint">{presence === 'camera' ? 'Your camera and mic turn on when you join.' : 'Your camera and mic stay off. Your avatar sits in your seat.'} You can switch any time.</p>
   </fieldset>
 
   <fieldset class="looks">
-    <legend>When your camera is off</legend>
+    <legend>Your avatar (shown whenever your camera is off)</legend>
     <div class="options">
       {#each studio.avatars as avatar (avatar.id)}
         <label class="look"><input type="radio" name="look" value={avatar.id} bind:group={choice} /><span class="pic"><CutoutPreview design={avatar.design} /></span><span class="cap">{avatar.name}</span></label>
@@ -120,6 +136,7 @@
   fieldset { border: 0; padding: 0; margin: 0; }
   legend { font-weight: 700; margin-bottom: 0.5rem; }
   .row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .row .hint { flex-basis: 100%; }
   .row label { display: flex; align-items: center; gap: 0.5rem; min-height: $tap-min; }
   .row input { width: 1.25rem; height: 1.25rem; accent-color: $cadmium-orange; }
   .options { display: flex; flex-wrap: wrap; gap: 0.5rem; }

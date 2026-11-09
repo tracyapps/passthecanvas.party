@@ -38,15 +38,19 @@
       <select value={t.introMinutes} onchange={(e) => send({ introMinutes: Number(e.currentTarget.value) })}>{#each [0, 5, 10, 15, 20] as m (m)}<option value={m}>{m ? `${m} min` : 'None'}</option>{/each}</select>
     </label>
   {/if}
+  <!-- Small parties can pass the canvases around more than once. -->
+  <label>Times around the circle
+    <select value={t.laps ?? 1} onchange={(e) => send({ laps: Number(e.currentTarget.value) })}>{#each [1, 2, 3, 4, 5] as n (n)}<option value={n}>{n === 1 ? 'Once (everyone paints every canvas once)' : `${n} times`}</option>{/each}</select>
+  </label>
   <label>Wrap-up & reveal
     <select value={t.wrapMinutes} onchange={(e) => send({ wrapMinutes: Number(e.currentTarget.value) })}>{#each [0, 5, 10, 15, 20, 30] as m (m)}<option value={m}>{m ? `${m} min` : 'None'}</option>{/each}</select>
   </label>
   <p class="hint" aria-live="polite">
     {#if game.phase === 'lobby'}
-      {artists} {artists === 1 ? 'artist' : 'artists'} → {plan.rounds} rounds of {turnLengthText(plan.turnSeconds)}, about {durationText(plan.totalSeconds)} in all.
+      {artists} {artists === 1 ? 'artist' : 'artists'}{(t.laps ?? 1) > 1 ? `, ${t.laps} times around` : ''} → {plan.rounds} rounds of {turnLengthText(plan.turnSeconds)}, about {durationText(plan.totalSeconds)} in all.
       {#if plan.tooShort}<strong>Too short for everyone: turns are at the 20-second minimum.</strong>{/if}
     {:else}
-      Turns are {turnLengthText(game.turnSeconds)} now{game.plannedEndAt ? `; painting wraps up around ${new Date(game.plannedEndAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : ''}. Changes apply to everyone right away.
+      Round {game.round} of {game.totalRounds}. Turns are {turnLengthText(game.turnSeconds)} now{game.plannedEndAt ? `; painting wraps up around ${new Date(game.plannedEndAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : ''}. Changes apply to everyone right away.
     {/if}
   </p>
 </fieldset>

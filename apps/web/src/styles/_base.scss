@@ -78,3 +78,16 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+// The painting table (see PaintingTable.svelte): no rubber-band bounce or
+// pull-to-refresh, and on wide screens the page doesn't scroll at all, so
+// dragging the canvas window or a panel on an iPad never moves the page.
+html.painting-table,
+html.painting-table body {
+  overscroll-behavior: none;
+}
+html.painting-fixed,
+html.painting-fixed body {
+  height: 100%;
+  overflow: hidden;
+}

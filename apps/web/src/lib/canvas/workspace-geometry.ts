@@ -11,6 +11,32 @@ export function canvasTop(surface: WorkspaceSurface): number {
   return surface.headerHeight + surface.toolbarHeight + 8;
 }
 
+/**
+ * Keep a canvas frame (pixels) on its surface: at least a usable size, never
+ * wider or taller than the room below the controls, and never past an edge.
+ * A frame that was saved too big, or dragged off screen, comes back.
+ */
+export function keepFrameOnSurface(
+  rect: SupplyRect,
+  surface: WorkspaceSurface,
+  min = { width: 260, height: 200 },
+  /** Space to keep clear at the sides and bottom (so edge handles stay reachable). */
+  margin = 0
+): SupplyRect {
+  const top = canvasTop(surface);
+  const bottom = Math.max(8, margin);
+  const room = Math.max(1, surface.height - top - bottom);
+  const across = Math.max(1, surface.width - margin * 2);
+  const width = Math.min(across, Math.max(Math.min(min.width, across), rect.width));
+  const height = Math.min(room, Math.max(Math.min(min.height, room), rect.height));
+  return {
+    x: Math.min(Math.max(margin, rect.x), margin + across - width),
+    y: Math.min(Math.max(top, rect.y), top + room - height),
+    width,
+    height,
+  };
+}
+
 export function viewTransform(source: WorkspaceSurface, target: WorkspaceSurface) {
   const scale = Math.min(
     target.width / source.width,
@@ -106,12 +132,12 @@ export function workspaceGeometry(
     height: frameWidth / aspect,
   };
   if (layout.frame)
-    frame = {
+    frame = keepFrameOnSurface({
       x: (layout.frame.x ?? frame.x / width) * width,
       y: (layout.frame.y ?? frame.y / height) * height,
       width: layout.frame.width * width,
       height: layout.frame.height * height,
-    };
+    }, surface);
   if (compact) {
     // Only a design made for a compact screen controls its flowing canvas size.
     // Desktop designs retain the comfortable automatic phone/tablet fallback.
@@ -123,7 +149,7 @@ export function workspaceGeometry(
       x: (width - w) / 2,
       y: headerHeight + toolbarHeight + 28,
       width: w,
-      height: sized ? Math.max(120, Math.min(height, layout.frame!.height * height)) : w / aspect,
+      height: sized ? Math.max(120, Math.min(height - (headerHeight + toolbarHeight + 28) - 8, layout.frame!.height * height)) : w / aspect,
     };
   }
   const boxes: Record<string, SupplyRect> = {};

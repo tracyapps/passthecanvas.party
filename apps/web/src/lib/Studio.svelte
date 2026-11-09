@@ -30,7 +30,9 @@
 
   let { party, onleave }: { party: PartyConnection; onleave?: () => void } = $props();
 
-  let view = $state<'paint' | 'room' | 'gallery'>('paint');
+  // A party opens in the room: people arrive, find a seat and say hello. The
+  // canvas comes out when the host starts the game.
+  let view = $state<'paint' | 'room' | 'gallery'>('room');
   let table: PaintingTable | undefined = $state();
   let guestsOpen = $state(innerWidth > 1100);
   let revealOpen = $state(true);
@@ -118,11 +120,21 @@
   $effect(() => {
     const device = party.devices.find(device => device.id === party.youDeviceId);
     if (!device) return;
-    const screen = device.screen ?? (holdsCall && !holdsCanvas ? 'room' : 'canvas');
+    // A painting-only device (an iPad holding just the canvas) opens on the canvas; everything else opens in the room.
+    const screen = device.screen ?? (holdsCanvas && !holdsCall ? 'canvas' : 'room');
     const choice = `${device.id}/${screen}`;
     if (lastScreen === choice) return;
     lastScreen = choice;
     view = screen === 'room' ? 'room' : 'paint';
+  });
+  // When the game starts, whoever holds the canvas goes to their table.
+  let lastPhase: string | null = null;
+  $effect(() => {
+    const phase = game?.phase ?? null;
+    if (phase === lastPhase) return;
+    const started = lastPhase === 'lobby' && phase === 'painting';
+    lastPhase = phase;
+    if (started && holdsCanvas && view === 'room') showScreen('canvas');
   });
   function showScreen(screen: DeviceScreen) {
     view = screen === 'room' ? 'room' : 'paint';
@@ -203,7 +215,8 @@
 
   let waitingCount = $derived(party.stillPainting.length);
   let timerLabel = $derived(
-    game?.overtime ? (party.isPainting ? "Time's up · finish & pass" : "Time's up")
+    game?.paused && !game.overtime ? 'Paused'
+      : game?.overtime ? (party.isPainting ? "Time's up · finish & pass" : "Time's up")
       : party.isPainting ? 'Painting' : party.myCanvasId ? 'Passed' : 'Watching'
   );
   let canvasLabel = $derived(
@@ -317,6 +330,13 @@
     void accountRequest('community/galleries', 'POST', { archiveId: id, title: title.slice(0, 80) }).catch(() => {});
   });
 
+  /** Has the clock run at all yet this game? (Round 1, untouched.) */
+  let timerNeverRan = $derived(!!game && game.round === 1 && game.secondsLeft === game.turnSeconds);
+  function toggleTimer() {
+    if (!game) return;
+    party.send({ type: 'setPaused', paused: !game.paused });
+  }
+
   /** Camera ↔ avatar, any time: tell the party, then the call. */
   function swapPresence() {
     const next = me?.presence === 'camera' ? 'avatar' : 'camera';
@@ -369,10 +389,30 @@
     {#await import('./room/RoomView.svelte')}
       <p class="loading">Opening the room…</p>
     {:then { default: RoomView }}
-      {#if mySeat}
-        <div class="viewpoint" role="group" aria-label="Where you look from">
-          <button type="button" aria-pressed={fromSeat} onclick={() => (fromSeat = true)}>From your seat</button>
-          <button type="button" aria-pressed={!fromSeat} onclick={() => (fromSeat = false)}>From the middle of the room</button>
+      <!-- The room is where a party starts: find a seat, say hello, and the host starts the game from here. -->
+      {#if game}
+        <div class="room-bar">
+          <p class="tape">{game.partyId}</p>
+          {#if game.phase === 'lobby'}
+            <p class="note" role="status">{me?.spotId ? `You're seated. ${isHost ? 'Start the game when everyone is here.' : 'The host starts the game when everyone is here.'}` : 'Pick a seat: click Sit here in the room, or use the Jump to list.'} {game.order.length} {game.order.length === 1 ? 'artist' : 'artists'}{game.timing.laps > 1 ? `, ${game.timing.laps} times around` : ''}.</p>
+            {#if isHost}
+              <button type="button" onclick={() => { view = 'paint'; setupOpen = true; }}>Party setup</button>
+              <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
+            {/if}
+          {:else if game.phase === 'painting' || game.phase === 'passing'}
+            <p class="round">Round <strong>{game.round}</strong> of {game.totalRounds}</p>
+            <TimerDial secondsLeft={game.secondsLeft} totalSeconds={game.turnSeconds} label={timerLabel} />
+            {#if isHost && game.phase === 'painting' && !game.overtime}
+              <button type="button" class:primary={game.paused} onclick={toggleTimer}>{game.paused ? (timerNeverRan ? 'Start the timer' : 'Resume the timer') : 'Pause the timer'}</button>
+            {/if}
+            {#if holdsCanvas && party.myCanvasId}<button type="button" onclick={() => showScreen('canvas')}>Go to your canvas</button>{/if}
+          {/if}
+          {#if mySeat}
+            <div class="viewpoint" role="group" aria-label="Where you look from">
+              <button type="button" aria-pressed={fromSeat} onclick={() => (fromSeat = true)}>From your seat</button>
+              <button type="button" aria-pressed={!fromSeat} onclick={() => (fromSeat = false)}>From the middle of the room</button>
+            </div>
+          {/if}
         </div>
       {/if}
       <!-- A new viewpoint is a new panorama: rebuild the viewer for it. -->
@@ -398,6 +438,7 @@
       <PaintingTable
         bind:this={table}
         canDraw={party.isPainting && holdsCanvas}
+        active={view === 'paint'}
         painterId={party.youId}
         round={game.round}
         {canvasKey}
@@ -419,13 +460,19 @@
                 <button type="button" aria-pressed={setupOpen} onclick={() => (setupOpen = !setupOpen)}>Party setup</button>
                 <button type="button" class="primary" onclick={() => party.send({ type: 'start' })}>Start the game</button>
               {:else}
-                <p class="note">Turns: {turnLengthText(game.turnSeconds)} · {roundsFor(game.order.length)} rounds{game.timing.mode === 'party' ? ` · a ${durationText(game.timing.partyMinutes * 60)} party` : ''} · waiting for the host</p>
+                <p class="note">Turns: {turnLengthText(game.turnSeconds)} · {roundsFor(game.order.length, game.timing.laps)} rounds{game.timing.mode === 'party' ? ` · a ${durationText(game.timing.partyMinutes * 60)} party` : ''} · waiting for the host</p>
               {/if}
             {/if}
             {#if game.phase === 'painting' || game.phase === 'passing'}
               <p class="round">Round <strong>{game.round}</strong> of {game.totalRounds}<span class="whose">{whose(viewPiece)}</span></p>
               <TimerDial secondsLeft={game.secondsLeft} totalSeconds={game.turnSeconds} label={timerLabel} />
               {#if game.plannedEndAt}<p class="note">Wraps up around {new Date(game.plannedEndAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>{/if}
+              {#if isHost && game.phase === 'painting' && !game.overtime}
+                <!-- The game starts paused: the host starts the clock when everyone's ready, and can pause it any time. -->
+                <button type="button" class:primary={game.paused} onclick={toggleTimer}>{game.paused ? (timerNeverRan ? 'Start the timer' : 'Resume the timer') : 'Pause the timer'}</button>
+              {:else if game.paused && game.phase === 'painting' && !game.overtime}
+                <p class="note">{timerNeverRan ? 'The host starts the timer when everyone is ready. You can paint now.' : 'The host paused the timer.'}</p>
+              {/if}
               {#if isHost}<button type="button" aria-pressed={timingOpen} onclick={() => (timingOpen = !timingOpen)}>Timing</button>{/if}
               {#if me?.watching && game.pieces.length}
                 <label class="inline">Watching
@@ -686,12 +733,38 @@
     min-height: 100dvh;
   }
 
+  .room-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    padding: 0.75rem 1rem;
+    color: $cream;
+    background: rgb(24 16 11 / 0.92);
+    .tape {
+      @include tape-label;
+      margin: 0;
+      font-size: 1.125rem;
+    }
+    .note,
+    .round {
+      margin: 0;
+    }
+    .note {
+      flex: 1 1 16rem;
+      font-size: 0.9375rem;
+    }
+    > button:not(.primary) {
+      min-height: $tap-min;
+      padding: 0 0.875rem;
+      border: 1px solid #9d8c67;
+      border-radius: 4px;
+      background: #1c150fe8;
+      color: $cream;
+    }
+  }
   .viewpoint {
-    position: fixed;
-    top: 0.75rem;
-    left: 50%;
-    translate: -50% 0;
-    z-index: 20;
+    margin-left: auto;
     display: flex;
     gap: 0.25rem;
     padding: 0.25rem;
@@ -926,6 +999,8 @@
     position: fixed;
     inset: 0;
     z-index: 60;
+    overflow-y: auto; // a tall reveal scrolls inside, the page never does
+    overscroll-behavior: contain;
     display: grid;
     place-items: center;
     padding: 1.25rem;

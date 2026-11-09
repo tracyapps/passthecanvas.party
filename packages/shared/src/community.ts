@@ -297,8 +297,15 @@ export interface PartyTiming {
   introMinutes: number;
   /** Catching up and the reveal after the last round. */
   wrapMinutes: number;
+  /**
+   * Times around the circle: how often each canvas visits everyone before it
+   * comes home. 1 = everyone paints every canvas once. Small parties can go
+   * around 2 or 3 times. Changeable mid-party.
+   */
+  laps: number;
 }
-export const DEFAULT_TIMING: PartyTiming = { mode: 'turn', partyMinutes: 60, turnSeconds: 180, introMinutes: 5, wrapMinutes: 10 };
+export const MAX_LAPS = 5;
+export const DEFAULT_TIMING: PartyTiming = { mode: 'turn', partyMinutes: 60, turnSeconds: 180, introMinutes: 5, wrapMinutes: 10, laps: 1 };
 
 export interface PartySettings {
   description: string;
@@ -317,8 +324,10 @@ export function cleanTiming(input: unknown): PartyTiming | null {
   const turnSeconds = int(t.turnSeconds, 20, 600);
   const introMinutes = int(t.introMinutes, 0, 30);
   const wrapMinutes = int(t.wrapMinutes, 0, 30);
-  if (!mode || partyMinutes === null || turnSeconds === null || introMinutes === null || wrapMinutes === null) return null;
-  return { mode, partyMinutes, turnSeconds, introMinutes, wrapMinutes };
+  // Older saved plans have no laps: once around.
+  const laps = t.laps === undefined ? 1 : int(t.laps, 1, MAX_LAPS);
+  if (!mode || partyMinutes === null || turnSeconds === null || introMinutes === null || wrapMinutes === null || laps === null) return null;
+  return { mode, partyMinutes, turnSeconds, introMinutes, wrapMinutes, laps };
 }
 
 export function cleanPartySettings(input: unknown): PartySettings | null {

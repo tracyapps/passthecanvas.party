@@ -331,12 +331,16 @@ export class PartyConnection {
       this.announcement = `Party radio: ${after.radio.stationName}. Open Radio to mute it or change your volume.`;
     } else if (before?.radio?.playing && !after.radio?.playing) {
       this.announcement = 'The party radio is off.';
+    } else if (before?.phase === 'painting' && after.phase === 'painting' && before.paused !== after.paused) {
+      this.announcement = after.paused ? 'The host paused the timer. Keep painting if you like.' : `The timer is running: ${Math.ceil(after.secondsLeft / 60)} ${Math.ceil(after.secondsLeft / 60) === 1 ? 'minute' : 'minutes'} for this round.`;
+    } else if (before?.phase === 'painting' && after.phase === 'painting' && before.totalRounds !== after.totalRounds) {
+      this.announcement = `The host changed the plan: ${after.totalRounds} rounds in all.`;
     } else if (!before?.overtime && after.overtime && after.phase === 'painting') {
       this.announcement = mine ? "Time's up. Finish your stroke, then pass the canvas." : "Time's up. The painters are finishing.";
     } else if (before?.phase !== after.phase && after.phase === 'passing') {
       this.announcement = 'Passing the canvases.';
     } else if ((before?.phase !== 'painting' || before.round !== after.round) && after.phase === 'painting') {
-      this.announcement = `Round ${after.round} of ${after.totalRounds}. ${whose ? `You have ${whose}.` : 'You are watching.'}`;
+      this.announcement = `Round ${after.round} of ${after.totalRounds}. ${whose ? `You have ${whose}.` : 'You are watching.'}${after.paused && after.round === 1 ? ' The timer starts when the host is ready.' : ''}`;
     } else if (!before?.archive?.id && after.archive?.id) {
       this.announcement = 'The host saved a shareable gallery of these pieces. Anyone with its link can see them and your name.';
     } else if (before?.phase !== after.phase && after.phase === 'reveal') {

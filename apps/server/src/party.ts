@@ -129,6 +129,8 @@ class Party {
   private sessions = new Map<string, Session>();
   private ticker: ReturnType<typeof setInterval> | null = null;
   private passTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When the host paused the timer (ms), to move the planned end on by the pause. */
+  private pausedAt: number | null = null;
   private state: PartyState;
   /** Painting data per canvas. Never video or audio; dropped when the party ends. */
   private histories = new Map<string, CanvasHistory>();
@@ -158,6 +160,7 @@ class Party {
       startedAt: null,
       plannedEndAt: null,
       overtime: false,
+      paused: false,
       galleryMode: 'walls-then-lean',
       radio: null,
       archive: { available: archiveConfigured(), saving: false, id: null, error: null }
@@ -239,6 +242,7 @@ class Party {
     const session: Session = { devices: new Map(), canvas: null, call: null, canvasHandoff: null, graceTimer: null, awayTimer: null };
     this.sessions.set(id, session);
     const { device, key } = this.newDevice(session, ws, label);
+    device.screen = 'room'; // a party opens in the room: find a seat, say hello
     session.canvas = device.id;
     session.call = device.id;
     this.refreshLobbyOrder();
@@ -595,6 +599,12 @@ class Party {
         return;
       }
 
+      case 'setPaused': {
+        if (!from.isHost || (this.state.phase !== 'painting' && this.state.phase !== 'passing')) return;
+        this.setPaused(Boolean(msg.paused));
+        return;
+      }
+
       case 'setPresence': {
         if (msg.presence !== 'camera' && msg.presence !== 'avatar') return;
         from.presence = msg.presence;
@@ -756,7 +766,7 @@ class Party {
   /** Freeze the ring and give every artist their own canvas. */
   private startGame() {
     const ring = this.state.order.filter((id) => this.present(id));
-    const total = roundsFor(ring.length);
+    const total = roundsFor(ring.length, this.state.timing.laps);
     const nameOf = (id: string) => this.member(id)?.name ?? 'A guest';
     this.state.order = ring;
     this.state.totalRounds = total;
@@ -776,6 +786,10 @@ class Party {
     for (const piece of this.state.pieces) this.histories.set(piece.id, { strokes: [], stamps: 0, complete: true });
     this.state.round = 1;
     this.state.startedAt = Date.now();
+    // The game starts with the timer paused: the host answers questions and
+    // starts the clock when everyone is ready.
+    this.state.paused = true;
+    this.pausedAt = Date.now();
     this.startRound();
   }
 
@@ -801,7 +815,28 @@ class Party {
       if (history) this.sendToMember(painterId, history);
     }
     if (Object.keys(this.state.assignments).length === 0) this.endRound();
-    else this.startTimer();
+    else if (!this.state.paused) this.startTimer();
+  }
+
+  /**
+   * The host stops or starts the timer. Painting carries on either way. The
+   * pause doesn't count against the party: its planned end moves on by the
+   * time spent paused.
+   */
+  private setPaused(paused: boolean) {
+    if (paused === this.state.paused) return;
+    this.state.paused = paused;
+    if (paused) {
+      this.pausedAt = Date.now();
+      this.stopTimer();
+    } else {
+      const held = this.pausedAt ? Date.now() - this.pausedAt : 0;
+      this.pausedAt = null;
+      if (this.state.startedAt) this.state.startedAt += held;
+      if (this.state.plannedEndAt) this.state.plannedEndAt += held;
+      if (this.state.phase === 'painting' && !this.state.overtime) this.startTimer();
+    }
+    this.broadcastState();
   }
 
   private everyonePassed() {
@@ -899,6 +934,7 @@ class Party {
   /** The host changed the timing: everyone's display follows at once. */
   private setTiming(timing: PartyTiming) {
     const before = this.state.turnSeconds;
+    if (this.state.phase !== 'lobby' && timing.laps !== this.state.timing.laps) timing = this.setLaps(timing);
     this.state.timing = timing;
     if (this.state.phase === 'lobby') this.applyLobbyTiming();
     else {
@@ -911,6 +947,29 @@ class Party {
       }
     }
     this.broadcastState();
+  }
+
+  /**
+   * Mid-party: more or fewer times around the circle. The rounds already
+   * painted stay as they are; each canvas still comes home to its owner for
+   * the last round. Never fewer rounds than the one underway.
+   */
+  private setLaps(timing: PartyTiming): PartyTiming {
+    const ring = this.state.order;
+    let laps = timing.laps;
+    while (laps < 5 && roundsFor(ring.length, laps) < this.state.round) laps += 1;
+    const total = roundsFor(ring.length, laps);
+    if (total < this.state.round) return { ...timing, laps: this.state.timing.laps };
+    this.state.totalRounds = total;
+    const nameOf = (id: string) => this.member(id)?.name ?? this.state.pieces.flatMap((p) => p.turns).find((t) => t.painterId === id)?.painterName ?? 'A guest';
+    for (const piece of this.state.pieces) {
+      const kept = piece.turns.filter((turn) => turn.round <= this.state.round);
+      const added = contributionsFor(ring, piece.ownerId, total)
+        .filter((turn) => turn.round > this.state.round)
+        .map((turn) => ({ ...turn, painterName: nameOf(turn.painterId), url: null }));
+      piece.turns = [...kept, ...added];
+    }
+    return { ...timing, laps };
   }
 
   // ---------- archive ----------

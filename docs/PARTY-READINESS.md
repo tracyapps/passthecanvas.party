@@ -20,6 +20,9 @@ two-computer gate are still unverified.
 | Dropped connection | Automatic | "Reconnecting…" banner; the tab rejoins its seat with a private key (1 s, 2 s, 4 s… up to 15 s). A reload rejoins without the join form. Your canvas reloads from the server. [Connection](../apps/web/src/lib/party/connection.svelte.ts) |
 | Save data | Call dock, the signal-bars button | Stops downloading guests' video; their avatar or initials show and voices keep playing. On a weak connection it switches on by itself once and says so. |
 | Check local devices | Account **Camera & mic check** | Preview, choose camera/microphone/speakers where supported, then **Save these for parties**. Local only; it does not prove remote call delivery. [DevicesPage](../apps/web/src/lib/account/studio/DevicesPage.svelte) |
+| Arrive | The room opens first | Find a seat, say hello. The room bar shows who's seated; the host has **Party setup** and **Start the game** there. |
+| Timer | Host: **Start the timer / Pause the timer / Resume the timer** (room bar and party strip) | A game starts with the timer paused; painting works while paused. Pauses push the planned end back. |
+| Times around the circle | Host: Party setup or **Timing** (and the account planner) | 1–5 laps; laps × artists + 1 rounds, owner last. Changeable mid-party. |
 | Start and pass | **Start the game**, then **Pass the canvas**. Host also has **Pass everyone on** when applicable. | Each artist paints their assigned canvas in a simultaneous round. Pressing **Pass** on a device without the canvas asks the canvas device to finish its stroke and pass. [Protocol](../packages/shared/src/protocol.ts) |
 
 ## Saved views on each device (Nov 8)

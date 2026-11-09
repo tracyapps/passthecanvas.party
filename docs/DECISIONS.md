@@ -1084,3 +1084,37 @@ Deploy the shared types, server and web changes together and reload older party
 pages before using the new controls. Older pages cannot acknowledge a painting
 handoff, so the server keeps painting where it is rather than dropping its tail.
 Local evidence and remaining hardware checks are in PARTY-READINESS.md.
+
+### 2026-11-08 — Party flow: room first, host-paused timer, laps; canvas window handles back
+
+Owner requests, Nov 8 evening.
+
+- **A party opens in the room.** The first device's screen defaults to the
+  room (a canvas-only linked device still opens on the canvas). A room bar
+  shows the party name, seating status and, for the host, **Party setup** and
+  **Start the game**; during the game it shows the round, the timer and the
+  host's timer button. When the game starts, the device holding the canvas
+  moves to the table.
+- **The timer starts paused.** `PartyState.paused`; the host sends
+  `setPaused` (host only, painting/passing phases). Painting works while
+  paused. A pause moves the planned end on by its length (party-length plans
+  don't lose time). A host pause carries over into the next round.
+- **Times around the circle** (`PartyTiming.laps`, 1–5, default 1; older plans
+  without it mean 1). Rounds = laps × artists + 1, so every canvas still ends
+  with its owner. In Party setup, Timing and the account planner. Mid-party
+  changes keep the rounds already painted, rebuild the rest of each canvas's
+  turn list, and never go below the round underway.
+- **Canvas window handles return on the live table** (removed with the
+  Paint/Arrange toggle): four edges, a resize corner and a move grip, with
+  arrow keys on each, 44 px on touch screens. On phones/narrow tablets (the
+  flowing layout) only the size changes. Frames stay 16 px inside the screen.
+- **Frames can't leave the screen.** `keepFrameOnSurface` clamps size and
+  position in `workspaceGeometry` (so views saved too big come back), in the
+  view editor's drag and typed numbers, and on the live table.
+- **iPad page movement:** no rubber-band/pull-to-refresh while the table is
+  mounted; on wide screens the page doesn't scroll while the table is showing;
+  one-finger drags that start on a handle never move the page. The reveal
+  scrolls inside its own overlay.
+- **Saved views on a linked device:** linking never signs a device in, so an
+  iPad that isn't signed in keeps its own views. The View menu now says so and
+  offers **Sign in for your saved views**.
